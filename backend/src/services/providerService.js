@@ -1,8 +1,57 @@
 const fetch = require('node-fetch');
 const { providerQueries, vodQueries } = require('../db/queries');
 const logger = require('../utils/logger');
+const { normalizeTitle } = require('../utils/titleNormalization');
 
 const FETCH_TIMEOUT = 20000; // 20s — some providers are slow
+
+function isTruthyAuth(value) {
+  return value === 1 || value === '1' || value === true;
+}
+
+function normalizeAccountInfo(data) {
+  const user = data?.user_info || {};
+  const server = data?.server_info || {};
+  const expDate = user.exp_date ? new Date(Number(user.exp_date) * 1000).toISOString() : null;
+  const createdAt = user.created_at ? new Date(Number(user.created_at) * 1000).toISOString() : null;
+
+  return {
+    status: user.status || null,
+    isTrial: user.is_trial === 1 || user.is_trial === '1' || user.is_trial === true,
+    expiresAt: expDate,
+    createdAt,
+    maxConnections: user.max_connections != null ? parseInt(user.max_connections, 10) : null,
+    activeConnections: user.active_cons != null ? parseInt(user.active_cons, 10) : null,
+    allowedOutputFormats: Array.isArray(user.allowed_output_formats) ? user.allowed_output_formats : [],
+    serverTimeNow: server.time_now || null,
+    serverTimezone: server.timezone || null,
+    url: server.url || null,
+    port: server.port || null,
+    httpsPort: server.https_port || null,
+  };
+}
+
+async function fetchAccountInfoForHost(host, username, password) {
+  const url = `${host}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    const data = await res.json();
+    if (data?.user_info?.auth === 0 || data?.user_info?.auth === '0' || data?.user_info?.auth === false) {
+      return { ok: false, error: 'Invalid credentials' };
+    }
+    if (isTruthyAuth(data?.user_info?.auth) || data?.user_info) {
+      return { ok: true, host, accountInfo: normalizeAccountInfo(data) };
+    }
+    return { ok: false, error: 'Unexpected response' };
+  } catch (err) {
+    clearTimeout(timer);
+    return { ok: false, error: err.message };
+  }
+}
 
 async function xtreamRequest(host, username, password, action, extraParams = '') {
   const url = `${host}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&action=${action}${extraParams}`;
@@ -42,24 +91,7 @@ const providerService = {
   },
 
   async testConnection(host, username, password) {
-    try {
-      // Test by fetching user/server info (no action param)
-      const url = `${host}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
-      const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timer);
-      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
-      const data = await res.json();
-      // Valid response has user_info.auth === 1
-      if (data?.user_info?.auth === 1) return { ok: true, host };
-      if (data?.user_info?.auth === 0) return { ok: false, error: 'Invalid credentials' };
-      // Some providers return the info without auth field — still OK if user_info exists
-      if (data?.user_info) return { ok: true, host };
-      return { ok: false, error: 'Unexpected response' };
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
+    return fetchAccountInfoForHost(host, username, password);
   },
 
   async testProvider(providerId, userId) {
@@ -108,6 +140,7 @@ const providerService = {
           // stream_id is the unique ID for the movie stream
           streamId: String(m.stream_id),
           rawTitle: m.name || String(m.stream_id),
+          normalizedTitle: normalizeTitle(m.name || String(m.stream_id)),
           posterUrl: m.stream_icon || null,
           // category_id is always present; category_name sometimes missing
           category: vodCategoryMap[String(m.category_id)] || m.category_name || 'Unknown',
@@ -137,6 +170,7 @@ const providerService = {
           // series_id is the unique ID for the whole series
           streamId: String(s.series_id),
           rawTitle: s.name || String(s.series_id),
+          normalizedTitle: normalizeTitle(s.name || String(s.series_id)),
           posterUrl: s.cover || null,
           // series response has category_id (number) but no category_name field
           // use the map first, then fall back to the genre string on the object
@@ -179,13 +213,24 @@ const providerService = {
     const provider = await providerQueries.findByIdAndUser(providerId, userId);
     if (!provider) throw Object.assign(new Error('Provider not found'), { status: 404 });
 
-    const [vodStats, matchStats, categories] = await Promise.all([
+    const hostToCheck = provider.active_host || provider.hosts?.[0];
+    const [vodStats, matchStats, categories, accountResult] = await Promise.all([
       vodQueries.getStats(providerId),
       vodQueries.getMatchStats(providerId),
       vodQueries.getCategoryBreakdown(providerId),
+      hostToCheck
+        ? fetchAccountInfoForHost(hostToCheck, provider.username, provider.password)
+        : Promise.resolve({ ok: false, error: 'No host available' }),
     ]);
 
-    return { provider, vodStats, matchStats, categories };
+    return {
+      provider,
+      vodStats,
+      matchStats,
+      categories,
+      accountInfo: accountResult.ok ? accountResult.accountInfo : null,
+      accountInfoError: accountResult.ok ? null : accountResult.error,
+    };
   },
 };
 

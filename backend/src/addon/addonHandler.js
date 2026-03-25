@@ -1,8 +1,12 @@
-const { userQueries, providerQueries, vodQueries, pool } = require('../db/queries');
+const fetch = require('node-fetch');
+const { userQueries, providerQueries, vodQueries, tmdbQueries, matchQueries, pool } = require('../db/queries');
 const providerService = require('../services/providerService');
 const logger = require('../utils/logger');
+const { normalizeTitle } = require('../utils/titleNormalization');
+const { beginAddonRequest, endAddonRequest } = require('../utils/loadManager');
 
 const TMDB_POSTER_BASE = 'https://image.tmdb.org/t/p/w500';
+const TMDB_API_KEY = process.env.TMDB_API_KEY;
 
 // ─── Manifest ─────────────────────────────────────────────────────────────────
 
@@ -143,132 +147,250 @@ async function resolveVodItem(userId, baseId) {
   return null;
 }
 
-// ─── Meta ─────────────────────────────────────────────────────────────────────
+async function getTargetTmdbRecord(baseId, type) {
+  if (baseId.startsWith('tmdb:')) {
+    const tmdbId = parseInt(baseId.slice(5), 10);
+    const { rows } = await pool.query(
+      type === 'series'
+        ? 'SELECT id, original_title, normalized_title, first_air_year AS year, NULL::varchar AS imdb_id, \'series\' AS tmdb_type FROM tmdb_series WHERE id = $1 LIMIT 1'
+        : 'SELECT id, original_title, normalized_title, release_year AS year, imdb_id, \'movie\' AS tmdb_type FROM tmdb_movies WHERE id = $1 LIMIT 1',
+      [tmdbId]
+    );
+    return rows[0] || null;
+  }
 
-async function handleMeta(token, type, id) {
-  const user = await userQueries.findByToken(token);
-  if (!user) return { meta: null };
+  if (baseId.startsWith('tt')) {
+    const { rows } = await pool.query(
+      'SELECT id, original_title, normalized_title, release_year AS year, imdb_id, \'movie\' AS tmdb_type FROM tmdb_movies WHERE imdb_id = $1 LIMIT 1',
+      [baseId]
+    );
+    if (rows[0]) return rows[0];
 
-  const { baseId } = parseStremioId(id);
-  const vodItem = await resolveVodItem(user.id, baseId);
-  if (!vodItem) return { meta: null };
+    if (!TMDB_API_KEY) return null;
 
-  const meta = {
-    id: baseId,
-    type: vodItem.vod_type === 'series' ? 'series' : 'movie',
-    name: vodItem.raw_title,
-    poster: vodItem.poster_url,
-    genres: vodItem.category ? [vodItem.category] : [],
-  };
-
-  // For series: fetch episode list so Stremio can show season/episode navigation
-  if (vodItem.vod_type === 'series' && vodItem.active_host && vodItem.stream_id) {
     try {
-      const episodesObj = await providerService.getSeriesEpisodes(
-        vodItem.active_host,
-        vodItem.username,
-        vodItem.password,
-        vodItem.stream_id
+      const res = await fetch(
+        `https://api.themoviedb.org/3/find/${baseId}?api_key=${TMDB_API_KEY}&external_source=imdb_id`
       );
-      const videos = [];
-      for (const [seasonNum, episodes] of Object.entries(episodesObj)) {
-        if (!Array.isArray(episodes)) continue;
-        for (const ep of episodes) {
-          videos.push({
-            id: `${baseId}:${seasonNum}:${ep.episode_num}`,
-            title: ep.title || `Episode ${ep.episode_num}`,
-            season: parseInt(seasonNum),
-            episode: parseInt(ep.episode_num),
-            released: ep.info?.releasedate ? new Date(ep.info.releasedate) : undefined,
-            thumbnail: ep.info?.movie_image || undefined,
-            overview: ep.info?.plot || undefined,
-          });
-        }
+      if (!res.ok) return null;
+      const data = await res.json();
+
+      if (type === 'series' && Array.isArray(data.tv_results) && data.tv_results[0]) {
+        const item = data.tv_results[0];
+        return {
+          id: item.id,
+          original_title: item.name || item.original_name || '',
+          normalized_title: normalizeTitle(item.name || item.original_name || ''),
+          year: item.first_air_date ? parseInt(item.first_air_date.split('-')[0], 10) : null,
+          imdb_id: baseId,
+          tmdb_type: 'series',
+        };
       }
-      if (videos.length > 0) {
-        meta.videos = videos;
+
+      if (Array.isArray(data.movie_results) && data.movie_results[0]) {
+        const item = data.movie_results[0];
+        return {
+          id: item.id,
+          original_title: item.title || item.original_title || '',
+          normalized_title: normalizeTitle(item.title || item.original_title || ''),
+          year: item.release_date ? parseInt(item.release_date.split('-')[0], 10) : null,
+          imdb_id: baseId,
+          tmdb_type: 'movie',
+        };
       }
     } catch (err) {
-      logger.warn(`Could not fetch episode list for meta ${baseId}: ${err.message}`);
+      logger.warn(`TMDB find fallback failed for ${baseId}: ${err.message}`);
     }
   }
 
-  return { meta };
+  return null;
+}
+
+async function tryOnDemandMatch(userId, baseId, type) {
+  const target = await getTargetTmdbRecord(baseId, type);
+  if (!target) return null;
+
+  const candidates = await vodQueries.findOnDemandCandidateForUser(userId, {
+    vodType: target.tmdb_type,
+    normalizedTitle: target.normalized_title || normalizeTitle(target.original_title || ''),
+    year: target.year || null,
+    tmdbId: target.id,
+    imdbId: target.imdb_id || (baseId.startsWith('tt') ? baseId : null),
+  });
+
+  if (!candidates.length) return null;
+
+  const targetNormalized = target.normalized_title || normalizeTitle(target.original_title || '');
+  const targetType = target.tmdb_type === 'series' ? 'series' : 'movie';
+
+  for (const candidate of candidates) {
+    const exactResult = await (targetType === 'series'
+      ? tmdbQueries.exactMatchSeries(candidate.normalized_title, target.year)
+      : tmdbQueries.exactMatchMovie(candidate.normalized_title, target.year));
+    const result = exactResult || await (targetType === 'series'
+      ? tmdbQueries.fuzzyMatchSeries(candidate.normalized_title, target.year)
+      : tmdbQueries.fuzzyMatchMovie(candidate.normalized_title, target.year));
+
+    if (!result || result.id !== target.id || result.score < 0.6) continue;
+
+    await matchQueries.upsert({
+      rawTitle: candidate.raw_title,
+      tmdbId: target.id,
+      tmdbType: targetType,
+      imdbId: target.imdb_id || (baseId.startsWith('tt') ? baseId : null),
+      confidenceScore: result.score,
+    });
+
+    logger.info(`On-demand match resolved "${candidate.raw_title}" to ${baseId}`);
+    return resolveVodItem(userId, baseId);
+  }
+
+  logger.info(`On-demand match found no candidate for ${baseId} (${targetNormalized})`);
+  return null;
+}
+
+// ─── Meta ─────────────────────────────────────────────────────────────────────
+
+async function handleMeta(token, type, id) {
+  beginAddonRequest();
+  try {
+    const user = await userQueries.findByToken(token);
+    if (!user) return { meta: null };
+
+    const { baseId } = parseStremioId(id);
+    let vodItem = await resolveVodItem(user.id, baseId);
+    if (!vodItem && (baseId.startsWith('tt') || baseId.startsWith('tmdb:'))) {
+      vodItem = await tryOnDemandMatch(user.id, baseId, type);
+    }
+    if (!vodItem) return { meta: null };
+
+    const meta = {
+      id: baseId,
+      type: vodItem.vod_type === 'series' ? 'series' : 'movie',
+      name: vodItem.raw_title,
+      poster: vodItem.poster_url,
+      genres: vodItem.category ? [vodItem.category] : [],
+    };
+
+    // For series: fetch episode list so Stremio can show season/episode navigation
+    if (vodItem.vod_type === 'series' && vodItem.active_host && vodItem.stream_id) {
+      try {
+        const episodesObj = await providerService.getSeriesEpisodes(
+          vodItem.active_host,
+          vodItem.username,
+          vodItem.password,
+          vodItem.stream_id
+        );
+        const videos = [];
+        for (const [seasonNum, episodes] of Object.entries(episodesObj)) {
+          if (!Array.isArray(episodes)) continue;
+          for (const ep of episodes) {
+            videos.push({
+              id: `${baseId}:${seasonNum}:${ep.episode_num}`,
+              title: ep.title || `Episode ${ep.episode_num}`,
+              season: parseInt(seasonNum),
+              episode: parseInt(ep.episode_num),
+              released: ep.info?.releasedate ? new Date(ep.info.releasedate) : undefined,
+              thumbnail: ep.info?.movie_image || undefined,
+              overview: ep.info?.plot || undefined,
+            });
+          }
+        }
+        if (videos.length > 0) {
+          meta.videos = videos;
+        }
+      } catch (err) {
+        logger.warn(`Could not fetch episode list for meta ${baseId}: ${err.message}`);
+      }
+    }
+
+    return { meta };
+  } finally {
+    endAddonRequest();
+  }
 }
 
 // ─── Stream ───────────────────────────────────────────────────────────────────
 
 async function handleStream(token, type, id) {
-  const user = await userQueries.findByToken(token);
-  if (!user) return { streams: [] };
+  beginAddonRequest();
+  try {
+    const user = await userQueries.findByToken(token);
+    if (!user) return { streams: [] };
 
-  const { baseId, season, episode } = parseStremioId(id);
-  const vodItem = await resolveVodItem(user.id, baseId);
-
-  if (!vodItem || !vodItem.active_host) return { streams: [] };
-
-  const { active_host, username, password, stream_id, vod_type, container_extension } = vodItem;
-
-  // ── Movie stream ───────────────────────────────────────────────────────────
-  if (vod_type === 'movie') {
-    const ext = container_extension || 'mp4';
-    const url = `${active_host}/movie/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${stream_id}.${ext}`;
-    return {
-      streams: [{ url, title: 'StreamBridge', name: 'SB', behaviorHints: { notWebReady: false } }],
-    };
-  }
-
-  // ── Series episode stream ──────────────────────────────────────────────────
-  // stream_id on the VOD record is the *series* ID (show-level).
-  // We must call get_series_info to resolve the individual episode stream_id.
-  if (vod_type === 'series') {
-    if (season == null || episode == null) {
-      // Stremio always appends :S:E for series — if not present something is wrong
-      logger.warn(`Series stream requested without episode info: ${id}`);
-      return { streams: [] };
+    const { baseId, season, episode } = parseStremioId(id);
+    let vodItem = await resolveVodItem(user.id, baseId);
+    if (!vodItem && (baseId.startsWith('tt') || baseId.startsWith('tmdb:'))) {
+      vodItem = await tryOnDemandMatch(user.id, baseId, type);
     }
 
-    try {
-      const episodesObj = await providerService.getSeriesEpisodes(
-        active_host, username, password, stream_id
-      );
+    if (!vodItem || !vodItem.active_host) return { streams: [] };
 
-      // Seasons are keyed by string number in the API response
-      const seasonEps = episodesObj[String(season)];
-      if (!Array.isArray(seasonEps) || seasonEps.length === 0) {
-        logger.warn(`Season ${season} not found for series ${stream_id}`);
-        return { streams: [] };
-      }
+    const { active_host, username, password, stream_id, vod_type, container_extension } = vodItem;
 
-      const ep = seasonEps.find(
-        e => parseInt(e.episode_num) === episode
-      );
-      if (!ep) {
-        logger.warn(`S${season}E${episode} not found in series ${stream_id}`);
-        return { streams: [] };
-      }
-
-      // ep.id is the episode-level stream ID; ep.container_extension is the file format
-      const epId = ep.id;
-      const epExt = ep.container_extension || 'mkv';
-      const url = `${active_host}/series/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${epId}.${epExt}`;
-
-      const label = `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
+    // ── Movie stream ───────────────────────────────────────────────────────────
+    if (vod_type === 'movie') {
+      const ext = container_extension || 'mp4';
+      const url = `${active_host}/movie/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${stream_id}.${ext}`;
       return {
-        streams: [{
-          url,
-          title: `${label} – StreamBridge`,
-          name: 'SB',
-          behaviorHints: { notWebReady: false },
-        }],
+        streams: [{ url, title: 'StreamBridge', name: 'SB', behaviorHints: { notWebReady: false } }],
       };
-    } catch (err) {
-      logger.warn(`Failed to resolve series stream for ${id}: ${err.message}`);
-      return { streams: [] };
     }
-  }
 
-  return { streams: [] };
+    // ── Series episode stream ──────────────────────────────────────────────────
+    // stream_id on the VOD record is the *series* ID (show-level).
+    // We must call get_series_info to resolve the individual episode stream_id.
+    if (vod_type === 'series') {
+      if (season == null || episode == null) {
+        // Stremio always appends :S:E for series — if not present something is wrong
+        logger.warn(`Series stream requested without episode info: ${id}`);
+        return { streams: [] };
+      }
+
+      try {
+        const episodesObj = await providerService.getSeriesEpisodes(
+          active_host, username, password, stream_id
+        );
+
+        // Seasons are keyed by string number in the API response
+        const seasonEps = episodesObj[String(season)];
+        if (!Array.isArray(seasonEps) || seasonEps.length === 0) {
+          logger.warn(`Season ${season} not found for series ${stream_id}`);
+          return { streams: [] };
+        }
+
+        const ep = seasonEps.find(
+          e => parseInt(e.episode_num) === episode
+        );
+        if (!ep) {
+          logger.warn(`S${season}E${episode} not found in series ${stream_id}`);
+          return { streams: [] };
+        }
+
+        // ep.id is the episode-level stream ID; ep.container_extension is the file format
+        const epId = ep.id;
+        const epExt = ep.container_extension || 'mkv';
+        const url = `${active_host}/series/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${epId}.${epExt}`;
+
+        const label = `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
+        return {
+          streams: [{
+            url,
+            title: `${label} – StreamBridge`,
+            name: 'SB',
+            behaviorHints: { notWebReady: false },
+          }],
+        };
+      } catch (err) {
+        logger.warn(`Failed to resolve series stream for ${id}: ${err.message}`);
+        return { streams: [] };
+      }
+    }
+
+    return { streams: [] };
+  } finally {
+    endAddonRequest();
+  }
 }
 
 module.exports = { buildManifest, handleCatalog, handleMeta, handleStream };

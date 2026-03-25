@@ -3,6 +3,8 @@ const zlib = require('zlib');
 const fetch = require('node-fetch');
 const { tmdbQueries, matchQueries, vodQueries, jobQueries } = require('../db/queries');
 const logger = require('../utils/logger');
+const { cleanTitle, normalizeTitle } = require('../utils/titleNormalization');
+const { waitForAddonCapacity, getActiveAddonRequests } = require('../utils/loadManager');
 
 // parse-torrent-name may not be available — graceful fallback
 let ptn;
@@ -11,23 +13,12 @@ try { ptn = require('parse-torrent-title'); } catch (_) { ptn = null; }
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const TMDB_POSTER_BASE = 'https://image.tmdb.org/t/p/w500';
 const CONFIDENCE_THRESHOLD = 0.6;
+const MATCH_CONCURRENCY = parseInt(process.env.TMDB_MATCH_CONCURRENCY || '4', 10);
+const MATCH_BATCH_SIZE = parseInt(process.env.TMDB_MATCH_BATCH_SIZE || '10000', 10);
 
-const STRIP_PATTERNS = [
-  /\b(arabic|hindi|dubbed|multi|english|french|german|spanish|italian|turkish|persian|urdu)\b/gi,
-  /\b(hd|fhd|uhd|4k|1080p|720p|480p|bluray|blu-ray|webrip|web-dl|hdtv|dvdrip|xvid|x264|x265|hevc|avc)\b/gi,
-  /\b(s\d{2}e\d{2}|season\s*\d+|episode\s*\d+)\b/gi,
-  /[\[\](){}|_]/g,
-  /\s{2,}/g,
-];
+function extractCleanTitle(rawTitle) {
+  let title = cleanTitle(rawTitle);
 
-function cleanTitle(rawTitle) {
-  let title = rawTitle;
-  for (const pattern of STRIP_PATTERNS) {
-    title = title.replace(pattern, ' ');
-  }
-  title = title.trim();
-
-  // Try parse-torrent-name for better extraction
   if (ptn) {
     try {
       const parsed = ptn(rawTitle);
@@ -103,6 +94,134 @@ async function enrichMovieFromApi(tmdbId) {
   } catch (_) { return {}; }
 }
 
+async function fetchImdbIdFromApi(tmdbType, tmdbId, fallbackImdbId = null) {
+  if (fallbackImdbId) return fallbackImdbId;
+  if (!TMDB_API_KEY || !tmdbId) return null;
+
+  const path = tmdbType === 'series'
+    ? `tv/${tmdbId}/external_ids`
+    : `movie/${tmdbId}/external_ids`;
+
+  try {
+    const res = await fetch(`https://api.themoviedb.org/3/${path}?api_key=${TMDB_API_KEY}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.imdb_id || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function findBestMatch(rawTitle, vodType) {
+  const clean = extractCleanTitle(rawTitle);
+  const normalized = normalizeTitle(clean);
+  const year = extractYear(rawTitle);
+
+  if (!normalized) return null;
+
+  if (vodType === 'series') {
+    const exact = await tmdbQueries.exactMatchSeries(normalized, year);
+    return exact || tmdbQueries.fuzzyMatchSeries(normalized, year);
+  }
+
+  const exact = await tmdbQueries.exactMatchMovie(normalized, year);
+  return exact || tmdbQueries.fuzzyMatchMovie(normalized, year);
+}
+
+async function mapWithConcurrency(items, concurrency, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  const runWorker = async () => {
+    while (true) {
+      const currentIndex = nextIndex++;
+      if (currentIndex >= items.length) return;
+      results[currentIndex] = await worker(items[currentIndex], currentIndex);
+    }
+  };
+
+  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+  return results;
+}
+
+async function processMatchingBatch(unmatched, { imdbCache, concurrency }) {
+  let matched = 0;
+  let failed = 0;
+  let enriched = 0;
+
+  await mapWithConcurrency(unmatched, concurrency, async ({ raw_title, vod_type, tmdb_id, imdb_id, confidence_score }, index) => {
+    await waitForAddonCapacity();
+
+    if (tmdb_id && !imdb_id) {
+      const cacheKey = `${vod_type}:${tmdb_id}`;
+      let enrichedImdbId = imdbCache.get(cacheKey);
+      if (enrichedImdbId === undefined) {
+        enrichedImdbId = await fetchImdbIdFromApi(vod_type, tmdb_id);
+        imdbCache.set(cacheKey, enrichedImdbId);
+      }
+      if (enrichedImdbId) {
+        await matchQueries.upsert({
+          rawTitle: raw_title,
+          tmdbId: tmdb_id,
+          tmdbType: vod_type === 'series' ? 'series' : 'movie',
+          imdbId: enrichedImdbId,
+          confidenceScore: confidence_score || 1,
+        });
+        enriched++;
+      }
+      if ((index + 1) % 250 === 0 || index === unmatched.length - 1) {
+        logger.info(`Matching progress: ${index + 1}/${unmatched.length} processed`);
+      }
+      return;
+    }
+
+    try {
+      const result = await findBestMatch(raw_title, vod_type);
+
+      if (result && result.score >= CONFIDENCE_THRESHOLD) {
+        const resolvedType = vod_type === 'series' ? 'series' : 'movie';
+        const cacheKey = `${resolvedType}:${result.id}`;
+        let resolvedImdbId = imdbCache.get(cacheKey);
+        if (resolvedImdbId === undefined) {
+          resolvedImdbId = await fetchImdbIdFromApi(
+            resolvedType,
+            result.id,
+            result.imdb_id || null
+          );
+          imdbCache.set(cacheKey, resolvedImdbId);
+        }
+        await matchQueries.upsert({
+          rawTitle: raw_title,
+          tmdbId: result.id,
+          tmdbType: resolvedType,
+          imdbId: resolvedImdbId,
+          confidenceScore: result.score,
+        });
+        matched++;
+      } else {
+        await matchQueries.upsert({
+          rawTitle: raw_title,
+          tmdbId: null,
+          tmdbType: vod_type === 'series' ? 'series' : 'movie',
+          imdbId: null,
+          confidenceScore: result?.score || 0,
+        });
+        failed++;
+      }
+    } catch (err) {
+      logger.warn(`Match error for "${raw_title}": ${err.message}`);
+      failed++;
+    }
+
+    if ((index + 1) % 250 === 0 || index === unmatched.length - 1) {
+      logger.info(`Matching progress: ${index + 1}/${unmatched.length} processed`);
+    }
+  });
+
+  return { matched, failed, enriched, total: unmatched.length };
+}
+
 const tmdbService = {
   async syncExports() {
     const jobId = await jobQueries.start('tmdbSync');
@@ -121,6 +240,7 @@ const tmdbService = {
           await tmdbQueries.upsertMovie({
             id: obj.id,
             original_title: obj.original_title,
+            normalized_title: normalizeTitle(obj.original_title),
             release_year: obj.release_date ? parseInt(obj.release_date.split('-')[0]) : null,
             popularity: obj.popularity || 0,
             poster_path: null,
@@ -144,6 +264,7 @@ const tmdbService = {
           await tmdbQueries.upsertSeries({
             id: obj.id,
             original_title: obj.original_name,
+            normalized_title: normalizeTitle(obj.original_name),
             first_air_year: obj.first_air_date ? parseInt(obj.first_air_date.split('-')[0]) : null,
             popularity: obj.popularity || 0,
             poster_path: null,
@@ -166,68 +287,70 @@ const tmdbService = {
     }
   },
 
-  async runMatching(limit = 5000) {
+  async runMatching(limit = MATCH_BATCH_SIZE) {
     const jobId = await jobQueries.start('matching');
     try {
       logger.info('Starting TMDB matching...');
-      const unmatched = await vodQueries.getUnmatchedForMatching(limit);
-      logger.info(`Found ${unmatched.length} unmatched titles`);
+      const imdbCache = new Map();
+      const concurrency = Math.max(1, Math.min(MATCH_CONCURRENCY, 16));
+      let totalMatched = 0;
+      let totalFailed = 0;
+      let totalEnriched = 0;
+      let totalProcessed = 0;
+      let batchNumber = 0;
 
-      let matched = 0;
-      let failed = 0;
+      while (true) {
+        const unmatched = await vodQueries.getUnmatchedForMatching(limit);
+        if (!unmatched.length) break;
 
-      for (const { raw_title, vod_type } of unmatched) {
-        // Skip if already in cache
-        const existing = await matchQueries.findByRawTitle(raw_title);
-        if (existing) continue;
+        batchNumber++;
+        logger.info(`Starting matching batch ${batchNumber} with ${unmatched.length} titles`);
+        const batchResult = await processMatchingBatch(unmatched, { imdbCache, concurrency });
+        totalMatched += batchResult.matched;
+        totalFailed += batchResult.failed;
+        totalEnriched += batchResult.enriched;
+        totalProcessed += batchResult.total;
 
-        const clean = cleanTitle(raw_title);
-        const year = extractYear(raw_title);
+        logger.info(
+          `Batch ${batchNumber} complete: ${batchResult.matched} matched, ` +
+          `${batchResult.enriched} IMDb-enriched, ${batchResult.failed} unmatched`
+        );
 
-        try {
-          let result = null;
-          if (vod_type === 'series') {
-            result = await tmdbQueries.fuzzyMatchSeries(clean, year);
-          } else {
-            result = await tmdbQueries.fuzzyMatchMovie(clean, year);
-          }
-
-          if (result && result.score >= CONFIDENCE_THRESHOLD) {
-            await matchQueries.upsert({
-              rawTitle: raw_title,
-              tmdbId: result.id,
-              tmdbType: vod_type === 'series' ? 'series' : 'movie',
-              imdbId: result.imdb_id || null,
-              confidenceScore: result.score,
-            });
-            matched++;
-          } else {
-            // Record as unmatched in cache so we don't retry
-            await matchQueries.upsert({
-              rawTitle: raw_title,
-              tmdbId: null,
-              tmdbType: vod_type === 'series' ? 'series' : 'movie',
-              imdbId: null,
-              confidenceScore: result?.score || 0,
-            });
-            failed++;
-          }
-        } catch (err) {
-          logger.warn(`Match error for "${raw_title}": ${err.message}`);
-          failed++;
+        if (getActiveAddonRequests() > 0) {
+          logger.info(`Background matching yielded to ${getActiveAddonRequests()} active addon request(s)`);
         }
+
+        if (unmatched.length < limit) break;
       }
 
-      logger.info(`Matching complete: ${matched} matched, ${failed} unmatched`);
-      await jobQueries.finish(jobId, { status: 'success', metadata: { matched, failed } });
-      return { matched, failed, total: unmatched.length };
+      logger.info(
+        `Matching complete: ${totalMatched} matched, ${totalEnriched} IMDb-enriched, ` +
+        `${totalFailed} unmatched across ${totalProcessed} processed`
+      );
+      await jobQueries.finish(jobId, {
+        status: 'success',
+        metadata: {
+          matched: totalMatched,
+          enriched: totalEnriched,
+          failed: totalFailed,
+          totalProcessed,
+          batches: batchNumber,
+        },
+      });
+      return {
+        matched: totalMatched,
+        enriched: totalEnriched,
+        failed: totalFailed,
+        total: totalProcessed,
+        batches: batchNumber,
+      };
     } catch (err) {
       await jobQueries.finish(jobId, { status: 'failed', errorMessage: err.message });
       throw err;
     }
   },
 
-  cleanTitle,
+  cleanTitle: extractCleanTitle,
   extractYear,
   TMDB_POSTER_BASE,
 };

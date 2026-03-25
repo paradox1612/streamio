@@ -45,13 +45,31 @@ describe('providerService', () => {
   describe('testConnection', () => {
     it('returns ok:true when provider responds with valid user_info', async () => {
       fetch.mockResolvedValue(new Response(
-        JSON.stringify({ user_info: { auth: 1, username: 'user', status: 'Active' }, server_info: {} }),
+        JSON.stringify({
+          user_info: {
+            auth: 1,
+            username: 'user',
+            status: 'Active',
+            exp_date: '1735689600',
+            max_connections: '3',
+            active_cons: '1',
+            allowed_output_formats: ['ts', 'm3u8'],
+          },
+          server_info: { timezone: 'UTC', time_now: '2025-01-01 00:00:00' },
+        }),
         { status: 200 }
       ));
 
       const result = await providerService.testConnection('http://host.com', 'user', 'pass');
       expect(result.ok).toBe(true);
       expect(result.host).toBe('http://host.com');
+      expect(result.accountInfo).toMatchObject({
+        status: 'Active',
+        maxConnections: 3,
+        activeConnections: 1,
+        allowedOutputFormats: ['ts', 'm3u8'],
+        serverTimezone: 'UTC',
+      });
     });
 
     it('returns ok:false when credentials are invalid (auth=0)', async () => {
@@ -113,6 +131,61 @@ describe('providerService', () => {
         activeHost: 'http://alive.com',
         status: 'online',
       });
+    });
+  });
+
+  describe('getStats', () => {
+    it('includes normalized account info when live provider details are available', async () => {
+      providerQueries.findByIdAndUser.mockResolvedValue({
+        id: 'p1',
+        user_id: 'u1',
+        name: 'Provider One',
+        hosts: ['http://host.com'],
+        active_host: 'http://host.com',
+        username: 'user',
+        password: 'pass',
+      });
+
+      const { vodQueries } = require('../../src/db/queries');
+      vodQueries.getStats = jest.fn().mockResolvedValue({ movie_count: 20, series_count: 5, category_count: 4, total: 25 });
+      vodQueries.getMatchStats = jest.fn().mockResolvedValue({ total: 25, matched: 20, unmatched: 5 });
+      vodQueries.getCategoryBreakdown = jest.fn().mockResolvedValue([]);
+
+      fetch.mockResolvedValue(new Response(
+        JSON.stringify({
+          user_info: {
+            auth: '1',
+            status: 'Active',
+            is_trial: '0',
+            exp_date: '1735689600',
+            created_at: '1704067200',
+            max_connections: '4',
+            active_cons: '2',
+            allowed_output_formats: ['ts', 'm3u8'],
+          },
+          server_info: {
+            timezone: 'America/Chicago',
+            time_now: '2025-01-01 00:00:00',
+            url: 'provider.example',
+            port: '8080',
+            https_port: '443',
+          },
+        }),
+        { status: 200 }
+      ));
+
+      const result = await providerService.getStats('p1', 'u1');
+      expect(result.accountInfo).toMatchObject({
+        status: 'Active',
+        isTrial: false,
+        maxConnections: 4,
+        activeConnections: 2,
+        allowedOutputFormats: ['ts', 'm3u8'],
+        serverTimezone: 'America/Chicago',
+        url: 'provider.example',
+        port: '8080',
+      });
+      expect(result.accountInfoError).toBeNull();
     });
   });
 });

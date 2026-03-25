@@ -5,16 +5,42 @@
 // Return empty object so ptn doesn't override the regex-based title cleaning.
 // The unit tests here focus on STRIP_PATTERNS correctness, not ptn integration.
 jest.mock('parse-torrent-title', () => () => ({}), { virtual: true });
+jest.mock('node-fetch', () => jest.fn());
+
+const mockTmdbQueries = {
+  exactMatchMovie: jest.fn(),
+  exactMatchSeries: jest.fn(),
+  fuzzyMatchMovie: jest.fn(),
+  fuzzyMatchSeries: jest.fn(),
+};
+const mockMatchQueries = {
+  upsert: jest.fn(),
+};
+const mockVodQueries = {
+  getUnmatchedForMatching: jest.fn(),
+};
+const mockJobQueries = {
+  start: jest.fn().mockResolvedValue('job-id'),
+  finish: jest.fn(),
+};
+
 jest.mock('../../src/db/queries', () => ({
-  tmdbQueries: {},
-  matchQueries: {},
-  vodQueries: {},
-  jobQueries: { start: jest.fn().mockResolvedValue('job-id'), finish: jest.fn() },
+  tmdbQueries: mockTmdbQueries,
+  matchQueries: mockMatchQueries,
+  vodQueries: mockVodQueries,
+  jobQueries: mockJobQueries,
 }));
 
 jest.mock('../../src/utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 
-const { cleanTitle, extractYear } = require('../../src/services/tmdbService');
+process.env.TMDB_API_KEY = 'test-key';
+
+const fetch = require('node-fetch');
+const { cleanTitle, extractYear, runMatching } = require('../../src/services/tmdbService');
+
+beforeEach(() => {
+  jest.clearAllMocks();
+});
 
 describe('tmdbService – cleanTitle', () => {
   const cases = [
@@ -45,5 +71,80 @@ describe('tmdbService – extractYear', () => {
   test.each(cases)('extractYear(%s) → %s', (raw, expected) => {
     const result = extractYear(raw);
     expect(result).toBe(expected);
+  });
+});
+
+describe('tmdbService – runMatching', () => {
+  it('fetches IMDb IDs for newly matched movies', async () => {
+    mockVodQueries.getUnmatchedForMatching
+      .mockResolvedValueOnce([
+        { raw_title: 'The Matrix (1999)', vod_type: 'movie', tmdb_id: null, imdb_id: null, confidence_score: null },
+      ])
+      .mockResolvedValueOnce([]);
+    mockTmdbQueries.exactMatchMovie.mockResolvedValue(null);
+    mockTmdbQueries.fuzzyMatchMovie.mockResolvedValue({ id: 603, imdb_id: null, score: 0.94 });
+    fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ imdb_id: 'tt0133093' }),
+    });
+
+    const result = await runMatching(1);
+
+    expect(fetch).toHaveBeenCalledWith('https://api.themoviedb.org/3/movie/603/external_ids?api_key=test-key');
+    expect(mockMatchQueries.upsert).toHaveBeenCalledWith({
+      rawTitle: 'The Matrix (1999)',
+      tmdbId: 603,
+      tmdbType: 'movie',
+      imdbId: 'tt0133093',
+      confidenceScore: 0.94,
+    });
+    expect(result).toMatchObject({ matched: 1, enriched: 0, failed: 0, total: 1 });
+  });
+
+  it('backfills IMDb IDs for existing series matches', async () => {
+    mockVodQueries.getUnmatchedForMatching
+      .mockResolvedValueOnce([
+        { raw_title: 'Breaking Bad', vod_type: 'series', tmdb_id: 1396, imdb_id: null, confidence_score: 0.91 },
+      ])
+      .mockResolvedValueOnce([]);
+    fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ imdb_id: 'tt0903747' }),
+    });
+
+    const result = await runMatching(1);
+
+    expect(fetch).toHaveBeenCalledWith('https://api.themoviedb.org/3/tv/1396/external_ids?api_key=test-key');
+    expect(mockMatchQueries.upsert).toHaveBeenCalledWith({
+      rawTitle: 'Breaking Bad',
+      tmdbId: 1396,
+      tmdbType: 'series',
+      imdbId: 'tt0903747',
+      confidenceScore: 0.91,
+    });
+    expect(result).toMatchObject({ matched: 0, enriched: 1, failed: 0, total: 1 });
+  });
+
+  it('keeps processing batches until the queue is empty', async () => {
+    mockVodQueries.getUnmatchedForMatching
+      .mockResolvedValueOnce([
+        { raw_title: 'The Matrix (1999)', vod_type: 'movie', tmdb_id: null, imdb_id: null, confidence_score: null },
+      ])
+      .mockResolvedValueOnce([
+        { raw_title: 'Breaking Bad', vod_type: 'series', tmdb_id: 1396, imdb_id: null, confidence_score: 0.91 },
+      ])
+      .mockResolvedValueOnce([]);
+
+    mockTmdbQueries.exactMatchMovie.mockResolvedValueOnce({ id: 603, imdb_id: 'tt0133093', score: 1 });
+    fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ imdb_id: 'tt0903747' }),
+    });
+
+    const result = await runMatching(1);
+
+    expect(mockVodQueries.getUnmatchedForMatching).toHaveBeenCalledTimes(3);
+    expect(mockMatchQueries.upsert).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({ matched: 1, enriched: 1, failed: 0, total: 2, batches: 2 });
   });
 });

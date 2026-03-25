@@ -14,9 +14,12 @@ export default function ProviderDetail() {
   const [stats, setStats] = useState(null);
   const [health, setHealth] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [form, setForm] = useState({ name: '', hostsInput: '', username: '', password: '' });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [rechecking, setRechecking] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const load = async () => {
     try {
@@ -26,6 +29,12 @@ export default function ProviderDetail() {
         providerAPI.getHealth(id),
       ]);
       setProvider(provRes.data);
+      setForm({
+        name: provRes.data.name || '',
+        hostsInput: (provRes.data.hosts || []).join('\n'),
+        username: provRes.data.username || '',
+        password: '',
+      });
       setStats(statsRes.data);
       setHealth(healthRes.data);
       setCategories(statsRes.data.categories || []);
@@ -37,6 +46,43 @@ export default function ProviderDetail() {
   };
 
   useEffect(() => { load(); }, [id]);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    const hosts = form.hostsInput.split('\n').map(host => host.trim().replace(/\/+$/, '')).filter(Boolean);
+    if (!form.name.trim()) return toast.error('Provider name is required');
+    if (!hosts.length) return toast.error('Enter at least one host URL');
+    if (!form.username.trim()) return toast.error('Username is required');
+
+    const payload = {
+      name: form.name.trim(),
+      hosts,
+      username: form.username.trim(),
+    };
+    if (form.password.trim()) payload.password = form.password;
+
+    setSaving(true);
+    try {
+      await providerAPI.update(id, payload);
+      await load();
+      setEditing(false);
+      toast.success('Provider updated');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setForm({
+      name: provider?.name || '',
+      hostsInput: (provider?.hosts || []).join('\n'),
+      username: provider?.username || '',
+      password: '',
+    });
+    setEditing(false);
+  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -72,6 +118,11 @@ export default function ProviderDetail() {
         <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#f1f5f9' }}>{provider.name}</h1>
         <StatusBadge status={provider.status} />
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+          {!editing ? (
+            <button onClick={() => setEditing(true)} style={{ padding: '8px 14px', borderRadius: '8px', background: '#334155', color: '#f1f5f9', border: 'none', cursor: 'pointer', fontSize: '0.8rem' }}>
+              Edit
+            </button>
+          ) : null}
           <button onClick={handleRecheck} disabled={rechecking} style={{ padding: '8px 14px', borderRadius: '8px', background: '#1e3a5f', color: '#93c5fd', border: 'none', cursor: 'pointer', fontSize: '0.8rem' }}>
             {rechecking ? 'Checking...' : '🔄 Recheck'}
           </button>
@@ -80,6 +131,53 @@ export default function ProviderDetail() {
           </button>
         </div>
       </div>
+
+      {editing && (
+        <form onSubmit={handleSave} style={{ background: '#1e293b', borderRadius: '12px', padding: '20px', border: '1px solid #334155', marginBottom: '20px', display: 'grid', gap: '14px' }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.8rem', color: '#94a3b8' }}>Provider Name</label>
+            <input
+              value={form.name}
+              onChange={(e) => setForm(prev => ({ ...prev, name: e.target.value }))}
+              style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', background: '#0f172a', border: '1px solid #334155', color: '#f1f5f9', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.8rem', color: '#94a3b8' }}>Host URLs (one per line)</label>
+            <textarea
+              value={form.hostsInput}
+              onChange={(e) => setForm(prev => ({ ...prev, hostsInput: e.target.value }))}
+              style={{ width: '100%', minHeight: '90px', padding: '10px 14px', borderRadius: '8px', background: '#0f172a', border: '1px solid #334155', color: '#f1f5f9', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', resize: 'vertical' }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.8rem', color: '#94a3b8' }}>Username</label>
+            <input
+              value={form.username}
+              onChange={(e) => setForm(prev => ({ ...prev, username: e.target.value }))}
+              style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', background: '#0f172a', border: '1px solid #334155', color: '#f1f5f9', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.8rem', color: '#94a3b8' }}>Password</label>
+            <input
+              type="password"
+              value={form.password}
+              onChange={(e) => setForm(prev => ({ ...prev, password: e.target.value }))}
+              placeholder="Leave blank to keep current password"
+              style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', background: '#0f172a', border: '1px solid #334155', color: '#f1f5f9', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <button type="button" onClick={handleCancelEdit} disabled={saving} style={{ padding: '10px 18px', borderRadius: '8px', background: '#334155', color: '#f1f5f9', border: 'none', cursor: 'pointer', fontWeight: 500 }}>
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} style={{ padding: '10px 18px', borderRadius: '8px', background: '#4f46e5', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      )}
 
       {/* Stats Row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '24px' }}>

@@ -214,15 +214,26 @@ const vodQueries = {
     if (!entries.length) return;
     const values = [];
     const placeholders = entries.map((e, i) => {
-      const base = i * 8;
-      values.push(e.userId, e.providerId, e.streamId, e.rawTitle, e.posterUrl, e.category, e.vodType, e.containerExtension || null);
-      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`;
+      const base = i * 9;
+      values.push(
+        e.userId,
+        e.providerId,
+        e.streamId,
+        e.rawTitle,
+        e.normalizedTitle || null,
+        e.posterUrl,
+        e.category,
+        e.vodType,
+        e.containerExtension || null
+      );
+      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9})`;
     });
     await pool.query(
-      `INSERT INTO user_provider_vod (user_id, provider_id, stream_id, raw_title, poster_url, category, vod_type, container_extension)
+      `INSERT INTO user_provider_vod (user_id, provider_id, stream_id, raw_title, normalized_title, poster_url, category, vod_type, container_extension)
        VALUES ${placeholders.join(', ')}
        ON CONFLICT (provider_id, stream_id, vod_type) DO UPDATE
        SET raw_title = EXCLUDED.raw_title,
+           normalized_title = EXCLUDED.normalized_title,
            poster_url = EXCLUDED.poster_url,
            category = EXCLUDED.category,
            container_extension = EXCLUDED.container_extension`,
@@ -329,12 +340,51 @@ const vodQueries = {
     return rows[0];
   },
 
+  async findOnDemandCandidateForUser(userId, { vodType, normalizedTitle, year, tmdbId, imdbId }) {
+    let query = `
+      SELECT v.*, p.active_host, p.username, p.password,
+             m.tmdb_id, m.imdb_id, m.confidence_score
+      FROM user_provider_vod v
+      JOIN user_providers p ON p.id = v.provider_id AND p.user_id = $1 AND p.status = 'online'
+      LEFT JOIN matched_content m ON m.raw_title = v.raw_title
+      WHERE v.user_id = $1
+        AND v.vod_type = $2
+        AND (
+          m.id IS NULL
+          OR m.imdb_id = $3
+          OR m.tmdb_id = $4
+          OR (m.tmdb_id IS NOT NULL AND m.imdb_id IS NULL)
+        )
+    `;
+    const params = [userId, vodType, imdbId || null, tmdbId || null];
+    let idx = 5;
+
+    if (normalizedTitle) {
+      query += ` AND v.normalized_title IS NOT NULL`;
+      query += ` ORDER BY
+        CASE WHEN v.normalized_title = $${idx} THEN 0 ELSE 1 END,
+        CASE WHEN v.normalized_title % $${idx} THEN 0 ELSE 1 END,
+        v.normalized_title <-> $${idx} ASC
+        LIMIT 25`;
+      params.push(normalizedTitle);
+    } else {
+      query += ` ORDER BY v.created_at DESC LIMIT 25`;
+    }
+
+    const { rows } = await pool.query(query, params);
+    return rows;
+  },
+
   async getUnmatchedForMatching(limit = 1000) {
     const { rows } = await pool.query(
-      `SELECT DISTINCT v.raw_title, v.vod_type
+      `SELECT DISTINCT v.raw_title,
+              COALESCE(m.tmdb_type, v.vod_type) AS vod_type,
+              m.tmdb_id,
+              m.imdb_id,
+              m.confidence_score
        FROM user_provider_vod v
        LEFT JOIN matched_content m ON m.raw_title = v.raw_title
-       WHERE m.id IS NULL
+       WHERE m.id IS NULL OR (m.tmdb_id IS NOT NULL AND m.imdb_id IS NULL)
        LIMIT $1`,
       [limit]
     );
@@ -350,65 +400,107 @@ const vodQueries = {
 // ─── TMDB ─────────────────────────────────────────────────────────────────────
 
 const tmdbQueries = {
-  async upsertMovie({ id, original_title, release_year, popularity, poster_path, overview, imdb_id }) {
+  async upsertMovie({ id, original_title, normalized_title, release_year, popularity, poster_path, overview, imdb_id }) {
     await pool.query(
-      `INSERT INTO tmdb_movies (id, original_title, release_year, popularity, poster_path, overview, imdb_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO tmdb_movies (id, original_title, normalized_title, release_year, popularity, poster_path, overview, imdb_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (id) DO UPDATE SET
          original_title = EXCLUDED.original_title,
+         normalized_title = EXCLUDED.normalized_title,
          release_year = EXCLUDED.release_year,
          popularity = EXCLUDED.popularity,
          poster_path = EXCLUDED.poster_path,
          overview = EXCLUDED.overview,
          imdb_id = EXCLUDED.imdb_id`,
-      [id, original_title, release_year, popularity, poster_path, overview, imdb_id]
+      [id, original_title, normalized_title, release_year, popularity, poster_path, overview, imdb_id]
     );
   },
 
-  async upsertSeries({ id, original_title, first_air_year, popularity, poster_path, overview }) {
+  async upsertSeries({ id, original_title, normalized_title, first_air_year, popularity, poster_path, overview }) {
     await pool.query(
-      `INSERT INTO tmdb_series (id, original_title, first_air_year, popularity, poster_path, overview)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO tmdb_series (id, original_title, normalized_title, first_air_year, popularity, poster_path, overview)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (id) DO UPDATE SET
          original_title = EXCLUDED.original_title,
+         normalized_title = EXCLUDED.normalized_title,
          first_air_year = EXCLUDED.first_air_year,
          popularity = EXCLUDED.popularity,
          poster_path = EXCLUDED.poster_path,
          overview = EXCLUDED.overview`,
-      [id, original_title, first_air_year, popularity, poster_path, overview]
+      [id, original_title, normalized_title, first_air_year, popularity, poster_path, overview]
     );
   },
 
-  async fuzzyMatchMovie(cleanTitle, year) {
+  async exactMatchMovie(normalizedTitle, year) {
     let query = `
-      SELECT id, original_title, imdb_id, popularity,
-        similarity(original_title, $1) AS score
+      SELECT id, original_title, imdb_id, popularity, 1 AS score
       FROM tmdb_movies
-      WHERE similarity(original_title, $1) > 0.5
+      WHERE normalized_title = $1
     `;
-    const params = [cleanTitle];
+    const params = [normalizedTitle];
     if (year) {
-      query += ` AND ABS(release_year - $2) <= 2`;
+      query += ` AND ABS(release_year - $2) <= 1`;
       params.push(year);
     }
-    query += ` ORDER BY score DESC, popularity DESC LIMIT 1`;
+    query += ` ORDER BY popularity DESC LIMIT 1`;
     const { rows } = await pool.query(query, params);
     return rows[0];
   },
 
-  async fuzzyMatchSeries(cleanTitle, year) {
+  async fuzzyMatchMovie(normalizedTitle, year) {
     let query = `
-      SELECT id, original_title, popularity,
-        similarity(original_title, $1) AS score
-      FROM tmdb_series
-      WHERE similarity(original_title, $1) > 0.5
+      SELECT id, original_title, imdb_id, popularity,
+             GREATEST(similarity(normalized_title, $1), word_similarity($1, normalized_title)) AS score
+      FROM (
+        SELECT id, original_title, imdb_id, popularity, normalized_title
+        FROM tmdb_movies
     `;
-    const params = [cleanTitle];
+    const params = [normalizedTitle];
     if (year) {
-      query += ` AND ABS(first_air_year - $2) <= 2`;
+      query += ` WHERE ABS(release_year - $2) <= 2`;
       params.push(year);
     }
-    query += ` ORDER BY score DESC, popularity DESC LIMIT 1`;
+    query += ` ORDER BY normalized_title <-> $1 ASC, popularity DESC LIMIT 5
+      ) candidates
+      ORDER BY score DESC, popularity DESC
+      LIMIT 1`;
+    const { rows } = await pool.query(query, params);
+    return rows[0];
+  },
+
+  async exactMatchSeries(normalizedTitle, year) {
+    let query = `
+      SELECT id, original_title, popularity, 1 AS score
+      FROM tmdb_series
+      WHERE normalized_title = $1
+    `;
+    const params = [normalizedTitle];
+    if (year) {
+      query += ` AND ABS(first_air_year - $2) <= 1`;
+      params.push(year);
+    }
+    query += ` ORDER BY popularity DESC LIMIT 1`;
+    const { rows } = await pool.query(query, params);
+    return rows[0];
+  },
+
+  async fuzzyMatchSeries(normalizedTitle, year) {
+    let query = `
+      SELECT id, original_title, popularity,
+             GREATEST(similarity(normalized_title, $1), word_similarity($1, normalized_title)) AS score
+      FROM (
+        SELECT id, original_title, popularity, normalized_title
+        FROM tmdb_series
+    `;
+    const params = [normalizedTitle];
+    if (year) {
+      query += ` WHERE ABS(first_air_year - $2) <= 2`;
+      params.push(year);
+    }
+    query += ` ORDER BY normalized_title <-> $1 ASC, popularity DESC LIMIT 5
+      ) candidates
+      ORDER BY score DESC, popularity DESC
+      LIMIT 1`;
     const { rows } = await pool.query(query, params);
     return rows[0];
   },
