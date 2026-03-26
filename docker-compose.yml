@@ -33,8 +33,10 @@ services:
       DATABASE_URL: postgresql://postgres:streambridge_dev@postgres:5432/streambridge
       PORT: 3001
       NODE_ENV: development
-      BASE_URL: http://localhost:3001
-      FRONTEND_URL: http://localhost:3000
+      # Set BASE_URL to your public backend URL (e.g. https://api.yourdomain.com)
+      BASE_URL: ${BASE_URL:-http://localhost:3001}
+      # Set FRONTEND_URL to your public frontend URL (e.g. https://yourdomain.com)
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     depends_on:
       postgres:
         condition: service_healthy
@@ -48,8 +50,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # API base URL — browser calls this directly
-      REACT_APP_API_URL: http://localhost:3001
+      # Set REACT_APP_API_URL to your public backend URL (e.g. https://api.yourdomain.com)
+      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:3001}
       # webpack dev server proxy for any relative calls
       DANGEROUSLY_DISABLE_HOST_CHECK: "true"
     depends_on:
