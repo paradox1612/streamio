@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const authService = require('../services/authService');
 const { userQueries } = require('../db/queries');
+const { touchUserLastSeen } = require('../utils/userActivity');
 
 // User JWT middleware
 async function requireAuth(req, res, next) {
@@ -16,6 +17,7 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ error: 'Invalid token or account suspended' });
     }
     req.user = user;
+    touchUserLastSeen(user.id).catch(() => {});
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Invalid or expired token' });

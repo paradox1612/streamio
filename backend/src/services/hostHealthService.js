@@ -70,6 +70,7 @@ const hostHealthService = {
       activeHost: bestHost,
       status: bestHost ? 'online' : 'offline',
     });
+    cache.del('hostHealth', provider.id);
 
     logger.info(
       `Provider ${provider.name} (${provider.id}): ${bestHost ? `online via ${bestHost}` : 'offline'}`

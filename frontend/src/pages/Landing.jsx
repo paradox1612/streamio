@@ -1,28 +1,39 @@
 import React from 'react';
 import { Link, Navigate } from 'react-router-dom';
+import {
+  ArrowRightIcon,
+  BoltIcon,
+  CheckCircleIcon,
+  FilmIcon,
+  ServerStackIcon,
+  ShieldCheckIcon,
+} from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
+import BrandMark from '../components/BrandMark';
 
-const features = [
+const pillars = [
   {
-    icon: '🔌',
-    title: 'Multiple IPTV Providers',
-    desc: 'Connect any number of Xtream Codes providers and manage them all in one place.',
+    title: 'Multi-provider routing',
+    copy: 'Keep several Xtream sources under one account and switch between healthy hosts without reconfiguring Stremio.',
+    icon: ServerStackIcon,
   },
   {
-    icon: '🎬',
-    title: 'TMDB Metadata Matching',
-    desc: 'Your content is automatically matched against TMDB for rich titles, posters, and ratings.',
+    title: 'Metadata that stays usable',
+    copy: 'Posters, TMDB matching, and manual correction live in the same workspace instead of scattered tools.',
+    icon: FilmIcon,
   },
   {
-    icon: '⚡',
-    title: 'Auto Host Failover',
-    desc: 'If one host goes down, StreamBridge automatically switches to the next healthy one.',
+    title: 'Private account delivery',
+    copy: 'Each account gets one private addon URL, ready to install and easy to rotate if it ever leaks.',
+    icon: ShieldCheckIcon,
   },
-  {
-    icon: '🔗',
-    title: 'One Addon URL',
-    desc: 'Get a single personalised Stremio addon URL that aggregates all your providers.',
-  },
+];
+
+const proofPoints = [
+  'Private addon URL per account',
+  'Host failover and health rechecks',
+  'Live TV, VOD, and matching in one workspace',
+  'No separate addon config per provider',
 ];
 
 export default function Landing() {
@@ -32,147 +43,167 @@ export default function Landing() {
   if (user) return <Navigate to="/dashboard" replace />;
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f172a', color: '#f1f5f9' }}>
-      {/* Nav */}
-      <nav style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '16px 24px', borderBottom: '1px solid #1e293b',
-        position: 'sticky', top: 0, background: '#0f172a', zIndex: 10,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ fontSize: '1.4rem' }}>🌉</span>
-          <span style={{ fontWeight: 700, fontSize: '1.1rem', color: '#818cf8' }}>StreamBridge</span>
-        </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <Link to="/login" style={{
-            padding: '8px 18px', borderRadius: '8px',
-            background: 'transparent', color: '#94a3b8',
-            border: '1px solid #334155', textDecoration: 'none',
-            fontSize: '0.9rem', fontWeight: 500,
-          }}>
-            Sign In
-          </Link>
-          <Link to="/signup" style={{
-            padding: '8px 18px', borderRadius: '8px',
-            background: '#4f46e5', color: '#fff',
-            border: 'none', textDecoration: 'none',
-            fontSize: '0.9rem', fontWeight: 600,
-          }}>
-            Get Started
-          </Link>
-        </div>
-      </nav>
-
-      {/* Hero */}
-      <section style={{ padding: '80px 24px 60px', textAlign: 'center', maxWidth: '700px', margin: '0 auto' }}>
-        <div style={{ fontSize: '3.5rem', marginBottom: '16px' }}>🌉</div>
-        <h1 style={{
-          fontSize: 'clamp(2rem, 6vw, 3.2rem)', fontWeight: 800,
-          lineHeight: 1.15, marginBottom: '20px',
-          background: 'linear-gradient(135deg, #818cf8, #c084fc)',
-          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-        }}>
-          Your IPTV, beautifully<br />inside Stremio
-        </h1>
-        <p style={{ fontSize: 'clamp(1rem, 3vw, 1.15rem)', color: '#94a3b8', lineHeight: 1.7, marginBottom: '36px' }}>
-          StreamBridge turns your Xtream Codes IPTV subscriptions into a personalised
-          Stremio addon — with metadata, auto-failover, and a single URL.
-        </p>
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <Link to="/signup" style={{
-            padding: '14px 32px', borderRadius: '10px',
-            background: '#4f46e5', color: '#fff',
-            textDecoration: 'none', fontSize: '1rem', fontWeight: 700,
-            boxShadow: '0 0 32px rgba(79,70,229,0.35)',
-          }}>
-            Create Free Account
-          </Link>
-          <Link to="/login" style={{
-            padding: '14px 28px', borderRadius: '10px',
-            background: '#1e293b', color: '#94a3b8',
-            border: '1px solid #334155', textDecoration: 'none',
-            fontSize: '1rem', fontWeight: 500,
-          }}>
-            Sign In
-          </Link>
-        </div>
-      </section>
-
-      {/* Addon URL demo */}
-      <section style={{ maxWidth: '640px', margin: '0 auto 72px', padding: '0 24px' }}>
-        <div style={{
-          background: '#1e293b', borderRadius: '12px', padding: '20px 24px',
-          border: '1px solid #334155',
-        }}>
-          <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Your personalised addon URL
-          </div>
-          <div style={{
-            background: '#0f172a', borderRadius: '8px', padding: '11px 16px',
-            color: '#818cf8', fontSize: 'clamp(0.7rem, 2vw, 0.85rem)',
-            fontFamily: 'monospace', wordBreak: 'break-all', border: '1px solid #334155',
-          }}>
-            https://yourdomain.com/addon/<span style={{ color: '#c084fc' }}>your-token</span>/manifest.json
-          </div>
-          <div style={{ fontSize: '0.78rem', color: '#475569', marginTop: '10px' }}>
-            One URL. All your providers. Works on any device with Stremio.
-          </div>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section style={{ maxWidth: '900px', margin: '0 auto 80px', padding: '0 24px' }}>
-        <h2 style={{ textAlign: 'center', fontSize: 'clamp(1.3rem, 4vw, 1.7rem)', fontWeight: 700, color: '#f1f5f9', marginBottom: '40px' }}>
-          Everything you need
-        </h2>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: '16px',
-        }}>
-          {features.map(f => (
-            <div key={f.title} style={{
-              background: '#1e293b', borderRadius: '12px',
-              padding: '24px 20px', border: '1px solid #334155',
-            }}>
-              <div style={{ fontSize: '2rem', marginBottom: '12px' }}>{f.icon}</div>
-              <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '8px', fontSize: '0.95rem' }}>{f.title}</div>
-              <div style={{ fontSize: '0.85rem', color: '#64748b', lineHeight: 1.6 }}>{f.desc}</div>
+    <div className="marketing-shell min-h-screen">
+      <div className="marketing-chrome">
+        <header className="sticky top-0 z-30 border-b border-white/10 bg-surface-950/70 backdrop-blur-2xl">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+            <BrandMark compact />
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Link to="/login" className="btn-secondary !px-4 !py-2.5 sm:!px-5">
+                Sign In
+              </Link>
+              <Link to="/signup" className="btn-primary !px-4 !py-2.5 sm:!px-5">
+                Start Free
+              </Link>
             </div>
-          ))}
-        </div>
-      </section>
+          </div>
+        </header>
 
-      {/* CTA */}
-      <section style={{ textAlign: 'center', padding: '0 24px 80px' }}>
-        <div style={{
-          maxWidth: '500px', margin: '0 auto',
-          background: '#1e293b', borderRadius: '16px',
-          padding: '40px 32px', border: '1px solid #334155',
-        }}>
-          <h2 style={{ fontSize: 'clamp(1.2rem, 4vw, 1.5rem)', fontWeight: 700, color: '#f1f5f9', marginBottom: '12px' }}>
-            Ready to get started?
-          </h2>
-          <p style={{ color: '#64748b', marginBottom: '28px', fontSize: '0.95rem' }}>
-            Create your account and have your addon URL in under a minute.
-          </p>
-          <Link to="/signup" style={{
-            display: 'inline-block', padding: '13px 32px', borderRadius: '10px',
-            background: '#4f46e5', color: '#fff', textDecoration: 'none',
-            fontWeight: 700, fontSize: '1rem',
-          }}>
-            Create Account — Free
-          </Link>
-        </div>
-      </section>
+        <main>
+          <section className="relative overflow-hidden border-b border-white/10">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(20,145,255,0.18),transparent_30%),linear-gradient(180deg,rgba(6,11,22,0.28),rgba(5,8,22,0.96))]" />
+            <div className="relative mx-auto grid min-h-[calc(100svh-73px)] max-w-7xl gap-10 px-4 py-12 sm:px-6 sm:py-16 lg:grid-cols-[0.95fr_1.05fr] lg:items-center lg:px-8 lg:py-20">
+              <div className="max-w-xl">
+                <div className="kicker mb-6">
+                  <BoltIcon className="h-4 w-4" />
+                  One bridge from IPTV to Stremio
+                </div>
+                <h1 className="text-4xl font-bold leading-[0.95] text-white sm:text-5xl lg:text-7xl">
+                  StreamBridge keeps your streaming setup clear, private, and installable.
+                </h1>
+                <p className="mt-6 max-w-lg text-base leading-7 text-slate-200/72 sm:text-lg">
+                  Connect providers once, keep metadata readable, and install a single private addon URL instead of juggling multiple brittle setups.
+                </p>
+                <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                  <Link to="/signup" className="btn-primary !justify-between sm:!justify-center">
+                    Create Free Account
+                    <ArrowRightIcon className="h-4 w-4" />
+                  </Link>
+                  <Link to="/login" className="btn-secondary">
+                    I already have an account
+                  </Link>
+                </div>
+                <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                  {proofPoints.map((point) => (
+                    <div key={point} className="flex items-start gap-3 rounded-[20px] border border-white/[0.08] bg-white/[0.03] px-4 py-4">
+                      <CheckCircleIcon className="mt-0.5 h-5 w-5 flex-shrink-0 text-brand-300" />
+                      <span className="text-sm leading-6 text-slate-100/88">{point}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-      {/* Footer */}
-      <footer style={{
-        textAlign: 'center', padding: '24px',
-        borderTop: '1px solid #1e293b', color: '#334155', fontSize: '0.8rem',
-      }}>
-        StreamBridge · Personalised Stremio addons for IPTV
-      </footer>
+              <div className="relative">
+                <div className="panel mx-auto max-w-2xl overflow-hidden p-4 sm:p-5">
+                  <div className="rounded-[26px] border border-white/10 bg-surface-950/85 p-4 sm:p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+                      <div>
+                        <p className="metric-label mb-1">Personal Addon</p>
+                        <h2 className="text-2xl font-bold text-white">Install-ready endpoint</h2>
+                      </div>
+                      <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-100">
+                        <span className="h-2 w-2 rounded-full bg-emerald-300" />
+                        Active
+                      </div>
+                    </div>
+
+                    <div className="mt-5 rounded-[22px] border border-white/[0.08] bg-white/[0.03] p-4">
+                      <p className="metric-label mb-2">Private URL</p>
+                      <div className="overflow-x-auto font-mono text-xs leading-6 text-brand-100/85 sm:text-sm">
+                        https://streambridge.app/addon/<span className="text-brand-300">acc_x2f9c4f1</span>/manifest.json
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid gap-4 sm:grid-cols-3">
+                      <div className="panel-soft p-4">
+                        <p className="metric-label mb-2">Providers</p>
+                        <p className="text-3xl font-bold text-white">3</p>
+                        <p className="mt-2 text-sm text-slate-300/65">Healthy sources available.</p>
+                      </div>
+                      <div className="panel-soft p-4">
+                        <p className="metric-label mb-2">Match Rate</p>
+                        <p className="text-3xl font-bold text-white">91%</p>
+                        <p className="mt-2 text-sm text-slate-300/65">Metadata corrected and ready.</p>
+                      </div>
+                      <div className="panel-soft p-4">
+                        <p className="metric-label mb-2">Failover</p>
+                        <p className="text-3xl font-bold text-white">Auto</p>
+                        <p className="mt-2 text-sm text-slate-300/65">Switches to the next host.</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid gap-3">
+                      <div className="flex items-center justify-between rounded-[20px] border border-white/[0.08] bg-white/[0.03] px-4 py-3">
+                        <div>
+                          <p className="text-sm font-semibold text-white">Northstream</p>
+                          <p className="text-xs text-slate-300/55">Healthy host selected</p>
+                        </div>
+                        <span className="rounded-full bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-100">online</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-[20px] border border-white/[0.08] bg-white/[0.03] px-4 py-3">
+                        <div>
+                          <p className="text-sm font-semibold text-white">CinemaVault</p>
+                          <p className="text-xs text-slate-300/55">57,481 matched titles</p>
+                        </div>
+                        <span className="rounded-full bg-white/[0.06] px-3 py-1 text-xs font-medium text-slate-100">94%</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="pointer-events-none absolute -bottom-8 left-10 right-10 h-24 rounded-full bg-brand-400/20 blur-3xl" />
+              </div>
+            </div>
+          </section>
+
+          <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
+            <div className="mb-10 max-w-2xl">
+              <p className="eyebrow mb-3">Why it feels better</p>
+              <h2 className="text-3xl font-bold text-white sm:text-4xl">One system for setup, maintenance, and day-to-day use.</h2>
+              <p className="mt-4 text-base leading-7 text-slate-300/72">
+                StreamBridge is strongest when it removes repeated setup work. The app keeps routing, health, metadata, and install flow in the same place.
+              </p>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-3">
+              {pillars.map(({ title, copy, icon: Icon }) => (
+                <div key={title} className="panel-soft p-6 sm:p-7">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/10 bg-white/[0.04]">
+                    <Icon className="h-5 w-5 text-brand-300" />
+                  </div>
+                  <h3 className="mt-6 text-2xl font-bold text-white">{title}</h3>
+                  <p className="mt-3 text-sm leading-6 text-slate-300/72">{copy}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="border-y border-white/10 bg-white/[0.02]">
+            <div className="mx-auto grid max-w-7xl gap-8 px-4 py-14 sm:px-6 lg:grid-cols-[1fr_auto] lg:items-center lg:px-8">
+              <div>
+                <p className="eyebrow mb-3">Start here</p>
+                <h2 className="text-3xl font-bold text-white sm:text-4xl">Create the account first. Add providers right after.</h2>
+                <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300/72">
+                  The fastest path is account, provider credentials, then one install-ready addon URL. No complex onboarding wizard is required to get value.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Link to="/signup" className="btn-primary">
+                  Create Account
+                </Link>
+                <Link to="/login" className="btn-secondary">
+                  Sign In
+                </Link>
+              </div>
+            </div>
+          </section>
+        </main>
+
+        <footer className="border-t border-white/10">
+          <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-6 text-sm text-slate-400/75 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+            <span>StreamBridge</span>
+            <span>Private Stremio addon delivery for IPTV accounts</span>
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }

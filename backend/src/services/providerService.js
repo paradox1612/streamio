@@ -1,6 +1,7 @@
 const fetch = require('node-fetch');
 const { providerQueries, vodQueries } = require('../db/queries');
 const logger = require('../utils/logger');
+const cache = require('../utils/cache');
 const { normalizeTitle } = require('../utils/titleNormalization');
 
 const FETCH_TIMEOUT = 20000; // 20s — some providers are slow
@@ -63,6 +64,25 @@ async function fetchAccountInfoForHost(host, username, password) {
     clearTimeout(timer);
     return { ok: false, error: err.message };
   }
+}
+
+async function getProviderAccountInfo(provider, { forceRefresh = false } = {}) {
+  const hostToCheck = provider.active_host || provider.hosts?.[0];
+  if (!hostToCheck) {
+    return { ok: false, error: 'No host available' };
+  }
+
+  const cacheKey = `${provider.id}:${hostToCheck}`;
+  if (!forceRefresh) {
+    const cached = cache.get('providerAccountInfo', cacheKey);
+    if (cached) return cached;
+  }
+
+  const result = await fetchAccountInfoForHost(hostToCheck, provider.username, provider.password);
+  if (result.ok) {
+    cache.set('providerAccountInfo', cacheKey, result);
+  }
+  return result;
 }
 
 /**
@@ -301,27 +321,27 @@ const providerService = {
     }
   },
 
-  async getStats(providerId, userId) {
+  async getStats(providerId, userId, { includeAccountInfo = false, forceAccountInfoRefresh = false } = {}) {
     const provider = await providerQueries.findByIdAndUser(providerId, userId);
     if (!provider) throw Object.assign(new Error('Provider not found'), { status: 404 });
 
-    const hostToCheck = provider.active_host || provider.hosts?.[0];
-    const [vodStats, matchStats, categories, accountResult] = await Promise.all([
+    const [vodStats, matchStats, categories] = await Promise.all([
       vodQueries.getStats(providerId),
       vodQueries.getMatchStats(providerId),
       vodQueries.getCategoryBreakdown(providerId),
-      hostToCheck
-        ? fetchAccountInfoForHost(hostToCheck, provider.username, provider.password)
-        : Promise.resolve({ ok: false, error: 'No host available' }),
     ]);
+
+    const accountResult = includeAccountInfo
+      ? await getProviderAccountInfo(provider, { forceRefresh: forceAccountInfoRefresh })
+      : null;
 
     return {
       provider,
       vodStats,
       matchStats,
       categories,
-      accountInfo: accountResult.ok ? accountResult.accountInfo : null,
-      accountInfoError: accountResult.ok ? null : accountResult.error,
+      accountInfo: accountResult?.ok ? accountResult.accountInfo : null,
+      accountInfoError: accountResult ? (accountResult.ok ? null : accountResult.error) : null,
     };
   },
 };

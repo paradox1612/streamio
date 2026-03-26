@@ -1,9 +1,11 @@
 const fetch = require('node-fetch');
-const { userQueries, providerQueries, vodQueries, tmdbQueries, matchQueries, hostHealthQueries, pool } = require('../db/queries');
+const { userQueries, providerQueries, vodQueries, tmdbQueries, matchQueries, pool } = require('../db/queries');
 const providerService = require('../services/providerService');
 const epgService = require('../services/epgService');
+const hostHealthService = require('../services/hostHealthService');
 const cache = require('../utils/cache');
 const logger = require('../utils/logger');
+const { touchUserLastSeen } = require('../utils/userActivity');
 const { normalizeTitle, extractContentLanguages } = require('../utils/titleNormalization');
 const { beginAddonRequest, endAddonRequest } = require('../utils/loadManager');
 
@@ -25,6 +27,7 @@ async function buildManifest(token) {
     // Cache user for 5 minutes
     cache.set('userByToken', token, user);
   }
+  touchUserLastSeen(user.id).catch(() => {});
 
   const providers = await providerQueries.findByUser(user.id);
 
@@ -89,13 +92,14 @@ async function handleCatalog(token, type, catalogId, extra = {}) {
     if (!user) return { metas: [] };
     cache.set('userByToken', token, user);
   }
+  touchUserLastSeen(user.id).catch(() => {});
 
   // catalogId format: sb_{providerId}_{movies|series|live}
   const match = catalogId.match(/^sb_([a-f0-9-]+)_(movies|series|live)$/);
   if (!match) return { metas: [] };
 
   const [, providerId, catalogType] = match;
-  const provider = await providerQueries.findByIdAndUser(providerId, user.id);
+  const provider = await getCachedProviderForUser(providerId, user.id);
   if (!provider) return { metas: [] };
 
   const skip = parseInt(extra.skip) || 0;
@@ -253,6 +257,41 @@ function applyLanguagePreferences(vodItems, user) {
   });
 }
 
+async function resolveProviderPlaybackHosts(userId, providerId, providerSnapshot = null, options = {}) {
+  const { recheckOnMiss = true } = options;
+  let provider = providerSnapshot || await getCachedProviderForUser(providerId, userId);
+  if (!provider) return { provider: null, onlineHosts: [], fallbackHost: null };
+
+  let health = await hostHealthService.getProviderHealth(providerId);
+  let onlineHosts = health.filter(h => h.status === 'online').slice(0, 3);
+
+  if (recheckOnMiss && onlineHosts.length === 0) {
+    try {
+      health = await hostHealthService.checkSingleProvider(providerId, userId);
+      cache.del('providerById', `${userId}:${providerId}`);
+      provider = await getCachedProviderForUser(providerId, userId) || provider;
+      onlineHosts = health.filter(h => h.status === 'online').slice(0, 3);
+    } catch (err) {
+      logger.warn(`On-demand host recheck failed for provider ${providerId}: ${err.message}`);
+    }
+  }
+
+  const fallbackHost = provider.active_host || onlineHosts[0]?.host_url || provider.hosts?.[0] || null;
+  return { provider, onlineHosts, fallbackHost };
+}
+
+async function getCachedProviderForUser(providerId, userId) {
+  const cacheKey = `${userId}:${providerId}`;
+  const cached = cache.get('providerById', cacheKey);
+  if (cached) return cached;
+
+  const provider = await providerQueries.findByIdAndUser(providerId, userId);
+  if (provider) {
+    cache.set('providerById', cacheKey, provider);
+  }
+  return provider;
+}
+
 async function getTargetTmdbRecord(baseId, type) {
   if (baseId.startsWith('tmdb:')) {
     const tmdbId = parseInt(baseId.slice(5), 10);
@@ -325,6 +364,32 @@ async function getTargetTmdbRecord(baseId, type) {
   return null;
 }
 
+async function resolveCandidateMatch(candidate, target) {
+  if (candidate.tmdb_id === target.id || (target.imdb_id && candidate.imdb_id === target.imdb_id)) {
+    return {
+      id: target.id,
+      score: candidate.confidence_score || 1,
+    };
+  }
+
+  const candidateTitle = candidate.normalized_title || normalizeTitle(candidate.raw_title || '');
+  if (!candidateTitle) return null;
+
+  const targetType = target.tmdb_type === 'series' ? 'series' : 'movie';
+  const exactResult = await (targetType === 'series'
+    ? tmdbQueries.exactMatchSeries(candidateTitle, target.year)
+    : tmdbQueries.exactMatchMovie(candidateTitle, target.year));
+  const result = exactResult || await (targetType === 'series'
+    ? tmdbQueries.fuzzyMatchSeries(candidateTitle, target.year)
+    : tmdbQueries.fuzzyMatchMovie(candidateTitle, target.year));
+
+  if (!result || result.id !== target.id || result.score < 0.6) {
+    return null;
+  }
+
+  return result;
+}
+
 async function tryOnDemandMatch(userId, baseId, type) {
   const target = await getTargetTmdbRecord(baseId, type);
   if (!target) return null;
@@ -341,17 +406,22 @@ async function tryOnDemandMatch(userId, baseId, type) {
 
   const targetNormalized = target.normalized_title || normalizeTitle(target.original_title || '');
   const targetType = target.tmdb_type === 'series' ? 'series' : 'movie';
+  const candidateMatchCache = new Map();
   let matchedAny = false;
 
   for (const candidate of candidates) {
-    const exactResult = await (targetType === 'series'
-      ? tmdbQueries.exactMatchSeries(candidate.normalized_title, target.year)
-      : tmdbQueries.exactMatchMovie(candidate.normalized_title, target.year));
-    const result = exactResult || await (targetType === 'series'
-      ? tmdbQueries.fuzzyMatchSeries(candidate.normalized_title, target.year)
-      : tmdbQueries.fuzzyMatchMovie(candidate.normalized_title, target.year));
+    const cacheKey = [
+      candidate.tmdb_id || '',
+      candidate.imdb_id || '',
+      candidate.normalized_title || normalizeTitle(candidate.raw_title || ''),
+    ].join('|');
 
-    if (!result || result.id !== target.id || result.score < 0.6) continue;
+    if (!candidateMatchCache.has(cacheKey)) {
+      candidateMatchCache.set(cacheKey, resolveCandidateMatch(candidate, target));
+    }
+
+    const result = await candidateMatchCache.get(cacheKey);
+    if (!result) continue;
 
     await matchQueries.upsert({
       rawTitle: candidate.raw_title,
@@ -382,6 +452,7 @@ async function handleMeta(token, type, id) {
       if (!user) return { meta: null };
       cache.set('userByToken', token, user);
     }
+    touchUserLastSeen(user.id).catch(() => {});
 
     const { baseId } = parseStremioId(id);
     let vodItem = await resolveVodItem(user.id, baseId);
@@ -399,13 +470,16 @@ async function handleMeta(token, type, id) {
     };
 
     // For series: fetch episode list with caching
-    if (vodItem.vod_type === 'series' && vodItem.active_host && vodItem.stream_id) {
+    if (vodItem.vod_type === 'series' && vodItem.provider_id && vodItem.stream_id) {
       try {
+        const { fallbackHost } = await resolveProviderPlaybackHosts(user.id, vodItem.provider_id);
+        if (!fallbackHost) return { meta };
+
         // Check cache first
         let episodesObj = cache.get('seriesEpisodes', vodItem.stream_id);
         if (!episodesObj) {
           episodesObj = await providerService.getSeriesEpisodes(
-            vodItem.active_host,
+            fallbackHost,
             vodItem.username,
             vodItem.password,
             vodItem.stream_id
@@ -470,6 +544,7 @@ async function handleStream(token, type, id) {
       if (!user) return { streams: [] };
       cache.set('userByToken', token, user);
     }
+    touchUserLastSeen(user.id).catch(() => {});
 
     const { baseId, season, episode } = parseStremioId(id);
 
@@ -496,24 +571,27 @@ async function handleStream(token, type, id) {
 
     // ── Movie stream ───────────────────────────────────────────────────────────
     if (vod_type === 'movie') {
-      const providerHosts = new Map();
+      const providerIds = [...new Set(vodItems
+        .map(item => item.provider_id)
+        .filter(Boolean))];
+      const providerHosts = new Map(
+        await Promise.all(providerIds.map(async (itemProviderId) => ([
+          itemProviderId,
+          await resolveProviderPlaybackHosts(user.id, itemProviderId, null, { recheckOnMiss: false }),
+        ])))
+      );
       const streams = [];
 
       for (const item of vodItems) {
         if (!item.provider_id) continue;
 
-        let hosts = providerHosts.get(item.provider_id);
-        if (!hosts) {
-          hosts = await hostHealthQueries.getByProvider(item.provider_id);
-          providerHosts.set(item.provider_id, hosts);
-        }
-
-        const onlineHosts = hosts.filter(h => h.status === 'online').slice(0, 3);
+        const hostData = providerHosts.get(item.provider_id);
+        const { onlineHosts, fallbackHost } = hostData;
         const ext = item.container_extension || 'mp4';
         const streamLabel = item.raw_title || item.name || 'Stream';
 
-        if (onlineHosts.length === 0 && item.active_host) {
-          const url = `${item.active_host}/movie/${encodeURIComponent(item.username)}/${encodeURIComponent(item.password)}/${item.stream_id}.${ext}`;
+        if (onlineHosts.length === 0 && fallbackHost) {
+          const url = `${fallbackHost}/movie/${encodeURIComponent(item.username)}/${encodeURIComponent(item.password)}/${item.stream_id}.${ext}`;
           streams.push({
             url,
             title: `${streamLabel} — StreamBridge`,
@@ -549,9 +627,16 @@ async function handleStream(token, type, id) {
         // Check cache first for episodes
         let episodesObj = cache.get('seriesEpisodes', stream_id);
         if (!episodesObj) {
-          if (!vodItem.active_host) return { streams: [] };
+          const { onlineHosts, fallbackHost } = await resolveProviderPlaybackHosts(
+            user.id,
+            provider_id,
+            null,
+            { recheckOnMiss: false }
+          );
+          const hostToUse = onlineHosts[0]?.host_url || fallbackHost;
+          if (!hostToUse) return { streams: [] };
           episodesObj = await providerService.getSeriesEpisodes(
-            vodItem.active_host, username, password, stream_id
+            hostToUse, username, password, stream_id
           );
           cache.set('seriesEpisodes', stream_id, episodesObj);
         }
@@ -569,8 +654,12 @@ async function handleStream(token, type, id) {
         }
 
         // Get online hosts for multi-host failover
-        const hosts = await hostHealthQueries.getByProvider(provider_id);
-        const onlineHosts = hosts.filter(h => h.status === 'online').slice(0, 3);
+        const { onlineHosts, fallbackHost } = await resolveProviderPlaybackHosts(
+          user.id,
+          provider_id,
+          null,
+          { recheckOnMiss: false }
+        );
 
         const epId = ep.id;
         const epExt = ep.container_extension || 'mkv';
@@ -589,8 +678,8 @@ async function handleStream(token, type, id) {
         });
 
         // Fallback if no health data
-        if (streams.length === 0 && vodItem.active_host) {
-          const url = `${vodItem.active_host}/series/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${epId}.${epExt}`;
+        if (streams.length === 0 && fallbackHost) {
+          const url = `${fallbackHost}/series/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${epId}.${epExt}`;
           streams = [{
             url,
             title: `${label} – StreamBridge`,
@@ -624,13 +713,14 @@ async function handleLiveStream(token, baseId) {
       if (!user) return { streams: [] };
       cache.set('userByToken', token, user);
     }
+    touchUserLastSeen(user.id).catch(() => {});
 
     // baseId format: live_{providerId}_{streamId}
     const match = baseId.match(/^live_([a-f0-9-]+)_(.+)$/);
     if (!match) return { streams: [] };
 
     const [, providerId, streamId] = match;
-    const provider = await providerQueries.findByIdAndUser(providerId, user.id);
+    const provider = await getCachedProviderForUser(providerId, user.id);
     if (!provider) return { streams: [] };
 
     // Get live stream details from VOD table
@@ -642,16 +732,18 @@ async function handleLiveStream(token, baseId) {
 
     if (!vodItem) return { streams: [] };
 
-    // Get online hosts
-    const hosts = await hostHealthQueries.getByProvider(providerId);
-    const onlineHosts = hosts.filter(h => h.status === 'online').slice(0, 3);
-
-    if (onlineHosts.length === 0 && !provider.active_host) {
+    const { provider: resolvedProvider, onlineHosts, fallbackHost } = await resolveProviderPlaybackHosts(
+      user.id,
+      providerId,
+      provider,
+      { recheckOnMiss: false }
+    );
+    if (onlineHosts.length === 0 && !fallbackHost) {
       return { streams: [] };
     }
 
-    const username = provider.username;
-    const password = provider.password;
+    const username = resolvedProvider.username;
+    const password = resolvedProvider.password;
     const ext = vodItem.container_extension || 'ts';
     const title = vodItem.raw_title;
 
@@ -667,8 +759,8 @@ async function handleLiveStream(token, baseId) {
     });
 
     // Fallback if no health data
-    if (streams.length === 0 && provider.active_host) {
-      const url = `${provider.active_host}/live/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${streamId}.${ext}`;
+    if (streams.length === 0 && fallbackHost) {
+      const url = `${fallbackHost}/live/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${streamId}.${ext}`;
       streams.push({
         url,
         title: `📺 ${title} (Live)`,
@@ -693,6 +785,7 @@ module.exports = {
   __test__: {
     applyLanguagePreferences,
     getTargetTmdbRecord,
+    resolveProviderPlaybackHosts,
     resolveVodItemsForStream,
     tryOnDemandMatch,
   },

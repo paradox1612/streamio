@@ -174,7 +174,7 @@ describe('providerService', () => {
         { status: 200 }
       ));
 
-      const result = await providerService.getStats('p1', 'u1');
+      const result = await providerService.getStats('p1', 'u1', { includeAccountInfo: true });
       expect(result.accountInfo).toMatchObject({
         status: 'Active',
         isTrial: false,

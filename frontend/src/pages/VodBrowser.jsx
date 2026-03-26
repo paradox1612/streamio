@@ -50,7 +50,7 @@ function FixMatchModal({ item, providerId, onClose, onSuccess }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
-      <div className="panel w-full max-w-2xl p-6 sm:p-8">
+      <div className="panel max-h-[calc(100svh-2rem)] w-full max-w-2xl overflow-y-auto p-5 sm:p-8">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <p className="eyebrow mb-2">Manual Match</p>
@@ -62,7 +62,7 @@ function FixMatchModal({ item, providerId, onClose, onSuccess }) {
           </button>
         </div>
 
-        <div className="mb-5 flex gap-3">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row">
           <input
             value={query}
             onChange={e => setQuery(e.target.value)}
@@ -146,12 +146,9 @@ function VodCard({ item, providerId, onMatchFixed }) {
         <div className="absolute inset-x-0 bottom-0 p-3">
           <p className="line-clamp-2 text-xs font-semibold leading-tight text-white">{item.raw_title}</p>
           {item.category && <p className="mt-1 truncate text-[10px] text-slate-300/[0.65]">{item.category}</p>}
-        </div>
-
-        <div className="absolute inset-0 flex items-center justify-center bg-black/[0.35] opacity-0 transition-opacity duration-200 group-hover:opacity-100">
           <button
             onClick={() => setShowFixModal(true)}
-            className="rounded-full border border-white/[0.15] bg-white/10 px-4 py-2 text-xs font-semibold text-white backdrop-blur-sm transition-transform hover:scale-105"
+            className="mt-3 inline-flex rounded-full border border-white/[0.15] bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white backdrop-blur-sm transition hover:bg-white/15"
           >
             {matched ? 'Fix Match' : 'Match Title'}
           </button>
@@ -247,12 +244,12 @@ export default function VodBrowser() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
-      <section className="panel overflow-hidden p-6 sm:p-8 lg:p-10">
-        <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
+      <section className="panel overflow-hidden p-5 sm:p-7 lg:p-8">
+        <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
           <div>
-            <div className="kicker mb-5">VOD Browser</div>
-            <h1 className="hero-title">Browse posters first, then fix metadata only when needed.</h1>
-            <p className="hero-copy mt-4">
+            <div className="kicker mb-4">VOD Browser</div>
+            <h1 className="text-3xl font-bold leading-tight text-white sm:text-4xl">Browse posters first, then fix metadata only when needed.</h1>
+            <p className="hero-copy mt-3">
               Search within a provider, filter by type or match status, and jump into manual TMDB correction from the poster grid.
             </p>
           </div>
@@ -308,11 +305,13 @@ export default function VodBrowser() {
             </button>
           ))}
 
-          <select value={filter.matched} onChange={e => handleFilterChange('matched', e.target.value)} className="field-select ml-auto max-w-[180px]">
+          <div className="w-full sm:ml-auto sm:w-auto">
+            <select value={filter.matched} onChange={e => handleFilterChange('matched', e.target.value)} className="field-select w-full sm:min-w-[180px]">
             <option value="">All matches</option>
             <option value="true">Matched</option>
             <option value="false">Unmatched</option>
-          </select>
+            </select>
+          </div>
         </div>
       </section>
 

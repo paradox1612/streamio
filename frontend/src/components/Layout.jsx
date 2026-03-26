@@ -11,6 +11,7 @@ import {
   SparklesIcon
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
+import BrandMark from './BrandMark';
 
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: HomeIcon },
@@ -37,7 +38,7 @@ function NavItem({ to, icon: Icon, label, onClick }) {
       <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03]">
         <Icon className="h-5 w-5" />
       </span>
-      <span>{label}</span>
+      <span className="truncate">{label}</span>
     </NavLink>
   );
 }
@@ -64,15 +65,7 @@ export default function Layout({ children }) {
         flex flex-col
       `}>
         <div className="border-b border-white/10 px-6 py-7">
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/10 bg-gradient-to-br from-brand-400/30 to-cyan-200/10 text-white shadow-[0_8px_30px_rgba(20,145,255,0.18)]">
-              <span className="text-lg">◌</span>
-            </div>
-            <div className="flex-1">
-              <p className="eyebrow mb-1">Personal Media Bridge</p>
-              <h1 className="text-xl font-bold text-white">StreamBridge</h1>
-            </div>
-          </div>
+          <BrandMark compact />
         </div>
 
         <nav className="flex-1 overflow-y-auto px-4 py-6">
@@ -112,7 +105,7 @@ export default function Layout({ children }) {
         />
       )}
 
-      <div className="flex-1 flex flex-col min-h-screen">
+      <div className="flex min-h-screen flex-1 flex-col">
         <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-white/10 bg-surface-950/[0.65] px-4 py-4 backdrop-blur-xl lg:hidden">
           <button
             onClick={() => setSidebarOpen(true)}
@@ -120,19 +113,38 @@ export default function Layout({ children }) {
           >
             <Bars3Icon className="h-6 w-6" />
           </button>
-          <div>
-            <p className="eyebrow mb-1">Workspace</p>
-            <h1 className="text-lg font-bold text-white">StreamBridge</h1>
-          </div>
+          <BrandMark compact />
         </header>
 
         <main className="relative z-10 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[108rem] px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
+          <div className="mx-auto w-full max-w-[108rem] px-4 py-5 pb-24 sm:px-6 lg:px-10 lg:py-8 lg:pb-8">
             <div className="animate-fade-in">
             {children}
             </div>
           </div>
         </main>
+
+        <nav className="fixed inset-x-3 bottom-3 z-30 rounded-[28px] border border-white/10 bg-surface-900/88 px-2 py-2 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-2xl lg:hidden">
+          <div className="grid grid-cols-6 gap-1">
+            {navItems.map(item => {
+              const Icon = item.icon;
+              return (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  className={({ isActive }) =>
+                    `flex min-w-0 flex-col items-center gap-1 rounded-2xl px-1 py-2 text-[10px] font-medium transition ${
+                      isActive ? 'bg-white/[0.08] text-white' : 'text-slate-300/65'
+                    }`
+                  }
+                >
+                  <Icon className="h-5 w-5" />
+                  <span className="truncate">{item.label.replace('Browse ', '')}</span>
+                </NavLink>
+              );
+            })}
+          </div>
+        </nav>
       </div>
       </div>
     </div>

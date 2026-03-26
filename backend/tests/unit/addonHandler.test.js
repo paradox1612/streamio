@@ -22,12 +22,16 @@ const mockVodQueries = {
 const mockMatchQueries = {
   upsert: jest.fn(),
 };
-const mockHostHealthQueries = {
-  getByProvider: jest.fn(),
-};
 const mockCache = {
   get: jest.fn(),
   set: jest.fn(),
+};
+const mockHostHealthService = {
+  getProviderHealth: jest.fn(),
+  checkSingleProvider: jest.fn(),
+};
+const mockUserActivity = {
+  touchUserLastSeen: jest.fn().mockResolvedValue(false),
 };
 
 jest.mock('../../src/db/queries', () => ({
@@ -36,7 +40,6 @@ jest.mock('../../src/db/queries', () => ({
   vodQueries: mockVodQueries,
   tmdbQueries: mockTmdbQueries,
   matchQueries: mockMatchQueries,
-  hostHealthQueries: mockHostHealthQueries,
   pool: {
     query: jest.fn(),
   },
@@ -44,6 +47,8 @@ jest.mock('../../src/db/queries', () => ({
 
 jest.mock('../../src/services/providerService', () => ({}));
 jest.mock('../../src/services/epgService', () => ({}));
+jest.mock('../../src/services/hostHealthService', () => mockHostHealthService);
+jest.mock('../../src/utils/userActivity', () => mockUserActivity);
 jest.mock('../../src/utils/cache', () => mockCache);
 jest.mock('../../src/utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 jest.mock('../../src/utils/loadManager', () => ({
@@ -186,7 +191,7 @@ describe('addonHandler handleStream', () => {
         },
       ],
     });
-    mockHostHealthQueries.getByProvider
+    mockHostHealthService.getProviderHealth
       .mockResolvedValueOnce([{ status: 'online', host_url: 'http://host-1.test', response_time_ms: 786 }])
       .mockResolvedValueOnce([{ status: 'online', host_url: 'http://host-2.test', response_time_ms: 512 }]);
 
@@ -251,7 +256,7 @@ describe('addonHandler handleStream', () => {
         },
       ],
     });
-    mockHostHealthQueries.getByProvider
+    mockHostHealthService.getProviderHealth
       .mockResolvedValueOnce([{ status: 'online', host_url: 'http://host-1.test', response_time_ms: 500 }]);
 
     const result = await handleStream('token-1', 'movie', 'tt15940132');
@@ -261,6 +266,47 @@ describe('addonHandler handleStream', () => {
         {
           url: 'http://host-1.test/movie/alice/secret/102.mp4',
           title: 'War Machine (2026) (Hindi) — StreamBridge (Host 1, 500ms)',
+          name: 'War Machine (2026) (Hindi)',
+          behaviorHints: { notWebReady: false },
+        },
+      ],
+    });
+  });
+
+  it('returns fallback movie URLs immediately when provider health rows are missing', async () => {
+    mockCache.get.mockReturnValue(null);
+    mockUserQueries.findByToken.mockResolvedValue({ id: 'user-1' });
+    pool.query.mockResolvedValueOnce({
+      rows: [
+        {
+          provider_id: 'provider-1',
+          raw_title: 'War Machine (2026) (Hindi)',
+          active_host: 'http://fallback-1.test',
+          username: 'alice',
+          password: 'secret',
+          stream_id: '101',
+          vod_type: 'movie',
+          container_extension: 'mp4',
+        },
+      ],
+    });
+    mockProviderQueries.findByIdAndUser.mockResolvedValue({
+      id: 'provider-1',
+      active_host: 'http://fallback-1.test',
+      hosts: ['http://fallback-1.test'],
+      username: 'alice',
+      password: 'secret',
+    });
+    mockHostHealthService.getProviderHealth.mockResolvedValue([]);
+
+    const result = await handleStream('token-1', 'movie', 'tt15940132');
+
+    expect(mockHostHealthService.checkSingleProvider).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      streams: [
+        {
+          url: 'http://fallback-1.test/movie/alice/secret/101.mp4',
+          title: 'War Machine (2026) (Hindi) — StreamBridge',
           name: 'War Machine (2026) (Hindi)',
           behaviorHints: { notWebReady: false },
         },
@@ -285,6 +331,8 @@ describe('addonHandler tryOnDemandMatch', () => {
     const result = await __test__.tryOnDemandMatch('user-1', 'tt15940132', 'movie');
 
     expect(mockMatchQueries.upsert).toHaveBeenCalledTimes(3);
+    expect(mockTmdbQueries.exactMatchMovie).toHaveBeenCalledTimes(1);
+    expect(mockTmdbQueries.fuzzyMatchMovie).toHaveBeenCalledTimes(1);
     expect(mockMatchQueries.upsert).toHaveBeenNthCalledWith(1, {
       rawTitle: 'War Machine (2026)',
       tmdbId: 1265609,
@@ -305,6 +353,34 @@ describe('addonHandler tryOnDemandMatch', () => {
       tmdbType: 'movie',
       imdbId: 'tt15940132',
       confidenceScore: 0.7058824,
+    });
+    expect(result).toEqual({ raw_title: 'War Machine (2026)', provider_id: 'provider-1' });
+  });
+
+  it('skips TMDB rematching when a candidate already points at the same target', async () => {
+    pool.query
+      .mockResolvedValueOnce({ rows: [{ id: 1265609, original_title: 'War Machine', normalized_title: 'war machine', year: 2026, imdb_id: 'tt15940132', tmdb_type: 'movie' }] })
+      .mockResolvedValueOnce({ rows: [{ raw_title: 'War Machine (2026)', provider_id: 'provider-1' }] });
+    mockVodQueries.findOnDemandCandidateForUser.mockResolvedValue([
+      {
+        raw_title: 'War Machine (2026)',
+        normalized_title: 'war machine 2026',
+        imdb_id: 'tt15940132',
+        tmdb_id: 1265609,
+        confidence_score: 0.91,
+      },
+    ]);
+
+    const result = await __test__.tryOnDemandMatch('user-1', 'tt15940132', 'movie');
+
+    expect(mockTmdbQueries.exactMatchMovie).not.toHaveBeenCalled();
+    expect(mockTmdbQueries.fuzzyMatchMovie).not.toHaveBeenCalled();
+    expect(mockMatchQueries.upsert).toHaveBeenCalledWith({
+      rawTitle: 'War Machine (2026)',
+      tmdbId: 1265609,
+      tmdbType: 'movie',
+      imdbId: 'tt15940132',
+      confidenceScore: 0.91,
     });
     expect(result).toEqual({ raw_title: 'War Machine (2026)', provider_id: 'provider-1' });
   });

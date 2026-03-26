@@ -145,7 +145,7 @@ async function mapWithConcurrency(items, concurrency, worker) {
   return results;
 }
 
-async function processMatchingBatch(unmatched, { imdbCache, concurrency }) {
+async function processMatchingBatch(unmatched, { imdbCache, concurrency, enrichMissingImdb }) {
   let matched = 0;
   let failed = 0;
   let enriched = 0;
@@ -154,6 +154,13 @@ async function processMatchingBatch(unmatched, { imdbCache, concurrency }) {
     await waitForAddonCapacity();
 
     if (tmdb_id && !imdb_id) {
+      if (!enrichMissingImdb) {
+        if ((index + 1) % 250 === 0 || index === unmatched.length - 1) {
+          logger.info(`Matching progress: ${index + 1}/${unmatched.length} processed`);
+        }
+        return;
+      }
+
       const cacheKey = `${vod_type}:${tmdb_id}`;
       let enrichedImdbId = imdbCache.get(cacheKey);
       if (enrichedImdbId === undefined) {
@@ -182,14 +189,17 @@ async function processMatchingBatch(unmatched, { imdbCache, concurrency }) {
       if (result && result.score >= CONFIDENCE_THRESHOLD) {
         const resolvedType = vod_type === 'series' ? 'series' : 'movie';
         const cacheKey = `${resolvedType}:${result.id}`;
-        let resolvedImdbId = imdbCache.get(cacheKey);
-        if (resolvedImdbId === undefined) {
-          resolvedImdbId = await fetchImdbIdFromApi(
-            resolvedType,
-            result.id,
-            result.imdb_id || null
-          );
-          imdbCache.set(cacheKey, resolvedImdbId);
+        let resolvedImdbId = result.imdb_id || null;
+        if (enrichMissingImdb) {
+          resolvedImdbId = imdbCache.get(cacheKey);
+          if (resolvedImdbId === undefined) {
+            resolvedImdbId = await fetchImdbIdFromApi(
+              resolvedType,
+              result.id,
+              result.imdb_id || null
+            );
+            imdbCache.set(cacheKey, resolvedImdbId);
+          }
         }
         await matchQueries.upsert({
           rawTitle: raw_title,
@@ -314,7 +324,7 @@ const tmdbService = {
     }
   },
 
-  async runMatching(limit = MATCH_BATCH_SIZE) {
+  async runMatching(limit = MATCH_BATCH_SIZE, { enrichMissingImdb = true } = {}) {
     const jobId = await jobQueries.start('matching');
     try {
       logger.info('Starting TMDB matching...');
@@ -327,12 +337,12 @@ const tmdbService = {
       let batchNumber = 0;
 
       while (true) {
-        const unmatched = await vodQueries.getUnmatchedForMatching(limit);
+        const unmatched = await vodQueries.getUnmatchedForMatching(limit, { enrichMissingImdb });
         if (!unmatched.length) break;
 
         batchNumber++;
         logger.info(`Starting matching batch ${batchNumber} with ${unmatched.length} titles`);
-        const batchResult = await processMatchingBatch(unmatched, { imdbCache, concurrency });
+        const batchResult = await processMatchingBatch(unmatched, { imdbCache, concurrency, enrichMissingImdb });
         totalMatched += batchResult.matched;
         totalFailed += batchResult.failed;
         totalEnriched += batchResult.enriched;

@@ -111,7 +111,10 @@ router.post('/:id/health/recheck', requireAuth, async (req, res) => {
 // GET /api/providers/:id/stats
 router.get('/:id/stats', requireAuth, async (req, res) => {
   try {
-    const stats = await providerService.getStats(req.params.id, req.user.id);
+    const stats = await providerService.getStats(req.params.id, req.user.id, {
+      includeAccountInfo: req.query.includeAccountInfo === 'true',
+      forceAccountInfoRefresh: req.query.refreshAccountInfo === 'true',
+    });
     res.json(stats);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });

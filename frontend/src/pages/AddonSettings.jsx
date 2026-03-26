@@ -7,6 +7,7 @@ import {
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const LANGUAGE_OPTIONS = [
   'arabic',
@@ -36,6 +37,7 @@ export default function AddonSettings() {
   const [regenerating, setRegenerating] = useState(false);
   const [copying, setCopying] = useState(false);
   const [savingLanguages, setSavingLanguages] = useState(false);
+  const [confirmRegenerate, setConfirmRegenerate] = useState(false);
 
   useEffect(() => {
     Promise.all([userAPI.getAddonUrl(), userAPI.getProfile()])
@@ -71,13 +73,13 @@ export default function AddonSettings() {
   };
 
   const regenerate = async () => {
-    if (!window.confirm('This will invalidate your current addon URL and require reinstalling it in Stremio. Continue?')) return;
     setRegenerating(true);
     try {
       const res = await userAPI.regenerateAddonUrl();
       setAddonUrl(res.data.addonUrl);
       setToken(res.data.token);
       toast.success('Addon URL regenerated');
+      setConfirmRegenerate(false);
     } catch (_) {
       toast.error('Failed to regenerate URL');
     } finally {
@@ -117,16 +119,17 @@ export default function AddonSettings() {
   }
 
   return (
+    <>
     <div className="mx-auto max-w-5xl space-y-8">
-      <section className="panel overflow-hidden p-6 sm:p-8 lg:p-10">
-        <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
+      <section className="panel overflow-hidden p-5 sm:p-7 lg:p-8">
+        <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
           <div>
-            <div className="kicker mb-5">Personal Addon</div>
-            <h1 className="hero-title">Install the private StreamBridge endpoint for your account.</h1>
-            <p className="hero-copy mt-4">
+            <div className="kicker mb-4">Personal Addon</div>
+            <h1 className="text-3xl font-bold leading-tight text-white sm:text-4xl">Install the private StreamBridge endpoint for your account.</h1>
+            <p className="hero-copy mt-3">
               This addon URL is scoped to your account and pulls in the providers you have configured. Keep it private and reinstall it if you regenerate the token.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-6 flex flex-wrap gap-3">
               <button onClick={copyUrl} className="btn-primary">
                 {copying ? <CheckIcon className="h-4 w-4" /> : <DocumentDuplicateIcon className="h-4 w-4" />}
                 {copying ? 'Copied URL' : 'Copy URL'}
@@ -174,7 +177,7 @@ export default function AddonSettings() {
           <p className="mt-3 text-sm leading-6 text-slate-300/[0.72]">
             Use this only if the current URL has been shared or compromised. The old route stops working immediately.
           </p>
-          <button onClick={regenerate} disabled={regenerating} className="btn-danger mt-6">
+          <button onClick={() => setConfirmRegenerate(true)} disabled={regenerating} className="btn-danger mt-6">
             <ArrowPathIcon className="h-4 w-4" />
             {regenerating ? 'Regenerating...' : 'Regenerate URL'}
           </button>
@@ -248,5 +251,16 @@ export default function AddonSettings() {
         </div>
       </section>
     </div>
+    <ConfirmDialog
+      open={confirmRegenerate}
+      title="Regenerate addon URL?"
+      description="The current addon URL will stop working immediately and you will need to reinstall the new one in Stremio."
+      confirmLabel="Regenerate URL"
+      danger
+      loading={regenerating}
+      onConfirm={regenerate}
+      onCancel={() => !regenerating && setConfirmRegenerate(false)}
+    />
+    </>
   );
 }

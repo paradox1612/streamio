@@ -122,15 +122,15 @@ export default function ProviderDetail() {
         Back to Providers
       </Link>
 
-      <section className="panel overflow-hidden p-6 sm:p-8 lg:p-10">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+      <section className="panel overflow-hidden p-5 sm:p-7 lg:p-8">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <div className="kicker mb-5">Provider Detail</div>
+            <div className="kicker mb-4">Provider Detail</div>
             <div className="flex flex-wrap items-center gap-3">
-              <h1 className="hero-title !max-w-none">{provider.name}</h1>
+              <h1 className="text-3xl font-bold leading-tight text-white sm:text-4xl">{provider.name}</h1>
               <StatusBadge status={provider.status} pulse={provider.status === 'online'} />
             </div>
-            <p className="hero-copy mt-4">{provider.active_host || 'No active host selected yet'}</p>
+            <p className="hero-copy mt-3">{provider.active_host || 'No active host selected yet'}</p>
           </div>
           <div className="flex flex-wrap gap-3">
             {!editing && (
@@ -219,14 +219,14 @@ export default function ProviderDetail() {
               <div key={h.id} className="rounded-[22px] border border-white/[0.08] bg-white/[0.03] p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-white">{h.host_url}</p>
+                    <p className="break-all text-sm font-semibold text-white">{h.host_url}</p>
                     <p className="mt-1 text-xs text-slate-300/55">
                       {h.last_checked ? new Date(h.last_checked).toLocaleString() : 'Not checked yet'}
                     </p>
                   </div>
                   <StatusBadge status={h.status} />
                 </div>
-                <div className="mt-3 flex items-center justify-between text-sm text-slate-300/[0.68]">
+                <div className="mt-3 flex flex-col gap-2 text-sm text-slate-300/[0.68] sm:flex-row sm:items-center sm:justify-between">
                   <span>{h.response_time_ms ? `${h.response_time_ms}ms response` : 'No response time'}</span>
                   <span>{h.host_url === provider.active_host ? 'Active host' : 'Standby host'}</span>
                 </div>

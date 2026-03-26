@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { authAPI } from '../utils/api';
 import { ArrowLeftIcon, EnvelopeIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
+import { authAPI } from '../utils/api';
+import BrandMark from '../components/BrandMark';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -24,15 +25,16 @@ export default function ForgotPassword() {
 
   return (
     <div className="auth-shell">
-      <div className="w-full max-w-md">
-        <div className="panel p-6 sm:p-8">
-          <div className="mb-8 text-center">
+      <div className="w-full max-w-lg">
+        <div className="panel p-5 sm:p-8">
+          <BrandMark />
+          <div className="mt-8 mb-8">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[22px] border border-white/10 bg-white/[0.04]">
               <EnvelopeIcon className="h-8 w-8 text-brand-300" />
             </div>
-            <h1 className="mt-6 text-3xl font-bold text-white">Reset your password</h1>
-            <p className="mt-3 text-sm leading-6 text-slate-300/[0.72]">
-              Enter your account email and we’ll send the reset instructions if it exists in the system.
+            <h1 className="mt-6 text-center text-3xl font-bold text-white">Reset your password</h1>
+            <p className="mt-3 text-center text-sm leading-6 text-slate-300/[0.72]">
+              Enter your account email and we&apos;ll send reset instructions if it exists in the system.
             </p>
           </div>
 

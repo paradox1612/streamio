@@ -212,8 +212,18 @@ const providerQueries = {
     return parseInt(rows[0].count);
   },
 
-  async getAllForHealthCheck() {
-    const { rows } = await pool.query('SELECT * FROM user_providers');
+  async getAllForHealthCheck({ activeWithinDays = parseInt(process.env.ACTIVE_USER_LOOKBACK_DAYS || '14', 10) } = {}) {
+    const { rows } = await pool.query(
+      `SELECT p.*
+       FROM user_providers p
+       JOIN users u ON u.id = p.user_id
+       WHERE u.is_active = true
+         AND (
+           u.last_seen >= NOW() - ($1::int * INTERVAL '1 day')
+           OR u.created_at >= NOW() - ($1::int * INTERVAL '1 day')
+         )`,
+      [activeWithinDays]
+    );
     return rows;
   },
 };
@@ -271,7 +281,11 @@ const vodQueries = {
     if (search) { query += ` AND v.raw_title ILIKE $${idx++}`; params.push(`%${search}%`); }
     if (matched === true) { query += ` AND m.tmdb_id IS NOT NULL`; }
     if (matched === false) { query += ` AND (m.tmdb_id IS NULL AND m.id IS NOT NULL)`; }
-    query += ` ORDER BY v.raw_title ASC LIMIT $${idx++} OFFSET $${idx++}`;
+    query += ` ORDER BY
+      v.normalized_title ASC NULLS LAST,
+      v.raw_title ASC,
+      v.stream_id ASC
+      LIMIT $${idx++} OFFSET $${idx++}`;
     params.push(limit, (page - 1) * limit);
     const { rows } = await pool.query(query, params);
     return rows;
@@ -389,7 +403,10 @@ const vodQueries = {
     return rows;
   },
 
-  async getUnmatchedForMatching(limit = 1000) {
+  async getUnmatchedForMatching(limit = 1000, { enrichMissingImdb = true } = {}) {
+    const missingMatchClause = enrichMissingImdb
+      ? '(m.id IS NULL OR (m.tmdb_id IS NOT NULL AND m.imdb_id IS NULL))'
+      : '(m.id IS NULL OR m.tmdb_id IS NULL)';
     const { rows } = await pool.query(
       `SELECT DISTINCT v.raw_title,
               COALESCE(m.tmdb_type, v.vod_type) AS vod_type,
@@ -398,7 +415,7 @@ const vodQueries = {
               m.confidence_score
        FROM user_provider_vod v
        LEFT JOIN matched_content m ON m.raw_title = v.raw_title
-       WHERE (m.id IS NULL OR (m.tmdb_id IS NOT NULL AND m.imdb_id IS NULL))
+       WHERE ${missingMatchClause}
          AND (m.manually_matched IS NULL OR m.manually_matched = false)
        LIMIT $1`,
       [limit]

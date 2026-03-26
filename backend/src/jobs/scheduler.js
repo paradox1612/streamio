@@ -7,6 +7,21 @@ const epgService = require('../services/epgService');
 const { jobQueries } = require('../db/queries');
 const logger = require('../utils/logger');
 
+async function mapWithConcurrency(items, concurrency, worker) {
+  const workerCount = Math.max(1, Math.min(concurrency, items.length || 1));
+  let nextIndex = 0;
+
+  async function runWorker() {
+    while (true) {
+      const currentIndex = nextIndex++;
+      if (currentIndex >= items.length) return;
+      await worker(items[currentIndex], currentIndex);
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+}
+
 // ─── Job Implementations ──────────────────────────────────────────────────────
 
 async function healthCheckJob() {
@@ -40,14 +55,15 @@ async function catalogRefreshJob() {
     logger.info(`[Job] Refreshing ${providers.length} providers...`);
 
     let total = 0;
-    for (const provider of providers) {
+    const refreshConcurrency = parseInt(process.env.CATALOG_REFRESH_CONCURRENCY || '3', 10);
+    await mapWithConcurrency(providers, refreshConcurrency, async (provider) => {
       try {
         const result = await providerService.refreshCatalog(provider.id, provider.user_id);
         total += result.total;
       } catch (err) {
         logger.warn(`[Job] Failed to refresh provider ${provider.id}: ${err.message}`);
       }
-    }
+    });
 
     await jobQueries.finish(jobId, { status: 'success', metadata: { providersRefreshed: providers.length, totalItems: total } });
     logger.info(`[Job] Catalog refresh complete: ${total} items across ${providers.length} providers`);
@@ -60,7 +76,7 @@ async function catalogRefreshJob() {
 async function matchingJob() {
   logger.info('[Job] Matching job starting...');
   try {
-    const result = await tmdbService.runMatching(10000);
+    const result = await tmdbService.runMatching(10000, { enrichMissingImdb: false });
     logger.info(`[Job] Matching complete: ${result.matched} matched, ${result.failed} unmatched`);
   } catch (err) {
     logger.error('[Job] Matching job failed:', err.message);

@@ -198,6 +198,7 @@ describe('POST /api/auth/login', () => {
 
 describe('GET /api/user/profile', () => {
   it('returns user profile with valid JWT', async () => {
+    const { userQueries } = require('../../src/db/queries');
     const token = makeUserToken();
     const res = await request(app)
       .get('/api/user/profile')
@@ -205,6 +206,7 @@ describe('GET /api/user/profile', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.user).toBeTruthy();
+    expect(userQueries.updateLastSeen).toHaveBeenCalledWith('user-123');
   });
 
   it('returns 401 without auth header', async () => {
@@ -314,11 +316,13 @@ describe('GET /api/providers/:id/live', () => {
 
 describe('GET /addon/:token/manifest.json', () => {
   it('returns manifest for valid token', async () => {
+    const { userQueries } = require('../../src/db/queries');
     const res = await request(app).get('/addon/abc123token/manifest.json');
     expect(res.status).toBe(200);
     expect(res.body.id).toContain('streambridge');
     expect(Array.isArray(res.body.catalogs)).toBe(true);
     expect(res.body.resources).toContain('catalog');
+    expect(userQueries.updateLastSeen).toHaveBeenCalledWith('user-123');
   });
 
   it('returns 401 for invalid token', async () => {

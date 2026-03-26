@@ -90,6 +90,7 @@ describe('tmdbService – runMatching', () => {
 
     const result = await runMatching(1);
 
+    expect(mockVodQueries.getUnmatchedForMatching).toHaveBeenCalledWith(1, { enrichMissingImdb: true });
     expect(fetch).toHaveBeenCalledWith('https://api.themoviedb.org/3/movie/603/external_ids?api_key=test-key');
     expect(mockMatchQueries.upsert).toHaveBeenCalledWith({
       rawTitle: 'The Matrix (1999)',
@@ -114,6 +115,7 @@ describe('tmdbService – runMatching', () => {
 
     const result = await runMatching(1);
 
+    expect(mockVodQueries.getUnmatchedForMatching).toHaveBeenCalledWith(1, { enrichMissingImdb: true });
     expect(fetch).toHaveBeenCalledWith('https://api.themoviedb.org/3/tv/1396/external_ids?api_key=test-key');
     expect(mockMatchQueries.upsert).toHaveBeenCalledWith({
       rawTitle: 'Breaking Bad',

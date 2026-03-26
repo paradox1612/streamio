@@ -203,6 +203,7 @@ CREATE INDEX IF NOT EXISTS idx_matched_content_raw_title_lower ON matched_conten
 CREATE INDEX IF NOT EXISTS idx_upv_provider_vod_type ON user_provider_vod(provider_id, vod_type);
 CREATE INDEX IF NOT EXISTS idx_upv_user_normalized ON user_provider_vod(user_id, normalized_title);
 CREATE INDEX IF NOT EXISTS idx_upv_stream_lookup ON user_provider_vod(provider_id, stream_id, vod_type);
+CREATE INDEX IF NOT EXISTS idx_upv_provider_type_normalized_raw ON user_provider_vod(provider_id, vod_type, normalized_title, raw_title);
 CREATE INDEX IF NOT EXISTS idx_mc_tmdb_id ON matched_content(tmdb_id) WHERE tmdb_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_host_health_provider ON host_health(provider_id, status);
 

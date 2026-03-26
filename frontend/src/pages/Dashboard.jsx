@@ -178,18 +178,18 @@ export default function Dashboard() {
   }).length;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-10">
-      <section className="panel overflow-hidden p-6 sm:p-8 lg:p-10">
-        <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
+    <div className="mx-auto max-w-7xl space-y-8">
+      <section className="panel overflow-hidden p-5 sm:p-7 lg:p-8">
+        <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-start">
           <div>
-            <div className="kicker mb-5">Workspace Overview</div>
-            <h1 className="hero-title">
-              One place to monitor providers, install your addon, and keep your catalog healthy.
+            <div className="kicker mb-4">Workspace Overview</div>
+            <h1 className="text-3xl font-bold leading-tight text-white sm:text-4xl">
+              Monitor providers, copy your addon URL, and scan catalog health.
             </h1>
-            <p className="hero-copy mt-4">
-              StreamBridge keeps the operational details visible without getting in the way. Start with your addon, then scan provider health and matching performance below.
+            <p className="hero-copy mt-3">
+              Start with the actions you need most, then move straight into provider activity and matching performance.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-6 flex flex-wrap gap-3">
               {addonUrl && (
                 <>
                   <button onClick={copyUrl} className="btn-primary">
@@ -266,7 +266,7 @@ export default function Dashboard() {
       )}
 
       <section>
-        <div className="mb-6 flex items-end justify-between gap-4">
+        <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="eyebrow mb-2">Sources</p>
             <h2 className="section-title">Provider activity</h2>

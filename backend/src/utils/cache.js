@@ -12,6 +12,8 @@ const cache = new NodeCache({
 const NAMESPACE_TTLS = {
   userByToken: 300, // 5 min
   providerById: 300, // 5 min
+  providerAccountInfo: 300, // 5 min
+  userActivityTouch: 3600, // 1 hour
   seriesEpisodes: 600, // 10 min
   manifestByToken: 60, // 1 min
   hostHealth: 300, // 5 min

@@ -153,9 +153,11 @@ app.use((req, res) => {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
-app.listen(PORT, () => {
-  logger.info(`StreamBridge backend running on port ${PORT}`);
-  startScheduler();
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    logger.info(`StreamBridge backend running on port ${PORT}`);
+    startScheduler();
+  });
+}
 
 module.exports = app;

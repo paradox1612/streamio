@@ -11,6 +11,7 @@ import {
 } from '@heroicons/react/24/outline';
 import StatusBadge from '../components/StatusBadge';
 import EmptyState from '../components/EmptyState';
+import ConfirmDialog from '../components/ConfirmDialog';
 import toast from 'react-hot-toast';
 
 function AddProviderModal({ onClose, onAdded }) {
@@ -35,7 +36,7 @@ function AddProviderModal({ onClose, onAdded }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
-      <div className="panel w-full max-w-2xl p-6 sm:p-8">
+      <div className="panel max-h-[calc(100svh-2rem)] w-full max-w-2xl overflow-y-auto p-5 sm:p-8">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <p className="eyebrow mb-2">New Source</p>
@@ -120,17 +121,6 @@ function ProviderRow({ provider, onRefresh, onDelete }) {
     }
   };
 
-  const handleDelete = async () => {
-    if (!window.confirm(`Delete "${provider.name}"? This cannot be undone.`)) return;
-    try {
-      await providerAPI.delete(provider.id);
-      toast.success('Provider deleted');
-      onDelete(provider.id);
-    } catch (_) {
-      toast.error('Delete failed');
-    }
-  };
-
   return (
     <div className="panel-soft p-6">
       <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
@@ -168,7 +158,7 @@ function ProviderRow({ provider, onRefresh, onDelete }) {
             <ArrowPathIcon className="h-4 w-4" />
             {loading === 'refresh' ? 'Refreshing...' : 'Refresh'}
           </button>
-          <button onClick={handleDelete} className="btn-danger">
+          <button onClick={() => onDelete(provider)} className="btn-danger">
             <TrashIcon className="h-4 w-4" />
             Delete
           </button>
@@ -201,6 +191,8 @@ export default function Providers() {
   const [providers, setProviders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = () => {
     providerAPI.list()
@@ -210,6 +202,21 @@ export default function Providers() {
   };
 
   useEffect(() => { load(); }, []);
+
+  const handleDeleteProvider = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await providerAPI.delete(deleteTarget.id);
+      toast.success('Provider deleted');
+      setProviders(prev => prev.filter(x => x.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (_) {
+      toast.error('Delete failed');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -221,13 +228,13 @@ export default function Providers() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
-      <section className="panel overflow-hidden p-6 sm:p-8 lg:p-10">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+      <section className="panel overflow-hidden p-5 sm:p-7 lg:p-8">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <div className="kicker mb-5">Sources</div>
-            <h1 className="hero-title">Manage the providers feeding your library.</h1>
-            <p className="hero-copy mt-4">
-              Keep credentials current, monitor active hosts, test connectivity, and refresh catalogs without losing context.
+            <div className="kicker mb-4">Sources</div>
+            <h1 className="text-3xl font-bold leading-tight text-white sm:text-4xl">Manage the providers feeding your library.</h1>
+            <p className="hero-copy mt-3">
+              Keep credentials current, monitor active hosts, test connectivity, and refresh catalogs without losing the operational view.
             </p>
           </div>
           <button onClick={() => setShowAdd(true)} className="btn-primary">
@@ -248,7 +255,7 @@ export default function Providers() {
       ) : (
         <section className="space-y-4">
           {providers.map(p => (
-            <ProviderRow key={p.id} provider={p} onRefresh={load} onDelete={id => setProviders(prev => prev.filter(x => x.id !== id))} />
+            <ProviderRow key={p.id} provider={p} onRefresh={load} onDelete={setDeleteTarget} />
           ))}
         </section>
       )}
@@ -262,6 +269,17 @@ export default function Providers() {
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title={deleteTarget ? `Delete ${deleteTarget.name}?` : 'Delete provider?'}
+        description="This removes the provider, its hosts, and its routed catalog from your account."
+        confirmLabel="Delete Provider"
+        danger
+        loading={deleting}
+        onConfirm={handleDeleteProvider}
+        onCancel={() => !deleting && setDeleteTarget(null)}
+      />
     </div>
   );
 }

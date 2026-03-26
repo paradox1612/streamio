@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { authAPI, userAPI } from '../utils/api';
 import { CheckIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function Account() {
   const { user, logout } = useAuth();
@@ -11,6 +12,8 @@ export default function Account() {
   const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
   const [changingPw, setChangingPw] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmStep, setConfirmStep] = useState(false);
+  const [deleteInput, setDeleteInput] = useState('');
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
@@ -29,10 +32,10 @@ export default function Account() {
   };
 
   const handleDeleteAccount = async () => {
-    if (!window.confirm('Permanently delete your account and all data? This cannot be undone.')) return;
-    if (!window.confirm('Are you absolutely sure?')) return;
-    const confirm = window.prompt('Type "delete" to confirm:');
-    if (confirm !== 'delete') return toast.error('Cancelled');
+    if (deleteInput !== 'delete') {
+      toast.error('Type "delete" to confirm');
+      return;
+    }
     setDeleting(true);
     try {
       await userAPI.deleteAccount();
@@ -42,17 +45,20 @@ export default function Account() {
     } catch (_) {
       toast.error('Failed to delete account');
       setDeleting(false);
+    } finally {
+      setConfirmStep(false);
     }
   };
 
   return (
+    <>
     <div className="mx-auto max-w-6xl space-y-8">
-      <section className="panel overflow-hidden p-6 sm:p-8 lg:p-10">
-        <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
+      <section className="panel overflow-hidden p-5 sm:p-7 lg:p-8">
+        <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
           <div>
-            <div className="kicker mb-5">Account</div>
-            <h1 className="hero-title">Secure your workspace and keep access predictable.</h1>
-            <p className="hero-copy mt-4">
+            <div className="kicker mb-4">Account</div>
+            <h1 className="text-3xl font-bold leading-tight text-white sm:text-4xl">Secure your workspace and keep access predictable.</h1>
+            <p className="hero-copy mt-3">
               Your account controls provider access, addon identity, and route-level security. Keep your password current and treat destructive actions carefully.
             </p>
           </div>
@@ -143,10 +149,36 @@ export default function Account() {
         <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300/[0.72]">
           This removes your account, providers, and addon access permanently. There is no recovery path after confirmation.
         </p>
-        <button onClick={handleDeleteAccount} disabled={deleting} className="btn-danger mt-6">
+        <button onClick={() => setConfirmStep(true)} disabled={deleting} className="btn-danger mt-6">
           {deleting ? 'Deleting account...' : 'Delete Account'}
         </button>
       </section>
     </div>
+    <ConfirmDialog
+      open={confirmStep}
+      title="Delete account permanently?"
+      description="This removes your account, providers, addon access, and related data. There is no recovery path."
+      confirmLabel="Delete Account"
+      danger
+      loading={deleting}
+      onConfirm={handleDeleteAccount}
+      onCancel={() => {
+        if (!deleting) {
+          setConfirmStep(false);
+          setDeleteInput('');
+        }
+      }}
+    >
+      <div>
+        <label className="field-label">Type delete to confirm</label>
+        <input
+          value={deleteInput}
+          onChange={(e) => setDeleteInput(e.target.value)}
+          placeholder="delete"
+          className="field-input"
+        />
+      </div>
+    </ConfirmDialog>
+    </>
   );
 }

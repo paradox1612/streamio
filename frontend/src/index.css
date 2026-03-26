@@ -156,7 +156,7 @@ textarea {
   }
 
   .hero-title {
-    @apply max-w-3xl text-4xl font-bold leading-tight text-white sm:text-5xl;
+    @apply max-w-3xl text-3xl font-bold leading-tight text-white sm:text-5xl;
   }
 
   .hero-copy {
@@ -180,11 +180,11 @@ textarea {
   }
 
   .auth-shell {
-    @apply app-shell flex min-h-screen items-center justify-center p-5 sm:p-8;
+    @apply app-shell flex min-h-screen items-center justify-center p-4 sm:p-8;
   }
 
   .auth-grid {
-    @apply app-chrome grid w-full max-w-6xl overflow-hidden rounded-[32px] border border-white/10 bg-surface-900/70 shadow-[0_40px_120px_rgba(0,0,0,0.45)] lg:grid-cols-[1.1fr_0.9fr];
+    @apply app-chrome grid w-full max-w-6xl overflow-hidden rounded-[32px] border border-white/10 bg-surface-900/70 shadow-[0_40px_120px_rgba(0,0,0,0.45)] lg:grid-cols-[1.05fr_0.95fr];
   }
 
   .auth-side {
@@ -196,6 +196,42 @@ textarea {
   }
 
   .auth-form-wrap {
-    @apply p-6 sm:p-10 lg:p-12;
+    @apply p-5 sm:p-10 lg:p-12;
+  }
+
+  .marketing-shell {
+    @apply relative overflow-hidden bg-surface-950 text-slate-50;
+  }
+
+  .marketing-shell::before,
+  .marketing-shell::after {
+    content: '';
+    position: fixed;
+    inset: auto;
+    border-radius: 9999px;
+    filter: blur(100px);
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.8;
+  }
+
+  .marketing-shell::before {
+    width: 28rem;
+    height: 28rem;
+    top: -7rem;
+    right: -5rem;
+    background: rgba(20, 145, 255, 0.18);
+  }
+
+  .marketing-shell::after {
+    width: 24rem;
+    height: 24rem;
+    bottom: 8%;
+    left: -7rem;
+    background: rgba(89, 214, 255, 0.12);
+  }
+
+  .marketing-chrome {
+    @apply relative z-10;
   }
 }
