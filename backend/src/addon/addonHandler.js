@@ -215,12 +215,25 @@ async function getTargetTmdbRecord(baseId, type) {
 
       if (Array.isArray(data.movie_results) && data.movie_results[0]) {
         const item = data.movie_results[0];
-        return {
+        const movie = {
           id: item.id,
           original_title: item.title || item.original_title || '',
           normalized_title: normalizeTitle(item.title || item.original_title || ''),
-          year: item.release_date ? parseInt(item.release_date.split('-')[0], 10) : null,
+          release_year: item.release_date ? parseInt(item.release_date.split('-')[0], 10) : null,
+          popularity: item.popularity || 0,
+          poster_path: item.poster_path || null,
+          overview: item.overview || null,
           imdb_id: baseId,
+        };
+
+        await tmdbQueries.upsertMovie(movie);
+
+        return {
+          id: movie.id,
+          original_title: movie.original_title,
+          normalized_title: movie.normalized_title,
+          year: movie.release_year,
+          imdb_id: movie.imdb_id,
           tmdb_type: 'movie',
         };
       }
@@ -568,4 +581,13 @@ async function handleLiveStream(token, baseId) {
   }
 }
 
-module.exports = { buildManifest, handleCatalog, handleMeta, handleStream, handleLiveStream };
+module.exports = {
+  buildManifest,
+  handleCatalog,
+  handleMeta,
+  handleStream,
+  handleLiveStream,
+  __test__: {
+    getTargetTmdbRecord,
+  },
+};
