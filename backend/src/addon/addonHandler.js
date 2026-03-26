@@ -173,6 +173,42 @@ async function resolveVodItem(userId, baseId) {
   return null;
 }
 
+async function resolveVodItemsForStream(userId, baseId) {
+  if (baseId.startsWith('sb_')) {
+    const item = await vodQueries.findByInternalIdForUser(userId, baseId.slice(3));
+    return item ? [item] : [];
+  }
+
+  if (baseId.startsWith('tt')) {
+    const { rows } = await pool.query(
+      `SELECT v.*, p.active_host, p.username, p.password
+       FROM user_provider_vod v
+       JOIN matched_content m ON m.raw_title = v.raw_title AND m.imdb_id = $1
+       JOIN user_providers p ON p.id = v.provider_id AND p.user_id = $2 AND p.status = 'online'
+       WHERE v.user_id = $2
+       ORDER BY v.raw_title ASC, v.provider_id ASC`,
+      [baseId, userId]
+    );
+    return rows;
+  }
+
+  if (baseId.startsWith('tmdb:')) {
+    const tmdbId = parseInt(baseId.slice(5), 10);
+    const { rows } = await pool.query(
+      `SELECT v.*, p.active_host, p.username, p.password
+       FROM user_provider_vod v
+       JOIN matched_content m ON m.raw_title = v.raw_title AND m.tmdb_id = $2
+       JOIN user_providers p ON p.id = v.provider_id AND p.user_id = $1 AND p.status = 'online'
+       WHERE v.user_id = $1
+       ORDER BY v.raw_title ASC, v.provider_id ASC`,
+      [userId, tmdbId]
+    );
+    return rows;
+  }
+
+  return [];
+}
+
 async function getTargetTmdbRecord(baseId, type) {
   if (baseId.startsWith('tmdb:')) {
     const tmdbId = parseInt(baseId.slice(5), 10);
@@ -396,43 +432,62 @@ async function handleStream(token, type, id) {
       return await handleLiveStream(token, baseId);
     }
 
-    let vodItem = await resolveVodItem(user.id, baseId);
-    if (!vodItem && (baseId.startsWith('tt') || baseId.startsWith('tmdb:'))) {
-      vodItem = await tryOnDemandMatch(user.id, baseId, type);
+    let vodItems = await resolveVodItemsForStream(user.id, baseId);
+    if (!vodItems.length && (baseId.startsWith('tt') || baseId.startsWith('tmdb:'))) {
+      const matchedItem = await tryOnDemandMatch(user.id, baseId, type);
+      if (matchedItem) {
+        vodItems = await resolveVodItemsForStream(user.id, baseId);
+        if (!vodItems.length) vodItems = [matchedItem];
+      }
     }
 
-    if (!vodItem || !vodItem.provider_id) return { streams: [] };
+    if (!vodItems.length) return { streams: [] };
 
+    const vodItem = vodItems[0];
     const { username, password, stream_id, vod_type, container_extension, provider_id } = vodItem;
 
     // ── Movie stream ───────────────────────────────────────────────────────────
     if (vod_type === 'movie') {
-      // Get all online hosts for this provider, sorted by response time
-      const hosts = await hostHealthQueries.getByProvider(provider_id);
-      const onlineHosts = hosts.filter(h => h.status === 'online').slice(0, 3); // Max 3 hosts
+      const providerHosts = new Map();
+      const streams = [];
 
-      if (onlineHosts.length === 0 && vodItem.active_host) {
-        // Fallback to active host if no health data
-        const ext = container_extension || 'mp4';
-        const url = `${vodItem.active_host}/movie/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${stream_id}.${ext}`;
-        return {
-          streams: [{ url, title: 'StreamBridge', name: 'SB', behaviorHints: { notWebReady: false } }],
-        };
+      for (const item of vodItems) {
+        if (!item.provider_id) continue;
+
+        let hosts = providerHosts.get(item.provider_id);
+        if (!hosts) {
+          hosts = await hostHealthQueries.getByProvider(item.provider_id);
+          providerHosts.set(item.provider_id, hosts);
+        }
+
+        const onlineHosts = hosts.filter(h => h.status === 'online').slice(0, 3);
+        const ext = item.container_extension || 'mp4';
+        const streamLabel = item.raw_title || item.name || 'Stream';
+
+        if (onlineHosts.length === 0 && item.active_host) {
+          const url = `${item.active_host}/movie/${encodeURIComponent(item.username)}/${encodeURIComponent(item.password)}/${item.stream_id}.${ext}`;
+          streams.push({
+            url,
+            title: `${streamLabel} — StreamBridge`,
+            name: streamLabel,
+            behaviorHints: { notWebReady: false },
+          });
+          continue;
+        }
+
+        streams.push(...onlineHosts.map((host, idx) => {
+          const url = `${host.host_url}/movie/${encodeURIComponent(item.username)}/${encodeURIComponent(item.password)}/${item.stream_id}.${ext}`;
+          const timeLabel = host.response_time_ms ? `${host.response_time_ms}ms` : '?';
+          return {
+            url,
+            title: `${streamLabel} — StreamBridge (Host ${idx + 1}, ${timeLabel})`,
+            name: streamLabel,
+            behaviorHints: { notWebReady: false },
+          };
+        }));
       }
 
-      const streams = onlineHosts.map((host, idx) => {
-        const ext = container_extension || 'mp4';
-        const url = `${host.host_url}/movie/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${stream_id}.${ext}`;
-        const timeLabel = host.response_time_ms ? `${host.response_time_ms}ms` : '?';
-        return {
-          url,
-          title: `StreamBridge — Host ${idx + 1} (${timeLabel})`,
-          name: `SB-${idx + 1}`,
-          behaviorHints: { notWebReady: false },
-        };
-      });
-
-      return { streams: streams.length > 0 ? streams : [] };
+      return { streams };
     }
 
     // ── Series episode stream ──────────────────────────────────────────────────
@@ -589,5 +644,6 @@ module.exports = {
   handleLiveStream,
   __test__: {
     getTargetTmdbRecord,
+    resolveVodItemsForStream,
   },
 };
