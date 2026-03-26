@@ -28,11 +28,11 @@ export default function ForgotPassword() {
       <div className="w-full max-w-lg">
         <div className="panel p-5 sm:p-8">
           <BrandMark />
-          <div className="mt-8 mb-8">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[22px] border border-white/10 bg-white/[0.04]">
+          <div className="mb-7 mt-6 sm:mb-8 sm:mt-8">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[18px] border border-white/10 bg-white/[0.04] sm:h-16 sm:w-16 sm:rounded-[22px]">
               <EnvelopeIcon className="h-8 w-8 text-brand-300" />
             </div>
-            <h1 className="mt-6 text-center text-3xl font-bold text-white">Reset your password</h1>
+            <h1 className="mt-5 text-center text-[2rem] font-bold leading-tight text-white sm:mt-6 sm:text-3xl">Reset your password</h1>
             <p className="mt-3 text-center text-sm leading-6 text-slate-300/[0.72]">
               Enter your account email and we&apos;ll send reset instructions if it exists in the system.
             </p>
@@ -46,7 +46,7 @@ export default function ForgotPassword() {
               <p className="mt-4 text-sm leading-6 text-slate-300/[0.72]">
                 If that email exists in our system, a reset link has been sent.
               </p>
-              <Link to="/login" className="btn-secondary mt-8">
+              <Link to="/login" className="btn-secondary mt-8 w-full sm:w-auto">
                 <ArrowLeftIcon className="h-4 w-4" />
                 Back to login
               </Link>

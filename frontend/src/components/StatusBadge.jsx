@@ -17,7 +17,7 @@ export default function StatusBadge({ status, pulse = false }) {
   }[status] || 'bg-slate-400';
 
   return (
-    <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${statusColor}`}>
+    <span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium sm:px-3 sm:text-xs ${statusColor}`}>
       <span className={`w-2 h-2 rounded-full ${statusDot} ${pulse && status === 'online' ? 'animate-pulse-slow' : ''}`} />
       {status.charAt(0).toUpperCase() + status.slice(1)}
     </span>

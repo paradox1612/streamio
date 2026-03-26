@@ -384,4 +384,95 @@ describe('addonHandler tryOnDemandMatch', () => {
     });
     expect(result).toEqual({ raw_title: 'War Machine (2026)', provider_id: 'provider-1' });
   });
+
+  it('falls back to the matched candidate when the immediate post-match lookup is still empty', async () => {
+    pool.query
+      .mockResolvedValueOnce({ rows: [{ id: 1265609, original_title: 'War Machine', normalized_title: 'war machine', year: 2026, imdb_id: 'tt15940132', tmdb_type: 'movie' }] })
+      .mockResolvedValueOnce({ rows: [] });
+    mockVodQueries.findOnDemandCandidateForUser.mockResolvedValue([
+      {
+        raw_title: 'War Machine (2026)',
+        normalized_title: 'war machine 2026',
+        provider_id: 'provider-1',
+        username: 'alice',
+        password: 'secret',
+        stream_id: '101',
+        vod_type: 'movie',
+        container_extension: 'mp4',
+      },
+    ]);
+    mockTmdbQueries.exactMatchMovie.mockResolvedValue(null);
+    mockTmdbQueries.fuzzyMatchMovie.mockResolvedValue({ id: 1265609, score: 0.7058824 });
+
+    const result = await __test__.tryOnDemandMatch('user-1', 'tt15940132', 'movie');
+
+    expect(mockMatchQueries.upsert).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(expect.objectContaining({
+      raw_title: 'War Machine (2026)',
+      provider_id: 'provider-1',
+      username: 'alice',
+      password: 'secret',
+      stream_id: '101',
+      vod_type: 'movie',
+      container_extension: 'mp4',
+    }));
+  });
+
+  it('matches short movie titles by stripping the target year from provider metadata', async () => {
+    pool.query
+      .mockResolvedValueOnce({ rows: [{ id: 438631, original_title: 'Dune', normalized_title: 'dune', year: 2021, imdb_id: 'tt1160419', tmdb_type: 'movie' }] })
+      .mockResolvedValueOnce({ rows: [{ raw_title: 'Dune (2021)', provider_id: 'provider-1' }] });
+    mockVodQueries.findOnDemandCandidateForUser.mockResolvedValue([
+      {
+        raw_title: 'Dune (2021)',
+        normalized_title: 'dune 2021',
+      },
+    ]);
+    mockTmdbQueries.exactMatchMovie
+      .mockResolvedValueOnce({ id: 438631, score: 1 });
+
+    const result = await __test__.tryOnDemandMatch('user-1', 'tt1160419', 'movie');
+
+    expect(mockTmdbQueries.exactMatchMovie).toHaveBeenNthCalledWith(1, 'dune', 2021);
+    expect(mockTmdbQueries.fuzzyMatchMovie).not.toHaveBeenCalled();
+    expect(mockMatchQueries.upsert).toHaveBeenCalledWith({
+      rawTitle: 'Dune (2021)',
+      tmdbId: 438631,
+      tmdbType: 'movie',
+      imdbId: 'tt1160419',
+      confidenceScore: 1,
+    });
+    expect(result).toEqual({ raw_title: 'Dune (2021)', provider_id: 'provider-1' });
+  });
+
+  it('shares the same in-flight on-demand match across concurrent callers', async () => {
+    const deferred = {};
+    deferred.promise = new Promise((resolve) => {
+      deferred.resolve = resolve;
+    });
+
+    pool.query
+      .mockResolvedValueOnce({ rows: [{ id: 1265609, original_title: 'War Machine', normalized_title: 'war machine', year: 2026, imdb_id: 'tt15940132', tmdb_type: 'movie' }] })
+      .mockResolvedValueOnce({ rows: [{ raw_title: 'War Machine (2026)', provider_id: 'provider-1' }] });
+
+    mockVodQueries.findOnDemandCandidateForUser.mockReturnValue(deferred.promise);
+    mockTmdbQueries.exactMatchMovie.mockResolvedValue(null);
+    mockTmdbQueries.fuzzyMatchMovie.mockResolvedValue({ id: 1265609, score: 0.7058824 });
+
+    const firstPromise = __test__.resolveOnDemandMatchShared('user-1', 'tt15940132', 'movie');
+    const secondPromise = __test__.resolveOnDemandMatchShared('user-1', 'tt15940132', 'movie');
+
+    deferred.resolve([
+      { raw_title: 'War Machine (2026)', normalized_title: 'war machine 2026' },
+    ]);
+
+    const [firstResult, secondResult] = await Promise.all([firstPromise, secondPromise]);
+
+    expect(mockVodQueries.findOnDemandCandidateForUser).toHaveBeenCalledTimes(1);
+    expect(mockTmdbQueries.exactMatchMovie).toHaveBeenCalledTimes(1);
+    expect(mockTmdbQueries.fuzzyMatchMovie).toHaveBeenCalledTimes(1);
+    expect(mockMatchQueries.upsert).toHaveBeenCalledTimes(1);
+    expect(firstResult).toEqual({ raw_title: 'War Machine (2026)', provider_id: 'provider-1' });
+    expect(secondResult).toEqual({ raw_title: 'War Machine (2026)', provider_id: 'provider-1' });
+  });
 });

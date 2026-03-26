@@ -129,12 +129,12 @@ export default function AddonSettings() {
             <p className="hero-copy mt-3">
               This addon URL is scoped to your account and pulls in the providers you have configured. Keep it private and reinstall it if you regenerate the token.
             </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <button onClick={copyUrl} className="btn-primary">
+            <div className="mt-6 grid gap-3 sm:flex sm:flex-wrap">
+              <button onClick={copyUrl} className="btn-primary w-full sm:w-auto">
                 {copying ? <CheckIcon className="h-4 w-4" /> : <DocumentDuplicateIcon className="h-4 w-4" />}
                 {copying ? 'Copied URL' : 'Copy URL'}
               </button>
-              <button onClick={installInStremio} className="btn-secondary">
+              <button onClick={installInStremio} className="btn-secondary w-full sm:w-auto">
                 <SparklesIcon className="h-4 w-4" />
                 Install in Stremio
               </button>
@@ -160,7 +160,7 @@ export default function AddonSettings() {
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
-        <div className="panel-soft p-6 sm:p-8">
+        <div className="panel-soft p-5 sm:p-8">
           <p className="eyebrow mb-2">Private Token</p>
           <h2 className="section-title">Keep this secret</h2>
           <div className="mt-5 overflow-x-auto rounded-[22px] border border-white/[0.08] bg-surface-950/75 p-4 font-mono text-xs text-slate-200/[0.78]">
@@ -171,13 +171,13 @@ export default function AddonSettings() {
           </p>
         </div>
 
-        <div className="panel-soft border-red-400/[0.15] bg-red-500/5 p-6 sm:p-8">
+        <div className="panel-soft border-red-400/[0.15] bg-red-500/5 p-5 sm:p-8">
           <p className="eyebrow mb-2 text-red-100/60">Security Reset</p>
           <h2 className="section-title">Regenerate addon URL</h2>
           <p className="mt-3 text-sm leading-6 text-slate-300/[0.72]">
             Use this only if the current URL has been shared or compromised. The old route stops working immediately.
           </p>
-          <button onClick={() => setConfirmRegenerate(true)} disabled={regenerating} className="btn-danger mt-6">
+          <button onClick={() => setConfirmRegenerate(true)} disabled={regenerating} className="btn-danger mt-6 w-full sm:w-auto">
             <ArrowPathIcon className="h-4 w-4" />
             {regenerating ? 'Regenerating...' : 'Regenerate URL'}
           </button>
@@ -234,8 +234,8 @@ export default function AddonSettings() {
           </div>
         </div>
 
-        <div className="mt-6 flex flex-wrap items-center gap-3">
-          <button onClick={saveLanguagePreferences} disabled={savingLanguages} className="btn-primary">
+        <div className="mt-6 grid gap-3 sm:flex sm:flex-wrap sm:items-center">
+          <button onClick={saveLanguagePreferences} disabled={savingLanguages} className="btn-primary w-full sm:w-auto">
             {savingLanguages ? 'Saving...' : 'Save Language Filter'}
           </button>
           <button
@@ -244,7 +244,7 @@ export default function AddonSettings() {
               setLanguageMode('all');
               setSelectedLanguages([]);
             }}
-            className="btn-secondary"
+            className="btn-secondary w-full sm:w-auto"
           >
             Reset to All
           </button>

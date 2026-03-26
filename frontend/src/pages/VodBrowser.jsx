@@ -50,7 +50,7 @@ function FixMatchModal({ item, providerId, onClose, onSuccess }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
-      <div className="panel max-h-[calc(100svh-2rem)] w-full max-w-2xl overflow-y-auto p-5 sm:p-8">
+      <div className="panel max-h-[calc(100svh-2rem)] w-full max-w-2xl overflow-y-auto p-4 sm:p-8">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <p className="eyebrow mb-2">Manual Match</p>
@@ -70,7 +70,7 @@ function FixMatchModal({ item, providerId, onClose, onSuccess }) {
             placeholder="Search TMDB..."
             className="field-input"
           />
-          <button onClick={() => search(query)} disabled={searching} className="btn-primary">
+          <button onClick={() => search(query)} disabled={searching} className="btn-primary w-full sm:w-auto">
             <MagnifyingGlassIcon className="h-4 w-4" />
             {searching ? 'Searching...' : 'Search'}
           </button>
@@ -84,7 +84,7 @@ function FixMatchModal({ item, providerId, onClose, onSuccess }) {
               key={result.tmdbId}
               onClick={() => handleSelect(result)}
               disabled={saving !== null}
-              className="flex w-full items-center gap-4 rounded-[22px] border border-white/[0.08] bg-white/[0.03] p-3 text-left transition-all hover:border-white/[0.14] hover:bg-white/[0.05]"
+              className="flex w-full items-center gap-3 rounded-[22px] border border-white/[0.08] bg-white/[0.03] p-3 text-left transition-all hover:border-white/[0.14] hover:bg-white/[0.05] sm:gap-4"
             >
               {result.poster ? (
                 <img src={result.poster} alt={result.title} className="h-20 w-14 rounded-xl object-cover" />
@@ -115,7 +115,7 @@ function VodCard({ item, providerId, onMatchFixed }) {
 
   return (
     <>
-      <div className="group relative overflow-hidden rounded-[24px] border border-white/[0.08] bg-white/[0.04]" style={{ aspectRatio: '2/3' }}>
+      <div className="group relative overflow-hidden rounded-[20px] border border-white/[0.08] bg-white/[0.04] sm:rounded-[24px]" style={{ aspectRatio: '2/3' }}>
         {item.poster_url ? (
           <img
             src={item.poster_url}
@@ -255,7 +255,7 @@ export default function VodBrowser() {
           </div>
           <div className="panel-soft p-5">
             <p className="metric-label mb-1">Current Provider</p>
-            <p className="text-2xl font-bold text-white">{selectedProviderName || 'None selected'}</p>
+            <p className="break-words text-2xl font-bold text-white">{selectedProviderName || 'None selected'}</p>
             <p className="mt-2 text-sm text-slate-300/[0.68]">{items.length} visible items{debouncedSearch ? ` for "${debouncedSearch}"` : ''}.</p>
           </div>
         </div>
@@ -323,7 +323,7 @@ export default function VodBrowser() {
         />
       ) : (
         <>
-          <section className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8">
+          <section className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8">
             {items.map(item => (
               <VodCard
                 key={item.id}
@@ -349,7 +349,7 @@ export default function VodBrowser() {
           )}
 
           {loading && filter.page === 1 && (
-            <section className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8">
+            <section className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8">
               {Array.from({ length: 16 }).map((_, i) => (
                 <div key={i} className="skeleton aspect-[2/3]" />
               ))}

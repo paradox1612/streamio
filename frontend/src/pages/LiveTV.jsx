@@ -108,7 +108,7 @@ export default function LiveTV() {
               Switch providers, search by name, and narrow by category while keeping logos and metadata easy to scan.
             </p>
           </div>
-          <div className="panel-soft p-5">
+          <div className="panel-soft p-4 sm:p-5">
             <p className="metric-label mb-1">Visible Channels</p>
             <p className="text-3xl font-bold text-white">{filteredChannels.length}</p>
             <p className="mt-2 text-sm text-slate-300/[0.68]">Filtered from {channels.length} channels in the selected provider.</p>
@@ -190,7 +190,7 @@ export default function LiveTV() {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
               </div>
               <div className="p-3">
-                <h3 className="line-clamp-1 text-sm font-semibold text-white">{channel.name || channel.raw_title}</h3>
+                <h3 className="line-clamp-2 text-sm font-semibold text-white">{channel.name || channel.raw_title}</h3>
                 {channel.category && <p className="mt-1 text-xs text-slate-300/55">{channel.category}</p>}
                 <div className="mt-3 inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-semibold text-slate-100">
                   Open Stream

@@ -42,7 +42,7 @@ describe('vodQueries on-demand candidate lookup', () => {
 
     expect(pool.query).toHaveBeenCalledWith(
       expect.stringContaining('OR m.tmdb_id IS NULL'),
-      ['user-1', 'movie', 'tt15940132', 1265609, 'war machine']
+      ['user-1', 'movie', 'tt15940132', 1265609, 'war machine', 2026]
     );
   });
 });
@@ -52,7 +52,7 @@ describe('vodQueries provider catalog ordering', () => {
     await vodQueries.getByProvider('provider-1', { type: 'movie', page: 1, limit: 50 });
 
     expect(pool.query).toHaveBeenCalledWith(
-      expect.stringContaining('ORDER BY\n      v.normalized_title ASC NULLS LAST,\n      v.raw_title ASC,\n      v.stream_id ASC'),
+      expect.stringContaining('ORDER BY\n      v.canonical_normalized_title ASC NULLS LAST,\n      v.normalized_title ASC NULLS LAST,\n      v.raw_title ASC,\n      v.stream_id ASC'),
       ['provider-1', 'movie', 50, 0]
     );
   });

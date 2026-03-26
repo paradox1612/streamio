@@ -64,6 +64,11 @@ CREATE TABLE IF NOT EXISTS user_provider_vod (
   stream_id VARCHAR NOT NULL,
   raw_title VARCHAR NOT NULL,
   normalized_title VARCHAR,
+  canonical_title VARCHAR,
+  canonical_normalized_title VARCHAR,
+  title_year INTEGER,
+  content_languages TEXT[] DEFAULT ARRAY[]::TEXT[],
+  quality_tags TEXT[] DEFAULT ARRAY[]::TEXT[],
   poster_url VARCHAR,
   category VARCHAR,
   vod_type VARCHAR CONSTRAINT user_provider_vod_vod_type_check CHECK (vod_type IN ('movie', 'series', 'live')),
@@ -145,6 +150,16 @@ ALTER TABLE user_provider_vod
   ADD COLUMN IF NOT EXISTS container_extension VARCHAR DEFAULT 'mp4';
 ALTER TABLE user_provider_vod
   ADD COLUMN IF NOT EXISTS normalized_title VARCHAR;
+ALTER TABLE user_provider_vod
+  ADD COLUMN IF NOT EXISTS canonical_title VARCHAR;
+ALTER TABLE user_provider_vod
+  ADD COLUMN IF NOT EXISTS canonical_normalized_title VARCHAR;
+ALTER TABLE user_provider_vod
+  ADD COLUMN IF NOT EXISTS title_year INTEGER;
+ALTER TABLE user_provider_vod
+  ADD COLUMN IF NOT EXISTS content_languages TEXT[] DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE user_provider_vod
+  ADD COLUMN IF NOT EXISTS quality_tags TEXT[] DEFAULT ARRAY[]::TEXT[];
 ALTER TABLE tmdb_movies
   ADD COLUMN IF NOT EXISTS normalized_title VARCHAR;
 ALTER TABLE tmdb_series
@@ -160,9 +175,13 @@ CREATE INDEX IF NOT EXISTS idx_user_provider_vod_provider_id ON user_provider_vo
 CREATE INDEX IF NOT EXISTS idx_user_provider_vod_user_id ON user_provider_vod(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_provider_vod_type ON user_provider_vod(vod_type);
 CREATE INDEX IF NOT EXISTS idx_user_provider_vod_normalized_title ON user_provider_vod(normalized_title);
+CREATE INDEX IF NOT EXISTS idx_user_provider_vod_canonical_normalized_title ON user_provider_vod(canonical_normalized_title);
 CREATE INDEX IF NOT EXISTS idx_user_provider_vod_user_type_normalized ON user_provider_vod(user_id, vod_type, normalized_title);
+CREATE INDEX IF NOT EXISTS idx_upv_user_type_canonical ON user_provider_vod(user_id, vod_type, canonical_normalized_title);
 CREATE INDEX IF NOT EXISTS user_provider_vod_normalized_title_trgm_gist ON user_provider_vod
   USING gist(normalized_title gist_trgm_ops);
+CREATE INDEX IF NOT EXISTS user_provider_vod_canonical_title_trgm_gist ON user_provider_vod
+  USING gist(canonical_normalized_title gist_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_matched_content_raw_title ON matched_content(raw_title);
 CREATE INDEX IF NOT EXISTS idx_matched_content_tmdb_id ON matched_content(tmdb_id);
 CREATE INDEX IF NOT EXISTS idx_host_health_provider_id ON host_health(provider_id);
@@ -195,6 +214,14 @@ WHERE normalized_title IS NULL OR normalized_title = '';
 UPDATE user_provider_vod
 SET normalized_title = trim(regexp_replace(lower(unaccent(raw_title)), '[^a-z0-9]+', ' ', 'g'))
 WHERE normalized_title IS NULL OR normalized_title = '';
+
+UPDATE user_provider_vod
+SET canonical_title = raw_title
+WHERE canonical_title IS NULL OR canonical_title = '';
+
+UPDATE user_provider_vod
+SET canonical_normalized_title = normalized_title
+WHERE canonical_normalized_title IS NULL OR canonical_normalized_title = '';
 
 -- ─────────────────────────────────────────
 -- Additional Performance Indexes

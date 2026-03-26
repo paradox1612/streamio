@@ -3,7 +3,7 @@ const zlib = require('zlib');
 const fetch = require('node-fetch');
 const { tmdbQueries, matchQueries, vodQueries, jobQueries } = require('../db/queries');
 const logger = require('../utils/logger');
-const { cleanTitle, normalizeTitle } = require('../utils/titleNormalization');
+const { cleanTitle, normalizeTitle, parseMovieTitle, parseSeriesTitle } = require('../utils/titleNormalization');
 const { waitForAddonCapacity, getActiveAddonRequests } = require('../utils/loadManager');
 
 // parse-torrent-name may not be available — graceful fallback
@@ -113,9 +113,11 @@ async function fetchImdbIdFromApi(tmdbType, tmdbId, fallbackImdbId = null) {
 }
 
 async function findBestMatch(rawTitle, vodType) {
-  const clean = extractCleanTitle(rawTitle);
-  const normalized = normalizeTitle(clean);
-  const year = extractYear(rawTitle);
+  const parsed = vodType === 'series'
+    ? parseSeriesTitle(extractCleanTitle(rawTitle))
+    : parseMovieTitle(extractCleanTitle(rawTitle));
+  const normalized = parsed.canonicalNormalizedTitle || normalizeTitle(parsed.canonicalTitle || rawTitle);
+  const year = parsed.year || extractYear(rawTitle);
 
   if (!normalized) return null;
 

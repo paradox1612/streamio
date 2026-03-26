@@ -14,12 +14,12 @@ import toast from 'react-hot-toast';
 import BrandMark from './BrandMark';
 
 const navItems = [
-  { path: '/dashboard', label: 'Dashboard', icon: HomeIcon },
-  { path: '/providers', label: 'Providers', icon: ServerIcon },
-  { path: '/vod', label: 'Browse VOD', icon: FilmIcon },
-  { path: '/live', label: 'Live TV', icon: SparklesIcon },
-  { path: '/addon', label: 'Addon', icon: Cog6ToothIcon },
-  { path: '/account', label: 'Account', icon: UserIcon },
+  { path: '/dashboard', label: 'Dashboard', mobileLabel: 'Home', icon: HomeIcon },
+  { path: '/providers', label: 'Providers', mobileLabel: 'Sources', icon: ServerIcon },
+  { path: '/vod', label: 'Browse VOD', mobileLabel: 'VOD', icon: FilmIcon },
+  { path: '/live', label: 'Live TV', mobileLabel: 'Live', icon: SparklesIcon },
+  { path: '/addon', label: 'Addon', mobileLabel: 'Addon', icon: Cog6ToothIcon },
+  { path: '/account', label: 'Account', mobileLabel: 'Account', icon: UserIcon },
 ];
 
 function NavItem({ to, icon: Icon, label, onClick }) {
@@ -124,8 +124,8 @@ export default function Layout({ children }) {
           </div>
         </main>
 
-        <nav className="fixed inset-x-3 bottom-3 z-30 rounded-[28px] border border-white/10 bg-surface-900/88 px-2 py-2 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-2xl lg:hidden">
-          <div className="grid grid-cols-6 gap-1">
+        <nav className="fixed inset-x-3 bottom-3 z-30 overflow-x-auto rounded-[28px] border border-white/10 bg-surface-900/88 px-2 py-2 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-2xl lg:hidden">
+          <div className="flex min-w-max gap-1">
             {navItems.map(item => {
               const Icon = item.icon;
               return (
@@ -133,13 +133,13 @@ export default function Layout({ children }) {
                   key={item.path}
                   to={item.path}
                   className={({ isActive }) =>
-                    `flex min-w-0 flex-col items-center gap-1 rounded-2xl px-1 py-2 text-[10px] font-medium transition ${
+                    `flex min-w-[72px] flex-col items-center gap-1 rounded-2xl px-3 py-2 text-[10px] font-medium transition ${
                       isActive ? 'bg-white/[0.08] text-white' : 'text-slate-300/65'
                     }`
                   }
                 >
                   <Icon className="h-5 w-5" />
-                  <span className="truncate">{item.label.replace('Browse ', '')}</span>
+                  <span className="truncate">{item.mobileLabel || item.label.replace('Browse ', '')}</span>
                 </NavLink>
               );
             })}

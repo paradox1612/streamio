@@ -130,20 +130,20 @@ export default function ProviderDetail() {
               <h1 className="text-3xl font-bold leading-tight text-white sm:text-4xl">{provider.name}</h1>
               <StatusBadge status={provider.status} pulse={provider.status === 'online'} />
             </div>
-            <p className="hero-copy mt-3">{provider.active_host || 'No active host selected yet'}</p>
+            <p className="hero-copy mt-3 break-all">{provider.active_host || 'No active host selected yet'}</p>
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="grid gap-3 sm:flex sm:flex-wrap">
             {!editing && (
-              <button onClick={() => setEditing(true)} className="btn-secondary">
+              <button onClick={() => setEditing(true)} className="btn-secondary w-full sm:w-auto">
                 <PencilSquareIcon className="h-4 w-4" />
                 Edit
               </button>
             )}
-            <button onClick={handleRecheck} disabled={rechecking} className="btn-secondary">
+            <button onClick={handleRecheck} disabled={rechecking} className="btn-secondary w-full sm:w-auto">
               <SignalIcon className="h-4 w-4" />
               {rechecking ? 'Checking...' : 'Recheck Health'}
             </button>
-            <button onClick={handleRefresh} disabled={refreshing} className="btn-primary">
+            <button onClick={handleRefresh} disabled={refreshing} className="btn-primary w-full sm:w-auto">
               <ArrowPathIcon className="h-4 w-4" />
               {refreshing ? 'Refreshing...' : 'Refresh Catalog'}
             </button>
@@ -152,7 +152,7 @@ export default function ProviderDetail() {
       </section>
 
       {editing && (
-        <section className="panel-soft p-6 sm:p-8">
+        <section className="panel-soft p-5 sm:p-8">
           <p className="eyebrow mb-2">Edit Configuration</p>
           <h2 className="section-title">Provider credentials and hosts</h2>
           <form onSubmit={handleSave} className="mt-6 grid gap-5">
@@ -174,9 +174,9 @@ export default function ProviderDetail() {
               <label className="field-label">Password</label>
               <input type="password" value={form.password} onChange={(e) => setForm(prev => ({ ...prev, password: e.target.value }))} placeholder="Leave blank to keep current password" className="field-input" />
             </div>
-            <div className="flex flex-wrap justify-end gap-3">
-              <button type="button" onClick={handleCancelEdit} disabled={saving} className="btn-secondary">Cancel</button>
-              <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Saving...' : 'Save Changes'}</button>
+            <div className="grid gap-3 sm:flex sm:flex-wrap sm:justify-end">
+              <button type="button" onClick={handleCancelEdit} disabled={saving} className="btn-secondary w-full sm:w-auto">Cancel</button>
+              <button type="submit" disabled={saving} className="btn-primary w-full sm:w-auto">{saving ? 'Saving...' : 'Save Changes'}</button>
             </div>
           </form>
         </section>
@@ -190,7 +190,7 @@ export default function ProviderDetail() {
           { label: 'Match Rate', value: `${matchRate}%` },
           { label: 'Unmatched', value: parseInt(matchStats.unmatched || 0, 10).toLocaleString() },
         ].map(s => (
-          <div key={s.label} className="panel-soft p-5">
+          <div key={s.label} className="panel-soft p-4 sm:p-5">
             <p className="metric-label mb-2">{s.label}</p>
             <p className="text-3xl font-bold text-white">{s.value}</p>
           </div>
@@ -198,7 +198,7 @@ export default function ProviderDetail() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="panel-soft p-6 sm:p-8">
+        <div className="panel-soft p-5 sm:p-8">
           <p className="eyebrow mb-2">Matching</p>
           <h2 className="section-title">Catalog confidence</h2>
           <div className="mt-6">
@@ -209,7 +209,7 @@ export default function ProviderDetail() {
           </p>
         </div>
 
-        <div className="panel-soft p-6 sm:p-8">
+        <div className="panel-soft p-5 sm:p-8">
           <p className="eyebrow mb-2">Hosts</p>
           <h2 className="section-title">Health status</h2>
           <div className="mt-5 space-y-3">
@@ -237,13 +237,13 @@ export default function ProviderDetail() {
       </section>
 
       {categories.length > 0 && (
-        <section className="panel-soft p-6 sm:p-8">
+        <section className="panel-soft p-5 sm:p-8">
           <p className="eyebrow mb-2">Catalog Layout</p>
           <h2 className="section-title">Category breakdown</h2>
           <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {categories.slice(0, 30).map(cat => (
               <div key={`${cat.category}-${cat.vod_type}`} className="flex items-center justify-between rounded-[20px] border border-white/[0.08] bg-white/[0.03] px-4 py-3">
-                <span className="min-w-0 flex-1 truncate text-sm text-slate-200/[0.82]">
+                <span className="min-w-0 flex-1 text-sm text-slate-200/[0.82]">
                   {cat.category} <span className="text-xs text-slate-300/50">({cat.vod_type})</span>
                 </span>
                 <span className="ml-3 text-sm font-bold text-brand-300">{parseInt(cat.count, 10).toLocaleString()}</span>

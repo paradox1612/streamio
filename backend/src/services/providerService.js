@@ -2,7 +2,7 @@ const fetch = require('node-fetch');
 const { providerQueries, vodQueries } = require('../db/queries');
 const logger = require('../utils/logger');
 const cache = require('../utils/cache');
-const { normalizeTitle } = require('../utils/titleNormalization');
+const { normalizeTitle, parseMovieTitle, parseReleaseTitle, parseSeriesTitle } = require('../utils/titleNormalization');
 
 const FETCH_TIMEOUT = 20000; // 20s — some providers are slow
 
@@ -206,6 +206,7 @@ const providerService = {
       if (!Array.isArray(liveChannels)) return [];
 
       const liveStreams = liveChannels.map(ch => ({
+        ...parseReleaseTitle(ch.name || String(ch.stream_id)),
         userId: provider.user_id,
         providerId,
         streamId: String(ch.stream_id),
@@ -254,6 +255,7 @@ const providerService = {
     let vodMovies = [];
     if (vodMoviesResult.status === 'fulfilled' && Array.isArray(vodMoviesResult.value)) {
       vodMovies = vodMoviesResult.value.map(m => ({
+        ...parseMovieTitle(m.name || String(m.stream_id)),
         userId: provider.user_id,
         providerId,
         streamId: String(m.stream_id),
@@ -272,6 +274,7 @@ const providerService = {
     let vodSeries = [];
     if (vodSeriesResult.status === 'fulfilled' && Array.isArray(vodSeriesResult.value)) {
       vodSeries = vodSeriesResult.value.map(s => ({
+        ...parseSeriesTitle(s.name || String(s.series_id)),
         userId: provider.user_id,
         providerId,
         streamId: String(s.series_id),

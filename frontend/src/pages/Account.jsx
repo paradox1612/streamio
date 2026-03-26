@@ -62,7 +62,7 @@ export default function Account() {
               Your account controls provider access, addon identity, and route-level security. Keep your password current and treat destructive actions carefully.
             </p>
           </div>
-          <div className="panel-soft p-5">
+          <div className="panel-soft p-4 sm:p-5">
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-100">
               <ShieldCheckIcon className="h-4 w-4" />
               {user?.is_active ? 'Account active' : 'Account suspended'}
@@ -75,7 +75,7 @@ export default function Account() {
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="panel-soft p-6 sm:p-8">
+        <div className="panel-soft p-5 sm:p-8">
           <p className="eyebrow mb-2">Profile</p>
           <h2 className="section-title">Account information</h2>
           <div className="mt-6 space-y-4">
@@ -84,12 +84,12 @@ export default function Account() {
               ['Member Since', user?.created_at ? new Date(user.created_at).toLocaleDateString() : '—'],
               ['Last Seen', user?.last_seen ? new Date(user.last_seen).toLocaleDateString() : '—'],
             ].map(([label, value]) => (
-              <div key={label} className="flex items-center justify-between gap-4 border-b border-white/[0.08] pb-4">
+              <div key={label} className="flex flex-col gap-1 border-b border-white/[0.08] pb-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <span className="text-sm text-slate-300/60">{label}</span>
-                <span className="text-sm font-medium text-white">{value}</span>
+                <span className="break-all text-sm font-medium text-white">{value}</span>
               </div>
             ))}
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <span className="text-sm text-slate-300/60">Status</span>
               <span className={`inline-flex items-center gap-2 text-sm font-medium ${user?.is_active ? 'text-emerald-100' : 'text-red-100'}`}>
                 {user?.is_active && <CheckIcon className="h-4 w-4" />}
@@ -99,7 +99,7 @@ export default function Account() {
           </div>
         </div>
 
-        <div className="panel-soft p-6 sm:p-8">
+        <div className="panel-soft p-5 sm:p-8">
           <p className="eyebrow mb-2">Security</p>
           <h2 className="section-title">Change password</h2>
           <form onSubmit={handleChangePassword} className="mt-6 space-y-5">
@@ -143,13 +143,13 @@ export default function Account() {
         </div>
       </section>
 
-      <section className="panel-soft border-red-400/[0.15] bg-red-500/5 p-6 sm:p-8">
+      <section className="panel-soft border-red-400/[0.15] bg-red-500/5 p-5 sm:p-8">
         <p className="eyebrow mb-2 text-red-100/60">Danger Zone</p>
         <h2 className="section-title">Delete account</h2>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300/[0.72]">
           This removes your account, providers, and addon access permanently. There is no recovery path after confirmation.
         </p>
-        <button onClick={() => setConfirmStep(true)} disabled={deleting} className="btn-danger mt-6">
+        <button onClick={() => setConfirmStep(true)} disabled={deleting} className="btn-danger mt-6 w-full sm:w-auto">
           {deleting ? 'Deleting account...' : 'Delete Account'}
         </button>
       </section>

@@ -41,16 +41,16 @@ export default function Login() {
         />
 
         <div className="auth-form-wrap">
-          <div className="mb-8 lg:hidden">
+          <div className="mb-6 lg:hidden">
             <BrandMark />
           </div>
 
-          <div className="mb-8">
+          <div className="mb-6 sm:mb-8">
             <div className="kicker">
               <SparklesIcon className="h-4 w-4" />
               Welcome Back
             </div>
-            <h2 className="mt-6 text-3xl font-bold text-white sm:text-4xl">Sign in to StreamBridge</h2>
+            <h2 className="mt-5 text-[2rem] font-bold leading-tight text-white sm:mt-6 sm:text-4xl">Sign in to StreamBridge</h2>
             <p className="mt-3 max-w-md text-sm leading-6 text-slate-300/[0.72]">
               Return to your provider workspace, VOD browser, Live TV filters, and personal addon controls.
             </p>
@@ -71,7 +71,7 @@ export default function Login() {
               </div>
 
               <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="mb-2 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                   <label className="field-label mb-0">Password</label>
                   <Link to="/forgot-password" className="text-xs font-semibold text-brand-300 transition-colors hover:text-brand-200">
                     Reset password

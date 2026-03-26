@@ -6,11 +6,12 @@ const hostHealthService = require('../services/hostHealthService');
 const cache = require('../utils/cache');
 const logger = require('../utils/logger');
 const { touchUserLastSeen } = require('../utils/userActivity');
-const { normalizeTitle, extractContentLanguages } = require('../utils/titleNormalization');
+const { normalizeTitle, extractContentLanguages, parseMovieTitle, parseReleaseTitle, parseSeriesTitle } = require('../utils/titleNormalization');
 const { beginAddonRequest, endAddonRequest } = require('../utils/loadManager');
 
 const TMDB_POSTER_BASE = 'https://image.tmdb.org/t/p/w500';
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
+const pendingOnDemandMatches = new Map();
 
 function normalizeCategoryName(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -243,7 +244,9 @@ function applyLanguagePreferences(vodItems, user) {
   if (!preferred.length && !excluded.length) return vodItems;
 
   return vodItems.filter((item) => {
-    const languages = extractContentLanguages(item.raw_title);
+    const languages = Array.isArray(item.content_languages) && item.content_languages.length
+      ? item.content_languages
+      : extractContentLanguages(item.raw_title);
 
     if (preferred.length) {
       return languages.some(language => preferred.includes(language));
@@ -372,22 +375,42 @@ async function resolveCandidateMatch(candidate, target) {
     };
   }
 
-  const candidateTitle = candidate.normalized_title || normalizeTitle(candidate.raw_title || '');
+  const parsedCandidate = target.tmdb_type === 'series'
+    ? parseSeriesTitle(candidate.raw_title || '')
+    : parseMovieTitle(candidate.raw_title || '');
+  const candidateTitle = candidate.canonical_normalized_title
+    || parsedCandidate.canonicalNormalizedTitle
+    || candidate.normalized_title
+    || normalizeTitle(candidate.raw_title || '');
   if (!candidateTitle) return null;
 
   const targetType = target.tmdb_type === 'series' ? 'series' : 'movie';
-  const exactResult = await (targetType === 'series'
-    ? tmdbQueries.exactMatchSeries(candidateTitle, target.year)
-    : tmdbQueries.exactMatchMovie(candidateTitle, target.year));
-  const result = exactResult || await (targetType === 'series'
-    ? tmdbQueries.fuzzyMatchSeries(candidateTitle, target.year)
-    : tmdbQueries.fuzzyMatchMovie(candidateTitle, target.year));
+  const titleVariants = [candidateTitle];
 
-  if (!result || result.id !== target.id || result.score < 0.6) {
-    return null;
+  if (target.year) {
+    const strippedYearTitle = candidateTitle
+      .replace(new RegExp(`(^|\\s)${target.year}(?=\\s|$)`, 'g'), ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    if (strippedYearTitle && strippedYearTitle !== candidateTitle) {
+      titleVariants.push(strippedYearTitle);
+    }
   }
 
-  return result;
+  for (const titleVariant of titleVariants) {
+    const exactResult = await (targetType === 'series'
+      ? tmdbQueries.exactMatchSeries(titleVariant, target.year)
+      : tmdbQueries.exactMatchMovie(titleVariant, target.year));
+    const result = exactResult || await (targetType === 'series'
+      ? tmdbQueries.fuzzyMatchSeries(titleVariant, target.year)
+      : tmdbQueries.fuzzyMatchMovie(titleVariant, target.year));
+
+    if (result && result.id === target.id && result.score >= 0.6) {
+      return result;
+    }
+  }
+
+  return null;
 }
 
 async function tryOnDemandMatch(userId, baseId, type) {
@@ -408,6 +431,7 @@ async function tryOnDemandMatch(userId, baseId, type) {
   const targetType = target.tmdb_type === 'series' ? 'series' : 'movie';
   const candidateMatchCache = new Map();
   let matchedAny = false;
+  let firstMatchedCandidate = null;
 
   for (const candidate of candidates) {
     const cacheKey = [
@@ -431,13 +455,34 @@ async function tryOnDemandMatch(userId, baseId, type) {
       confidenceScore: result.score,
     });
     matchedAny = true;
+    if (!firstMatchedCandidate) firstMatchedCandidate = candidate;
     logger.info(`On-demand match resolved "${candidate.raw_title}" to ${baseId}`);
   }
 
-  if (matchedAny) return resolveVodItem(userId, baseId);
+  if (matchedAny) {
+    const resolvedItem = await resolveVodItem(userId, baseId);
+    return resolvedItem || firstMatchedCandidate;
+  }
 
   logger.info(`On-demand match found no candidate for ${baseId} (${targetNormalized})`);
   return null;
+}
+
+async function resolveOnDemandMatchShared(userId, baseId, type) {
+  const key = `${userId}:${type}:${baseId}`;
+  const pending = pendingOnDemandMatches.get(key);
+  if (pending) return pending;
+
+  const promise = (async () => {
+    try {
+      return await tryOnDemandMatch(userId, baseId, type);
+    } finally {
+      pendingOnDemandMatches.delete(key);
+    }
+  })();
+
+  pendingOnDemandMatches.set(key, promise);
+  return promise;
 }
 
 // ─── Meta ─────────────────────────────────────────────────────────────────────
@@ -457,7 +502,7 @@ async function handleMeta(token, type, id) {
     const { baseId } = parseStremioId(id);
     let vodItem = await resolveVodItem(user.id, baseId);
     if (!vodItem && (baseId.startsWith('tt') || baseId.startsWith('tmdb:'))) {
-      vodItem = await tryOnDemandMatch(user.id, baseId, type);
+      vodItem = await resolveOnDemandMatchShared(user.id, baseId, type);
     }
     if (!vodItem) return { meta: null };
 
@@ -555,7 +600,7 @@ async function handleStream(token, type, id) {
 
     let vodItems = await resolveVodItemsForStream(user.id, baseId);
     if (!vodItems.length && (baseId.startsWith('tt') || baseId.startsWith('tmdb:'))) {
-      const matchedItem = await tryOnDemandMatch(user.id, baseId, type);
+      const matchedItem = await resolveOnDemandMatchShared(user.id, baseId, type);
       if (matchedItem) {
         vodItems = await resolveVodItemsForStream(user.id, baseId);
         if (!vodItems.length) vodItems = [matchedItem];
@@ -788,5 +833,6 @@ module.exports = {
     resolveProviderPlaybackHosts,
     resolveVodItemsForStream,
     tryOnDemandMatch,
+    resolveOnDemandMatchShared,
   },
 };

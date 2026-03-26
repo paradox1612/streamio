@@ -36,8 +36,8 @@ function AddProviderModal({ onClose, onAdded }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
-      <div className="panel max-h-[calc(100svh-2rem)] w-full max-w-2xl overflow-y-auto p-5 sm:p-8">
-        <div className="mb-6 flex items-start justify-between gap-4">
+      <div className="panel max-h-[calc(100svh-2rem)] w-full max-w-2xl overflow-y-auto p-4 sm:p-8">
+        <div className="mb-5 flex items-start justify-between gap-4 sm:mb-6">
           <div>
             <p className="eyebrow mb-2">New Source</p>
             <h2 className="section-title">Add IPTV provider</h2>
@@ -76,9 +76,9 @@ function AddProviderModal({ onClose, onAdded }) {
             <input className="field-input" type="password" required placeholder="xtream_password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
           </div>
 
-          <div className="flex flex-wrap justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-            <button type="submit" disabled={loading} className="btn-primary">
+          <div className="grid gap-3 pt-2 sm:flex sm:flex-wrap sm:justify-end">
+            <button type="button" onClick={onClose} className="btn-secondary w-full sm:w-auto">Cancel</button>
+            <button type="submit" disabled={loading} className="btn-primary w-full sm:w-auto">
               {loading ? 'Adding provider...' : 'Add Provider'}
             </button>
           </div>
@@ -122,14 +122,14 @@ function ProviderRow({ provider, onRefresh, onDelete }) {
   };
 
   return (
-    <div className="panel-soft p-6">
+    <div className="panel-soft p-4 sm:p-6">
       <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0 flex-1">
           <div className="mb-3 flex flex-wrap items-center gap-3">
             <h3 className="text-2xl font-bold text-white">{provider.name}</h3>
             <StatusBadge status={provider.status} pulse={online} />
           </div>
-          <p className="text-sm text-slate-300/70">{provider.active_host || 'No active host available yet'}</p>
+          <p className="break-all text-sm text-slate-300/70">{provider.active_host || 'No active host available yet'}</p>
           <div className="mt-5 grid gap-4 sm:grid-cols-3">
             <div>
               <p className="metric-label mb-1">Titles</p>
@@ -146,19 +146,19 @@ function ProviderRow({ provider, onRefresh, onDelete }) {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 xl:justify-end">
-          <Link to={`/providers/${provider.id}`} className="btn-secondary">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap xl:justify-end">
+          <Link to={`/providers/${provider.id}`} className="btn-secondary w-full sm:w-auto">
             Details
           </Link>
-          <button onClick={handleTest} disabled={!!loading} className="btn-secondary">
+          <button onClick={handleTest} disabled={!!loading} className="btn-secondary w-full sm:w-auto">
             <SignalIcon className="h-4 w-4" />
             {loading === 'test' ? 'Testing...' : 'Test'}
           </button>
-          <button onClick={handleRefresh} disabled={!!loading} className="btn-secondary">
+          <button onClick={handleRefresh} disabled={!!loading} className="btn-secondary w-full sm:w-auto">
             <ArrowPathIcon className="h-4 w-4" />
             {loading === 'refresh' ? 'Refreshing...' : 'Refresh'}
           </button>
-          <button onClick={() => onDelete(provider)} className="btn-danger">
+          <button onClick={() => onDelete(provider)} className="btn-danger col-span-2 w-full sm:col-span-1 sm:w-auto">
             <TrashIcon className="h-4 w-4" />
             Delete
           </button>
@@ -178,7 +178,7 @@ function ProviderRow({ provider, onRefresh, onDelete }) {
               }`}
             >
               {host === provider.active_host && <CheckIcon className="h-3.5 w-3.5" />}
-              {host.replace(/^https?:\/\//, '')}
+              <span className="break-all">{host.replace(/^https?:\/\//, '')}</span>
             </span>
           ))}
         </div>
@@ -237,7 +237,7 @@ export default function Providers() {
               Keep credentials current, monitor active hosts, test connectivity, and refresh catalogs without losing the operational view.
             </p>
           </div>
-          <button onClick={() => setShowAdd(true)} className="btn-primary">
+          <button onClick={() => setShowAdd(true)} className="btn-primary w-full sm:w-auto">
             <PlusIcon className="h-5 w-5" />
             Add Provider
           </button>

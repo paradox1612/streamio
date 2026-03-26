@@ -42,13 +42,13 @@ function ProviderCard({ provider }) {
   return (
     <Link
       to={`/providers/${provider.id}`}
-      className="panel-soft group block p-6 no-underline transition-all duration-200 hover:-translate-y-0.5 hover:border-white/[0.15]"
+      className="panel-soft group block p-5 sm:p-6 no-underline transition-all duration-200 hover:-translate-y-0.5 hover:border-white/[0.15]"
     >
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <p className="metric-label mb-2">Provider</p>
           <h3 className="text-xl font-bold text-white transition-colors group-hover:text-brand-200">{provider.name}</h3>
-          <p className="mt-2 text-sm text-slate-300/60">{provider.active_host || 'No active host'}</p>
+          <p className="mt-2 break-all text-sm text-slate-300/60">{provider.active_host || 'No active host'}</p>
         </div>
         <StatusBadge status={online ? 'online' : 'offline'} pulse={online} />
       </div>
@@ -76,7 +76,7 @@ function ProviderCard({ provider }) {
         </div>
 
         {provider.accountInfo?.expiresAt && (
-          <div className="flex items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3">
+          <div className="flex flex-col gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <span className="text-sm text-slate-300/[0.65]">Expiry</span>
             <span className={`text-sm font-bold ${expiryColor}`}>{formatExpiry(provider.accountInfo.expiresAt)}</span>
           </div>
@@ -189,18 +189,18 @@ export default function Dashboard() {
             <p className="hero-copy mt-3">
               Start with the actions you need most, then move straight into provider activity and matching performance.
             </p>
-            <div className="mt-6 flex flex-wrap gap-3">
+            <div className="mt-6 grid gap-3 sm:flex sm:flex-wrap">
               {addonUrl && (
                 <>
-                  <button onClick={copyUrl} className="btn-primary">
+                  <button onClick={copyUrl} className="btn-primary w-full sm:w-auto">
                     {copying ? 'Copied URL' : 'Copy Addon URL'}
                   </button>
-                  <button onClick={installInStremio} className="btn-secondary">
+                  <button onClick={installInStremio} className="btn-secondary w-full sm:w-auto">
                     Install in Stremio
                   </button>
                 </>
               )}
-              <Link to="/providers" className="btn-secondary">
+              <Link to="/providers" className="btn-secondary w-full sm:w-auto">
                 Manage Providers
               </Link>
             </div>
@@ -222,7 +222,7 @@ export default function Dashboard() {
       </section>
 
       {addonUrl && (
-        <section className="panel-soft grid gap-6 p-6 lg:grid-cols-[1fr_auto] lg:items-center">
+        <section className="panel-soft grid gap-5 p-5 sm:p-6 lg:grid-cols-[1fr_auto] lg:items-center">
           <div>
             <p className="eyebrow mb-2">Personal Addon</p>
             <h2 className="section-title">Ready to install</h2>
@@ -231,10 +231,10 @@ export default function Dashboard() {
               {addonUrl}
             </div>
           </div>
-          <div className="flex flex-col gap-3 lg:w-52">
+          <div className="grid gap-3 lg:w-52">
             <button
               onClick={copyUrl}
-              className={`btn-secondary ${copying ? 'border-emerald-300/20 bg-emerald-400/10 text-emerald-50' : ''}`}
+              className={`btn-secondary w-full ${copying ? 'border-emerald-300/20 bg-emerald-400/10 text-emerald-50' : ''}`}
             >
               {copying ? (
                 <>
@@ -245,7 +245,7 @@ export default function Dashboard() {
                 'Copy URL'
               )}
             </button>
-            <button onClick={installInStremio} className="btn-primary">
+            <button onClick={installInStremio} className="btn-primary w-full">
               Install
             </button>
           </div>

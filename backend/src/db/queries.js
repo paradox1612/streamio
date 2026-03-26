@@ -235,27 +235,37 @@ const vodQueries = {
     if (!entries.length) return;
     const values = [];
     const placeholders = entries.map((e, i) => {
-      const base = i * 10;
+      const base = i * 15;
       values.push(
         e.userId,
         e.providerId,
         e.streamId,
         e.rawTitle,
         e.normalizedTitle || null,
+        e.canonicalTitle || null,
+        e.canonicalNormalizedTitle || null,
+        e.titleYear || null,
+        e.contentLanguages || [],
+        e.qualityTags || [],
         e.posterUrl,
         e.category,
         e.vodType,
         e.containerExtension || null,
         e.epgChannelId || null
       );
-      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10})`;
+      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}, $${base + 12}, $${base + 13}, $${base + 14}, $${base + 15})`;
     });
     await pool.query(
-      `INSERT INTO user_provider_vod (user_id, provider_id, stream_id, raw_title, normalized_title, poster_url, category, vod_type, container_extension, epg_channel_id)
+      `INSERT INTO user_provider_vod (user_id, provider_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension, epg_channel_id)
        VALUES ${placeholders.join(', ')}
        ON CONFLICT (provider_id, stream_id, vod_type) DO UPDATE
        SET raw_title = EXCLUDED.raw_title,
            normalized_title = EXCLUDED.normalized_title,
+           canonical_title = EXCLUDED.canonical_title,
+           canonical_normalized_title = EXCLUDED.canonical_normalized_title,
+           title_year = EXCLUDED.title_year,
+           content_languages = EXCLUDED.content_languages,
+           quality_tags = EXCLUDED.quality_tags,
            poster_url = EXCLUDED.poster_url,
            category = EXCLUDED.category,
            container_extension = EXCLUDED.container_extension,
@@ -282,6 +292,7 @@ const vodQueries = {
     if (matched === true) { query += ` AND m.tmdb_id IS NOT NULL`; }
     if (matched === false) { query += ` AND (m.tmdb_id IS NULL AND m.id IS NOT NULL)`; }
     query += ` ORDER BY
+      v.canonical_normalized_title ASC NULLS LAST,
       v.normalized_title ASC NULLS LAST,
       v.raw_title ASC,
       v.stream_id ASC
@@ -388,13 +399,16 @@ const vodQueries = {
     let idx = 5;
 
     if (normalizedTitle) {
-      query += ` AND v.normalized_title IS NOT NULL`;
+      query += ` AND COALESCE(v.canonical_normalized_title, v.normalized_title) IS NOT NULL`;
       query += ` ORDER BY
-        CASE WHEN v.normalized_title = $${idx} THEN 0 ELSE 1 END,
-        CASE WHEN v.normalized_title % $${idx} THEN 0 ELSE 1 END,
-        v.normalized_title <-> $${idx} ASC
+        CASE WHEN COALESCE(v.canonical_normalized_title, v.normalized_title) = $${idx} THEN 0 ELSE 1 END,
+        CASE WHEN COALESCE(v.canonical_normalized_title, v.normalized_title) % $${idx} THEN 0 ELSE 1 END,
+        CASE WHEN v.title_year = $${idx + 1} THEN 0 ELSE 1 END,
+        COALESCE(v.canonical_normalized_title, v.normalized_title) <-> $${idx} ASC,
+        ABS(COALESCE(v.title_year, $${idx + 1}) - $${idx + 1}) ASC
         LIMIT 25`;
       params.push(normalizedTitle);
+      params.push(year || null);
     } else {
       query += ` ORDER BY v.created_at DESC LIMIT 25`;
     }

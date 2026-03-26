@@ -53,23 +53,23 @@ export default function Signup() {
         />
 
         <div className="auth-form-wrap">
-          <div className="mb-8 lg:hidden">
+          <div className="mb-6 lg:hidden">
             <BrandMark />
           </div>
 
-          <div className="mb-8">
+          <div className="mb-6 sm:mb-8">
             <div className="kicker">
               <SparklesIcon className="h-4 w-4" />
               New Account
             </div>
-            <h2 className="mt-6 text-3xl font-bold text-white sm:text-4xl">Create your workspace</h2>
+            <h2 className="mt-5 text-[2rem] font-bold leading-tight text-white sm:mt-6 sm:text-4xl">Create your workspace</h2>
             <p className="mt-3 max-w-md text-sm leading-6 text-slate-300/[0.72]">
               Start with your account now. Provider credentials and addon setup happen right after sign up.
             </p>
           </div>
 
           <div className="panel p-5 sm:p-8">
-            <div className="mb-5 rounded-[24px] border border-brand-300/15 bg-brand-400/8 p-4">
+            <div className="mb-5 rounded-[20px] border border-brand-300/15 bg-brand-400/8 p-4 sm:rounded-[24px]">
               <p className="text-sm font-semibold text-white">What you unlock immediately</p>
               <div className="mt-3 grid gap-3">
                 {benefits.map((benefit) => (
@@ -104,7 +104,7 @@ export default function Signup() {
                   onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                   className="field-input"
                 />
-                <p className="mt-2 text-xs text-slate-300/55">Use at least 8 characters. You can change it later in Account settings.</p>
+                <p className="mt-2 text-xs leading-5 text-slate-300/55">Use at least 8 characters. You can change it later in Account settings.</p>
               </div>
 
               <div>
