@@ -10,6 +10,10 @@ const { beginAddonRequest, endAddonRequest } = require('../utils/loadManager');
 const TMDB_POSTER_BASE = 'https://image.tmdb.org/t/p/w500';
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 
+function normalizeCategoryName(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 // ─── Manifest ─────────────────────────────────────────────────────────────────
 
 async function buildManifest(token) {
@@ -26,6 +30,16 @@ async function buildManifest(token) {
 
   const catalogs = [];
   for (const provider of providers) {
+    const categoryBreakdown = await vodQueries.getCategoryBreakdown(provider.id);
+    const liveCategories = Array.from(
+      new Set(
+        categoryBreakdown
+          .filter(entry => entry.vod_type === 'live')
+          .map(entry => normalizeCategoryName(entry.category))
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b));
+
     catalogs.push({
       id: `sb_${provider.id}_movies`,
       type: 'movie',
@@ -43,7 +57,11 @@ async function buildManifest(token) {
       id: `sb_${provider.id}_live`,
       type: 'tv',
       name: `${provider.name} – Live TV`,
-      extra: [{ name: 'search' }, { name: 'skip' }],
+      extra: [
+        { name: 'search' },
+        { name: 'skip' },
+        ...(liveCategories.length > 0 ? [{ name: 'genre', options: liveCategories }] : []),
+      ],
     });
   }
 
@@ -82,6 +100,7 @@ async function handleCatalog(token, type, catalogId, extra = {}) {
 
   const skip = parseInt(extra.skip) || 0;
   const search = extra.search || '';
+  const genre = normalizeCategoryName(extra.genre);
   const limit = 100;
 
   let vodType;
@@ -98,7 +117,11 @@ async function handleCatalog(token, type, catalogId, extra = {}) {
     search,
   });
 
-  return { metas: items.map(item => buildMetaPreview(item)) };
+  const filteredItems = genre
+    ? items.filter(item => normalizeCategoryName(item.category) === genre)
+    : items;
+
+  return { metas: filteredItems.map(item => buildMetaPreview(item)) };
 }
 
 function buildMetaPreview(item) {

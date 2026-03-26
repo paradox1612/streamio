@@ -6,6 +6,14 @@ const mockTmdbQueries = {
 const mockUserQueries = {
   findByToken: jest.fn(),
 };
+const mockProviderQueries = {
+  findByUser: jest.fn(),
+  findByIdAndUser: jest.fn(),
+};
+const mockVodQueries = {
+  getCategoryBreakdown: jest.fn(),
+  getByProvider: jest.fn(),
+};
 const mockHostHealthQueries = {
   getByProvider: jest.fn(),
 };
@@ -16,8 +24,8 @@ const mockCache = {
 
 jest.mock('../../src/db/queries', () => ({
   userQueries: mockUserQueries,
-  providerQueries: {},
-  vodQueries: {},
+  providerQueries: mockProviderQueries,
+  vodQueries: mockVodQueries,
   tmdbQueries: mockTmdbQueries,
   matchQueries: {},
   hostHealthQueries: mockHostHealthQueries,
@@ -39,7 +47,7 @@ process.env.TMDB_API_KEY = 'test-key';
 
 const fetch = require('node-fetch');
 const { pool } = require('../../src/db/queries');
-const { handleStream, __test__ } = require('../../src/addon/addonHandler');
+const { buildManifest, handleCatalog, handleStream, __test__ } = require('../../src/addon/addonHandler');
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -85,6 +93,59 @@ describe('addonHandler getTargetTmdbRecord', () => {
       year: 2026,
       imdb_id: 'tt15574124',
       tmdb_type: 'movie',
+    });
+  });
+});
+
+describe('addonHandler buildManifest', () => {
+  it('adds live category options to provider live catalogs', async () => {
+    mockCache.get.mockReturnValue(null);
+    mockUserQueries.findByToken.mockResolvedValue({ id: 'user-1' });
+    mockProviderQueries.findByUser.mockResolvedValue([{ id: '123e4567-e89b-12d3-a456-426614174000', name: 'Startshare' }]);
+    mockVodQueries.getCategoryBreakdown.mockResolvedValue([
+      { vod_type: 'live', category: 'Sports' },
+      { vod_type: 'live', category: 'News' },
+      { vod_type: 'movie', category: 'Action' },
+      { vod_type: 'live', category: 'Sports' },
+    ]);
+
+    const manifest = await buildManifest('token-1');
+    const liveCatalog = manifest.catalogs.find(c => c.id === 'sb_123e4567-e89b-12d3-a456-426614174000_live');
+
+    expect(liveCatalog).toEqual(expect.objectContaining({
+      type: 'tv',
+      name: 'Startshare – Live TV',
+    }));
+    expect(liveCatalog.extra).toEqual([
+      { name: 'search' },
+      { name: 'skip' },
+      { name: 'genre', options: ['News', 'Sports'] },
+    ]);
+  });
+});
+
+describe('addonHandler handleCatalog', () => {
+  it('filters live catalog results by selected Stremio genre', async () => {
+    mockCache.get.mockReturnValue(null);
+    mockUserQueries.findByToken.mockResolvedValue({ id: 'user-1' });
+    mockProviderQueries.findByIdAndUser.mockResolvedValue({ id: '123e4567-e89b-12d3-a456-426614174000', name: 'Startshare' });
+    mockVodQueries.getByProvider.mockResolvedValue([
+      { id: '1', vod_type: 'live', raw_title: 'ATN', category: 'News', poster_url: null },
+      { id: '2', vod_type: 'live', raw_title: 'ESPN', category: 'Sports', poster_url: null },
+    ]);
+
+    const result = await handleCatalog('token-1', 'tv', 'sb_123e4567-e89b-12d3-a456-426614174000_live', { genre: 'Sports' });
+
+    expect(mockVodQueries.getByProvider).toHaveBeenCalledWith('123e4567-e89b-12d3-a456-426614174000', expect.objectContaining({
+      type: 'live',
+    }));
+    expect(result).toEqual({
+      metas: [
+        expect.objectContaining({
+          name: 'ESPN',
+          genres: ['Sports'],
+        }),
+      ],
     });
   });
 });

@@ -29,3 +29,22 @@ describe('tmdbQueries movie matching', () => {
     );
   });
 });
+
+describe('vodQueries on-demand candidate lookup', () => {
+  it('keeps placeholder matched_content rows eligible when tmdb_id is still NULL', async () => {
+    const { vodQueries } = require('../../src/db/queries');
+
+    await vodQueries.findOnDemandCandidateForUser('user-1', {
+      vodType: 'movie',
+      normalizedTitle: 'war machine',
+      year: 2026,
+      tmdbId: 1265609,
+      imdbId: 'tt15940132',
+    });
+
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('OR m.tmdb_id IS NULL'),
+      ['user-1', 'movie', 'tt15940132', 1265609, 'war machine']
+    );
+  });
+});

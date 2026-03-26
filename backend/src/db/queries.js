@@ -353,6 +353,7 @@ const vodQueries = {
         AND v.vod_type = $2
         AND (
           m.id IS NULL
+          OR m.tmdb_id IS NULL
           OR m.imdb_id = $3
           OR m.tmdb_id = $4
           OR (m.tmdb_id IS NOT NULL AND m.imdb_id IS NULL)
