@@ -203,7 +203,7 @@ async function getTargetTmdbRecord(baseId, type) {
 
       if (type === 'series' && Array.isArray(data.tv_results) && data.tv_results[0]) {
         const item = data.tv_results[0];
-        return {
+        const record = {
           id: item.id,
           original_title: item.name || item.original_name || '',
           normalized_title: normalizeTitle(item.name || item.original_name || ''),
@@ -211,11 +211,21 @@ async function getTargetTmdbRecord(baseId, type) {
           imdb_id: baseId,
           tmdb_type: 'series',
         };
+        tmdbQueries.upsertSeries({
+          id: record.id,
+          original_title: record.original_title,
+          normalized_title: record.normalized_title,
+          first_air_year: record.year,
+          popularity: item.popularity || 0,
+          poster_path: item.poster_path || null,
+          overview: item.overview || null,
+        }).catch(() => {});
+        return record;
       }
 
       if (Array.isArray(data.movie_results) && data.movie_results[0]) {
         const item = data.movie_results[0];
-        return {
+        const record = {
           id: item.id,
           original_title: item.title || item.original_title || '',
           normalized_title: normalizeTitle(item.title || item.original_title || ''),
@@ -223,6 +233,17 @@ async function getTargetTmdbRecord(baseId, type) {
           imdb_id: baseId,
           tmdb_type: 'movie',
         };
+        tmdbQueries.upsertMovie({
+          id: record.id,
+          original_title: record.original_title,
+          normalized_title: record.normalized_title,
+          release_year: record.year,
+          popularity: item.popularity || 0,
+          poster_path: item.poster_path || null,
+          overview: item.overview || null,
+          imdb_id: baseId,
+        }).catch(() => {});
+        return record;
       }
     } catch (err) {
       logger.warn(`TMDB find fallback failed for ${baseId}: ${err.message}`);

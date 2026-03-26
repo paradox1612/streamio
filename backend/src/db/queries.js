@@ -504,7 +504,7 @@ const tmdbQueries = {
     `;
     const params = [normalizedTitle];
     if (year) {
-      query += ` AND ABS(release_year - $2) <= 1`;
+      query += ` AND (release_year IS NULL OR ABS(release_year - $2) <= 1)`;
       params.push(year);
     }
     query += ` ORDER BY popularity DESC LIMIT 1`;
@@ -522,7 +522,7 @@ const tmdbQueries = {
     `;
     const params = [normalizedTitle];
     if (year) {
-      query += ` WHERE ABS(release_year - $2) <= 2`;
+      query += ` WHERE (release_year IS NULL OR ABS(release_year - $2) <= 2)`;
       params.push(year);
     }
     query += ` ORDER BY normalized_title <-> $1 ASC, popularity DESC LIMIT 5
@@ -541,7 +541,7 @@ const tmdbQueries = {
     `;
     const params = [normalizedTitle];
     if (year) {
-      query += ` AND ABS(first_air_year - $2) <= 1`;
+      query += ` AND (first_air_year IS NULL OR ABS(first_air_year - $2) <= 1)`;
       params.push(year);
     }
     query += ` ORDER BY popularity DESC LIMIT 1`;
@@ -559,7 +559,7 @@ const tmdbQueries = {
     `;
     const params = [normalizedTitle];
     if (year) {
-      query += ` WHERE ABS(first_air_year - $2) <= 2`;
+      query += ` WHERE (first_air_year IS NULL OR ABS(first_air_year - $2) <= 2)`;
       params.push(year);
     }
     query += ` ORDER BY normalized_title <-> $1 ASC, popularity DESC LIMIT 5
