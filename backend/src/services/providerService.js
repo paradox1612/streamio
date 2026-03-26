@@ -9,6 +9,18 @@ function isTruthyAuth(value) {
   return value === 1 || value === '1' || value === true;
 }
 
+function firstNonEmpty(...values) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (value != null && typeof value !== 'string') return String(value);
+  }
+  return null;
+}
+
+function normalizeCategory(value, fallback = 'Unknown') {
+  return firstNonEmpty(value) || fallback;
+}
+
 function normalizeAccountInfo(data) {
   const user = data?.user_info || {};
   const server = data?.server_info || {};
@@ -112,7 +124,15 @@ async function fetchCategoryMap(host, username, password, action) {
     if (!Array.isArray(cats)) return {};
     const map = {};
     cats.forEach(c => {
-      if (c.category_id) map[String(c.category_id)] = c.category_name || String(c.category_id);
+      const categoryId = firstNonEmpty(c.category_id, c.id);
+      const categoryName = normalizeCategory(
+        firstNonEmpty(c.category_name, c.name, c.category, c.title),
+        categoryId || 'Unknown'
+      );
+
+      if (categoryId) {
+        map[String(categoryId)] = categoryName;
+      }
     });
     return map;
   } catch (_) {
@@ -172,7 +192,11 @@ const providerService = {
         rawTitle: ch.name || String(ch.stream_id),
         normalizedTitle: normalizeTitle(ch.name || String(ch.stream_id)),
         posterUrl: ch.stream_icon || null,
-        category: liveCategoryMap[String(ch.category_id)] || 'Unknown',
+        category: normalizeCategory(
+          liveCategoryMap[String(ch.category_id)] ||
+          firstNonEmpty(ch.category_name, ch.category, ch.group, ch.genre),
+          'Live TV'
+        ),
         vodType: 'live',
         containerExtension: ch.container_extension || 'ts',
         epgChannelId: ch.epg_channel_id || null,
@@ -216,7 +240,7 @@ const providerService = {
         rawTitle: m.name || String(m.stream_id),
         normalizedTitle: normalizeTitle(m.name || String(m.stream_id)),
         posterUrl: m.stream_icon || null,
-        category: vodCategoryMap[String(m.category_id)] || m.category_name || 'Unknown',
+        category: normalizeCategory(vodCategoryMap[String(m.category_id)] || m.category_name),
         vodType: 'movie',
         containerExtension: m.container_extension || 'mp4',
       }));
@@ -234,7 +258,7 @@ const providerService = {
         rawTitle: s.name || String(s.series_id),
         normalizedTitle: normalizeTitle(s.name || String(s.series_id)),
         posterUrl: s.cover || null,
-        category: seriesCategoryMap[String(s.category_id)] || s.genre?.split(',')[0]?.trim() || 'Unknown',
+        category: normalizeCategory(seriesCategoryMap[String(s.category_id)] || s.genre?.split(',')[0]),
         vodType: 'series',
         containerExtension: null,
       }));

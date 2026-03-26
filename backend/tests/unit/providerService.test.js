@@ -188,4 +188,61 @@ describe('providerService', () => {
       expect(result.accountInfoError).toBeNull();
     });
   });
+
+  describe('getLiveStreams', () => {
+    it('preserves live channel categories when the provider returns non-standard category fields', async () => {
+      providerQueries.findByIdAndUser.mockResolvedValue({
+        id: 'p1',
+        user_id: 'u1',
+        name: 'Provider One',
+        hosts: ['http://host.com'],
+        active_host: 'http://host.com',
+        username: 'user',
+        password: 'pass',
+      });
+
+      fetch
+        .mockResolvedValueOnce(new Response(
+          JSON.stringify([
+            { id: '55', name: 'Sports UK' },
+          ]),
+          { status: 200 }
+        ))
+        .mockResolvedValueOnce(new Response(
+          JSON.stringify([
+            {
+              stream_id: 77,
+              name: 'Sky Sports Main Event',
+              category_id: '55',
+              stream_icon: 'http://img.example.com/sky-sports.png',
+              container_extension: 'ts',
+              epg_channel_id: 'sky.sports.uk',
+            },
+            {
+              stream_id: 88,
+              name: 'BBC News',
+              category: 'News',
+              stream_icon: null,
+              container_extension: 'm3u8',
+            },
+          ]),
+          { status: 200 }
+        ));
+
+      const result = await providerService.getLiveStreams('p1', 'u1');
+
+      expect(result).toEqual([
+        expect.objectContaining({
+          streamId: '77',
+          category: 'Sports UK',
+          vodType: 'live',
+        }),
+        expect.objectContaining({
+          streamId: '88',
+          category: 'News',
+          vodType: 'live',
+        }),
+      ]);
+    });
+  });
 });

@@ -5,6 +5,10 @@ import EmptyState from '../components/EmptyState';
 import SkeletonCard from '../components/SkeletonCard';
 import toast from 'react-hot-toast';
 
+function normalizeCategoryName(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : 'Live TV';
+}
+
 export default function LiveTV() {
   const [providers, setProviders] = useState([]);
   const [selectedProvider, setSelectedProvider] = useState('');
@@ -39,9 +43,15 @@ export default function LiveTV() {
       providerAPI.getLive ? providerAPI.getLive(selectedProvider, { limit: 20000 }) : Promise.resolve({ data: [] }),
     ])
       .then(([res]) => {
-        const channelList = res.data || [];
+        const channelList = (res.data || []).map(channel => ({
+          ...channel,
+          category: normalizeCategoryName(channel.category),
+        }));
         setChannels(channelList);
-        const uniqueCategories = ['all', ...new Set(channelList.map(c => c.category).filter(Boolean))];
+        const uniqueCategories = [
+          'all',
+          ...Array.from(new Set(channelList.map(c => c.category))).sort((a, b) => a.localeCompare(b)),
+        ];
         setCategories(uniqueCategories);
       })
       .catch(() => toast.error('Failed to load live channels'))
