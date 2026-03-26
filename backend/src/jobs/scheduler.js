@@ -3,6 +3,7 @@ const { providerQueries } = require('../db/queries');
 const hostHealthService = require('../services/hostHealthService');
 const tmdbService = require('../services/tmdbService');
 const providerService = require('../services/providerService');
+const epgService = require('../services/epgService');
 const { jobQueries } = require('../db/queries');
 const logger = require('../utils/logger');
 
@@ -66,6 +67,19 @@ async function matchingJob() {
   }
 }
 
+async function epgRefreshJob() {
+  logger.info('[Job] EPG refresh starting...');
+  const jobId = await jobQueries.start('epgRefreshJob');
+  try {
+    await epgService.refreshAllProviders();
+    await jobQueries.finish(jobId, { status: 'success' });
+    logger.info('[Job] EPG refresh complete');
+  } catch (err) {
+    await jobQueries.finish(jobId, { status: 'failed', errorMessage: err.message });
+    logger.error('[Job] EPG refresh failed:', err.message);
+  }
+}
+
 // ─── Scheduler ────────────────────────────────────────────────────────────────
 
 function startScheduler() {
@@ -83,7 +97,10 @@ function startScheduler() {
   // Every day at 5 AM (after catalog refresh)
   cron.schedule('0 5 * * *', matchingJob);
 
-  logger.info('Scheduler started: health=*/5min, tmdb=2am, catalog=4am, matching=5am');
+  // Every 4 hours (*/4) for EPG refresh
+  cron.schedule('0 */4 * * *', epgRefreshJob);
+
+  logger.info('Scheduler started: health=*/5min, tmdb=2am, catalog=4am, matching=5am, epg=every4h');
 
   // Run health check immediately on startup
   setTimeout(healthCheckJob, 5000);
@@ -94,6 +111,7 @@ const jobs = {
   tmdbSyncJob,
   catalogRefreshJob,
   matchingJob,
+  epgRefreshJob,
 };
 
 module.exports = { startScheduler, jobs };

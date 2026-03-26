@@ -1,6 +1,8 @@
 const fetch = require('node-fetch');
-const { userQueries, providerQueries, vodQueries, tmdbQueries, matchQueries, pool } = require('../db/queries');
+const { userQueries, providerQueries, vodQueries, tmdbQueries, matchQueries, hostHealthQueries, pool } = require('../db/queries');
 const providerService = require('../services/providerService');
+const epgService = require('../services/epgService');
+const cache = require('../utils/cache');
 const logger = require('../utils/logger');
 const { normalizeTitle } = require('../utils/titleNormalization');
 const { beginAddonRequest, endAddonRequest } = require('../utils/loadManager');
@@ -11,8 +13,14 @@ const TMDB_API_KEY = process.env.TMDB_API_KEY;
 // ─── Manifest ─────────────────────────────────────────────────────────────────
 
 async function buildManifest(token) {
-  const user = await userQueries.findByToken(token);
-  if (!user) return null;
+  // Check user cache first
+  let user = cache.get('userByToken', token);
+  if (!user) {
+    user = await userQueries.findByToken(token);
+    if (!user) return null;
+    // Cache user for 5 minutes
+    cache.set('userByToken', token, user);
+  }
 
   const providers = await providerQueries.findByUser(user.id);
 
@@ -30,6 +38,13 @@ async function buildManifest(token) {
       name: `${provider.name} – Series`,
       extra: [{ name: 'search' }, { name: 'skip' }],
     });
+    // Live TV catalog per provider
+    catalogs.push({
+      id: `sb_${provider.id}_live`,
+      type: 'tv',
+      name: `${provider.name} – Live TV`,
+      extra: [{ name: 'search' }, { name: 'skip' }],
+    });
   }
 
   return {
@@ -40,30 +55,41 @@ async function buildManifest(token) {
     logo: 'https://streambridge.io/logo.png',
     catalogs,
     resources: ['catalog', 'stream', 'meta'],
-    types: ['movie', 'series'],
+    types: ['movie', 'series', 'tv'],
     behaviorHints: { configurable: false, configurationRequired: false },
-    idPrefixes: ['tt', 'tmdb:', 'sb_'],
+    idPrefixes: ['tt', 'tmdb:', 'sb_', 'live_'],
   };
 }
 
 // ─── Catalog ──────────────────────────────────────────────────────────────────
 
 async function handleCatalog(token, type, catalogId, extra = {}) {
-  const user = await userQueries.findByToken(token);
-  if (!user) return { metas: [] };
+  // Check user cache
+  let user = cache.get('userByToken', token);
+  if (!user) {
+    user = await userQueries.findByToken(token);
+    if (!user) return { metas: [] };
+    cache.set('userByToken', token, user);
+  }
 
-  // catalogId format: sb_{providerId}_{movies|series}
-  const match = catalogId.match(/^sb_([a-f0-9-]+)_(movies|series)$/);
+  // catalogId format: sb_{providerId}_{movies|series|live}
+  const match = catalogId.match(/^sb_([a-f0-9-]+)_(movies|series|live)$/);
   if (!match) return { metas: [] };
 
-  const [, providerId] = match;
+  const [, providerId, catalogType] = match;
   const provider = await providerQueries.findByIdAndUser(providerId, user.id);
   if (!provider) return { metas: [] };
 
   const skip = parseInt(extra.skip) || 0;
   const search = extra.search || '';
   const limit = 100;
-  const vodType = type === 'series' ? 'series' : 'movie';
+
+  let vodType;
+  if (catalogType === 'live') {
+    vodType = 'live';
+  } else {
+    vodType = type === 'series' ? 'series' : 'movie';
+  }
 
   const items = await vodQueries.getByProvider(providerId, {
     type: vodType,
@@ -91,7 +117,7 @@ function buildMetaPreview(item) {
 
   return {
     id,
-    type: item.vod_type === 'series' ? 'series' : 'movie',
+    type: item.vod_type === 'series' ? 'series' : item.vod_type === 'live' ? 'tv' : 'movie',
     name: item.raw_title,
     poster,
     posterShape: 'poster',
@@ -254,8 +280,13 @@ async function tryOnDemandMatch(userId, baseId, type) {
 async function handleMeta(token, type, id) {
   beginAddonRequest();
   try {
-    const user = await userQueries.findByToken(token);
-    if (!user) return { meta: null };
+    // Check user cache
+    let user = cache.get('userByToken', token);
+    if (!user) {
+      user = await userQueries.findByToken(token);
+      if (!user) return { meta: null };
+      cache.set('userByToken', token, user);
+    }
 
     const { baseId } = parseStremioId(id);
     let vodItem = await resolveVodItem(user.id, baseId);
@@ -266,21 +297,28 @@ async function handleMeta(token, type, id) {
 
     const meta = {
       id: baseId,
-      type: vodItem.vod_type === 'series' ? 'series' : 'movie',
+      type: vodItem.vod_type === 'series' ? 'series' : vodItem.vod_type === 'live' ? 'tv' : 'movie',
       name: vodItem.raw_title,
       poster: vodItem.poster_url,
       genres: vodItem.category ? [vodItem.category] : [],
     };
 
-    // For series: fetch episode list so Stremio can show season/episode navigation
+    // For series: fetch episode list with caching
     if (vodItem.vod_type === 'series' && vodItem.active_host && vodItem.stream_id) {
       try {
-        const episodesObj = await providerService.getSeriesEpisodes(
-          vodItem.active_host,
-          vodItem.username,
-          vodItem.password,
-          vodItem.stream_id
-        );
+        // Check cache first
+        let episodesObj = cache.get('seriesEpisodes', vodItem.stream_id);
+        if (!episodesObj) {
+          episodesObj = await providerService.getSeriesEpisodes(
+            vodItem.active_host,
+            vodItem.username,
+            vodItem.password,
+            vodItem.stream_id
+          );
+          // Cache episodes for 10 minutes
+          cache.set('seriesEpisodes', vodItem.stream_id, episodesObj);
+        }
+
         const videos = [];
         for (const [seasonNum, episodes] of Object.entries(episodesObj)) {
           if (!Array.isArray(episodes)) continue;
@@ -304,6 +342,21 @@ async function handleMeta(token, type, id) {
       }
     }
 
+    // For live streams: fetch EPG if available
+    if (vodItem.vod_type === 'live' && vodItem.provider_id && vodItem.epg_channel_id) {
+      try {
+        const epgMap = await epgService.getEpgForProvider(vodItem.provider_id, user.id);
+        const programme = epgService.getCurrentProgramme(epgMap, vodItem.epg_channel_id);
+        if (programme && programme.now) {
+          const nowTitle = programme.now.title || 'Unknown';
+          const nextTitle = programme.next ? programme.next.title : '';
+          meta.description = `Now: ${nowTitle}${nextTitle ? ` | Next: ${nextTitle}` : ''}`;
+        }
+      } catch (err) {
+        logger.debug(`Could not fetch EPG for live stream: ${err.message}`);
+      }
+    }
+
     return { meta };
   } finally {
     endAddonRequest();
@@ -315,72 +368,122 @@ async function handleMeta(token, type, id) {
 async function handleStream(token, type, id) {
   beginAddonRequest();
   try {
-    const user = await userQueries.findByToken(token);
-    if (!user) return { streams: [] };
+    // Check user cache
+    let user = cache.get('userByToken', token);
+    if (!user) {
+      user = await userQueries.findByToken(token);
+      if (!user) return { streams: [] };
+      cache.set('userByToken', token, user);
+    }
 
     const { baseId, season, episode } = parseStremioId(id);
+
+    // Handle live streams (prefixed with "live_")
+    if (baseId.startsWith('live_')) {
+      return await handleLiveStream(token, baseId);
+    }
+
     let vodItem = await resolveVodItem(user.id, baseId);
     if (!vodItem && (baseId.startsWith('tt') || baseId.startsWith('tmdb:'))) {
       vodItem = await tryOnDemandMatch(user.id, baseId, type);
     }
 
-    if (!vodItem || !vodItem.active_host) return { streams: [] };
+    if (!vodItem || !vodItem.provider_id) return { streams: [] };
 
-    const { active_host, username, password, stream_id, vod_type, container_extension } = vodItem;
+    const { username, password, stream_id, vod_type, container_extension, provider_id } = vodItem;
 
     // ── Movie stream ───────────────────────────────────────────────────────────
     if (vod_type === 'movie') {
-      const ext = container_extension || 'mp4';
-      const url = `${active_host}/movie/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${stream_id}.${ext}`;
-      return {
-        streams: [{ url, title: 'StreamBridge', name: 'SB', behaviorHints: { notWebReady: false } }],
-      };
+      // Get all online hosts for this provider, sorted by response time
+      const hosts = await hostHealthQueries.getByProvider(provider_id);
+      const onlineHosts = hosts.filter(h => h.status === 'online').slice(0, 3); // Max 3 hosts
+
+      if (onlineHosts.length === 0 && vodItem.active_host) {
+        // Fallback to active host if no health data
+        const ext = container_extension || 'mp4';
+        const url = `${vodItem.active_host}/movie/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${stream_id}.${ext}`;
+        return {
+          streams: [{ url, title: 'StreamBridge', name: 'SB', behaviorHints: { notWebReady: false } }],
+        };
+      }
+
+      const streams = onlineHosts.map((host, idx) => {
+        const ext = container_extension || 'mp4';
+        const url = `${host.host_url}/movie/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${stream_id}.${ext}`;
+        const timeLabel = host.response_time_ms ? `${host.response_time_ms}ms` : '?';
+        return {
+          url,
+          title: `StreamBridge — Host ${idx + 1} (${timeLabel})`,
+          name: `SB-${idx + 1}`,
+          behaviorHints: { notWebReady: false },
+        };
+      });
+
+      return { streams: streams.length > 0 ? streams : [] };
     }
 
     // ── Series episode stream ──────────────────────────────────────────────────
-    // stream_id on the VOD record is the *series* ID (show-level).
-    // We must call get_series_info to resolve the individual episode stream_id.
     if (vod_type === 'series') {
       if (season == null || episode == null) {
-        // Stremio always appends :S:E for series — if not present something is wrong
         logger.warn(`Series stream requested without episode info: ${id}`);
         return { streams: [] };
       }
 
       try {
-        const episodesObj = await providerService.getSeriesEpisodes(
-          active_host, username, password, stream_id
-        );
+        // Check cache first for episodes
+        let episodesObj = cache.get('seriesEpisodes', stream_id);
+        if (!episodesObj) {
+          if (!vodItem.active_host) return { streams: [] };
+          episodesObj = await providerService.getSeriesEpisodes(
+            vodItem.active_host, username, password, stream_id
+          );
+          cache.set('seriesEpisodes', stream_id, episodesObj);
+        }
 
-        // Seasons are keyed by string number in the API response
         const seasonEps = episodesObj[String(season)];
         if (!Array.isArray(seasonEps) || seasonEps.length === 0) {
           logger.warn(`Season ${season} not found for series ${stream_id}`);
           return { streams: [] };
         }
 
-        const ep = seasonEps.find(
-          e => parseInt(e.episode_num) === episode
-        );
+        const ep = seasonEps.find(e => parseInt(e.episode_num) === episode);
         if (!ep) {
           logger.warn(`S${season}E${episode} not found in series ${stream_id}`);
           return { streams: [] };
         }
 
-        // ep.id is the episode-level stream ID; ep.container_extension is the file format
+        // Get online hosts for multi-host failover
+        const hosts = await hostHealthQueries.getByProvider(provider_id);
+        const onlineHosts = hosts.filter(h => h.status === 'online').slice(0, 3);
+
         const epId = ep.id;
         const epExt = ep.container_extension || 'mkv';
-        const url = `${active_host}/series/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${epId}.${epExt}`;
-
         const label = `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
-        return {
-          streams: [{
+
+        // Return streams for each host
+        let streams = onlineHosts.map((host, idx) => {
+          const url = `${host.host_url}/series/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${epId}.${epExt}`;
+          const timeLabel = host.response_time_ms ? `${host.response_time_ms}ms` : '?';
+          return {
+            url,
+            title: `${label} – StreamBridge (Host ${idx + 1}, ${timeLabel})`,
+            name: `SB-${idx + 1}`,
+            behaviorHints: { notWebReady: false },
+          };
+        });
+
+        // Fallback if no health data
+        if (streams.length === 0 && vodItem.active_host) {
+          const url = `${vodItem.active_host}/series/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${epId}.${epExt}`;
+          streams = [{
             url,
             title: `${label} – StreamBridge`,
             name: 'SB',
             behaviorHints: { notWebReady: false },
-          }],
-        };
+          }];
+        }
+
+        return { streams };
       } catch (err) {
         logger.warn(`Failed to resolve series stream for ${id}: ${err.message}`);
         return { streams: [] };
@@ -393,4 +496,76 @@ async function handleStream(token, type, id) {
   }
 }
 
-module.exports = { buildManifest, handleCatalog, handleMeta, handleStream };
+/**
+ * Handle live stream requests.
+ * Live stream IDs are prefixed "live_" followed by the stream_id.
+ */
+async function handleLiveStream(token, baseId) {
+  try {
+    let user = cache.get('userByToken', token);
+    if (!user) {
+      user = await userQueries.findByToken(token);
+      if (!user) return { streams: [] };
+      cache.set('userByToken', token, user);
+    }
+
+    // baseId format: live_{providerId}_{streamId}
+    const match = baseId.match(/^live_([a-f0-9-]+)_(.+)$/);
+    if (!match) return { streams: [] };
+
+    const [, providerId, streamId] = match;
+    const provider = await providerQueries.findByIdAndUser(providerId, user.id);
+    if (!provider) return { streams: [] };
+
+    // Get live stream details from VOD table
+    const { rows } = await pool.query(
+      'SELECT * FROM user_provider_vod WHERE provider_id = $1 AND stream_id = $2 AND vod_type = $3',
+      [providerId, streamId, 'live']
+    );
+    const vodItem = rows[0];
+
+    if (!vodItem) return { streams: [] };
+
+    // Get online hosts
+    const hosts = await hostHealthQueries.getByProvider(providerId);
+    const onlineHosts = hosts.filter(h => h.status === 'online').slice(0, 3);
+
+    if (onlineHosts.length === 0 && !provider.active_host) {
+      return { streams: [] };
+    }
+
+    const username = provider.username;
+    const password = provider.password;
+    const ext = vodItem.container_extension || 'ts';
+    const title = vodItem.raw_title;
+
+    const streams = onlineHosts.map((host, idx) => {
+      const url = `${host.host_url}/live/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${streamId}.${ext}`;
+      const timeLabel = host.response_time_ms ? `${host.response_time_ms}ms` : '?';
+      return {
+        url,
+        title: `📺 ${title} — Host ${idx + 1} (${timeLabel}) (Live)`,
+        name: `LIVE-${idx + 1}`,
+        behaviorHints: { notWebReady: false },
+      };
+    });
+
+    // Fallback if no health data
+    if (streams.length === 0 && provider.active_host) {
+      const url = `${provider.active_host}/live/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${streamId}.${ext}`;
+      streams.push({
+        url,
+        title: `📺 ${title} (Live)`,
+        name: 'LIVE',
+        behaviorHints: { notWebReady: false },
+      });
+    }
+
+    return { streams };
+  } catch (err) {
+    logger.warn(`Failed to resolve live stream for ${baseId}: ${err.message}`);
+    return { streams: [] };
+  }
+}
+
+module.exports = { buildManifest, handleCatalog, handleMeta, handleStream, handleLiveStream };

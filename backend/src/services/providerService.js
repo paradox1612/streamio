@@ -53,19 +53,55 @@ async function fetchAccountInfoForHost(host, username, password) {
   }
 }
 
+/**
+ * Retry logic for xtream requests with exponential backoff.
+ * Retries up to 3 times on network errors or 5xx responses.
+ * Does NOT retry on 401/403 (auth errors).
+ */
 async function xtreamRequest(host, username, password, action, extraParams = '') {
   const url = `${host}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&action=${action}${extraParams}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
-  try {
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timer);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    return data;
-  } catch (err) {
-    clearTimeout(timer);
-    throw err;
+  const maxRetries = 3;
+  const backoffs = [1000, 2000, 4000]; // exponential backoff: 1s, 2s, 4s
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+
+      // Don't retry auth errors
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      // Retry on 5xx errors
+      if (!res.ok && res.status >= 500) {
+        if (attempt < maxRetries - 1) {
+          const delay = backoffs[attempt];
+          logger.warn(`xtreamRequest: HTTP ${res.status}, retrying in ${delay}ms`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      clearTimeout(timer);
+
+      // Retry on network errors
+      if (attempt < maxRetries - 1) {
+        const delay = backoffs[attempt];
+        logger.warn(`xtreamRequest: ${err.message}, retrying in ${delay}ms`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+
+      throw err;
+    }
   }
 }
 
@@ -113,6 +149,42 @@ const providerService = {
     return results;
   },
 
+  async getLiveStreams(providerId, userId) {
+    const provider = await providerQueries.findByIdAndUser(providerId, userId);
+    if (!provider) throw Object.assign(new Error('Provider not found'), { status: 404 });
+
+    const host = provider.active_host || provider.hosts[0];
+    if (!host) throw new Error('No host available');
+
+    try {
+      // Fetch live categories and channels in parallel
+      const [liveCategoryMap, liveChannels] = await Promise.all([
+        fetchCategoryMap(host, provider.username, provider.password, 'get_live_categories'),
+        xtreamRequest(host, provider.username, provider.password, 'get_live_streams').catch(() => []),
+      ]);
+
+      if (!Array.isArray(liveChannels)) return [];
+
+      const liveStreams = liveChannels.map(ch => ({
+        userId: provider.user_id,
+        providerId,
+        streamId: String(ch.stream_id),
+        rawTitle: ch.name || String(ch.stream_id),
+        normalizedTitle: normalizeTitle(ch.name || String(ch.stream_id)),
+        posterUrl: ch.stream_icon || null,
+        category: liveCategoryMap[String(ch.category_id)] || 'Unknown',
+        vodType: 'live',
+        containerExtension: ch.container_extension || 'ts',
+        epgChannelId: ch.epg_channel_id || null,
+      }));
+
+      return liveStreams;
+    } catch (err) {
+      logger.warn(`Failed to fetch live streams for provider ${providerId}: ${err.message}`);
+      return [];
+    }
+  },
+
   async refreshCatalog(providerId, userId) {
     const provider = await providerQueries.findByIdAndUser(providerId, userId);
     if (!provider) throw Object.assign(new Error('Provider not found'), { status: 404 });
@@ -129,63 +201,59 @@ const providerService = {
     ]);
     logger.info(`Categories loaded: ${Object.keys(vodCategoryMap).length} VOD, ${Object.keys(seriesCategoryMap).length} series`);
 
-    // ── 2. Fetch VOD movies ───────────────────────────────────────────────────
+    // ── 2. Fetch VOD movies and series in parallel ─────────────────────────────
+    const [vodMoviesResult, vodSeriesResult] = await Promise.allSettled([
+      xtreamRequest(host, provider.username, provider.password, 'get_vod_streams'),
+      xtreamRequest(host, provider.username, provider.password, 'get_series'),
+    ]);
+
     let vodMovies = [];
-    try {
-      const raw = await xtreamRequest(host, provider.username, provider.password, 'get_vod_streams');
-      if (Array.isArray(raw)) {
-        vodMovies = raw.map(m => ({
-          userId: provider.user_id,
-          providerId,
-          // stream_id is the unique ID for the movie stream
-          streamId: String(m.stream_id),
-          rawTitle: m.name || String(m.stream_id),
-          normalizedTitle: normalizeTitle(m.name || String(m.stream_id)),
-          posterUrl: m.stream_icon || null,
-          // category_id is always present; category_name sometimes missing
-          category: vodCategoryMap[String(m.category_id)] || m.category_name || 'Unknown',
-          vodType: 'movie',
-          // container_extension tells us the file format (mp4, mkv, avi…)
-          containerExtension: m.container_extension || 'mp4',
-        }));
-        logger.info(`Fetched ${vodMovies.length} movies`);
-      }
-    } catch (err) {
-      logger.warn(`Failed to fetch VOD movies: ${err.message}`);
+    if (vodMoviesResult.status === 'fulfilled' && Array.isArray(vodMoviesResult.value)) {
+      vodMovies = vodMoviesResult.value.map(m => ({
+        userId: provider.user_id,
+        providerId,
+        streamId: String(m.stream_id),
+        rawTitle: m.name || String(m.stream_id),
+        normalizedTitle: normalizeTitle(m.name || String(m.stream_id)),
+        posterUrl: m.stream_icon || null,
+        category: vodCategoryMap[String(m.category_id)] || m.category_name || 'Unknown',
+        vodType: 'movie',
+        containerExtension: m.container_extension || 'mp4',
+      }));
+      logger.info(`Fetched ${vodMovies.length} movies`);
+    } else if (vodMoviesResult.status === 'rejected') {
+      logger.warn(`Failed to fetch VOD movies: ${vodMoviesResult.reason?.message}`);
     }
 
-    // ── 3. Fetch series ───────────────────────────────────────────────────────
-    // get_series returns series-level objects (not individual episodes).
-    // Each has a series_id. To stream individual episodes you call
-    // get_series_info&series_id=X which returns seasons+episodes.
-    // For the catalog we just store series at the show level;
-    // episodes are resolved at stream time.
     let vodSeries = [];
+    if (vodSeriesResult.status === 'fulfilled' && Array.isArray(vodSeriesResult.value)) {
+      vodSeries = vodSeriesResult.value.map(s => ({
+        userId: provider.user_id,
+        providerId,
+        streamId: String(s.series_id),
+        rawTitle: s.name || String(s.series_id),
+        normalizedTitle: normalizeTitle(s.name || String(s.series_id)),
+        posterUrl: s.cover || null,
+        category: seriesCategoryMap[String(s.category_id)] || s.genre?.split(',')[0]?.trim() || 'Unknown',
+        vodType: 'series',
+        containerExtension: null,
+      }));
+      logger.info(`Fetched ${vodSeries.length} series`);
+    } else if (vodSeriesResult.status === 'rejected') {
+      logger.warn(`Failed to fetch series: ${vodSeriesResult.reason?.message}`);
+    }
+
+    // ── 3. Fetch live streams ──────────────────────────────────────────────────
+    let liveStreams = [];
     try {
-      const raw = await xtreamRequest(host, provider.username, provider.password, 'get_series');
-      if (Array.isArray(raw)) {
-        vodSeries = raw.map(s => ({
-          userId: provider.user_id,
-          providerId,
-          // series_id is the unique ID for the whole series
-          streamId: String(s.series_id),
-          rawTitle: s.name || String(s.series_id),
-          normalizedTitle: normalizeTitle(s.name || String(s.series_id)),
-          posterUrl: s.cover || null,
-          // series response has category_id (number) but no category_name field
-          // use the map first, then fall back to the genre string on the object
-          category: seriesCategoryMap[String(s.category_id)] || s.genre?.split(',')[0]?.trim() || 'Unknown',
-          vodType: 'series',
-          containerExtension: null, // resolved per-episode at stream time
-        }));
-        logger.info(`Fetched ${vodSeries.length} series`);
-      }
+      liveStreams = await providerService.getLiveStreams(providerId, userId);
+      logger.info(`Fetched ${liveStreams.length} live channels`);
     } catch (err) {
-      logger.warn(`Failed to fetch series: ${err.message}`);
+      logger.warn(`Failed to fetch live streams: ${err.message}`);
     }
 
     // ── 4. Upsert everything in chunks ────────────────────────────────────────
-    const all = [...vodMovies, ...vodSeries];
+    const all = [...vodMovies, ...vodSeries, ...liveStreams];
     if (all.length > 0) {
       const CHUNK = 500;
       for (let i = 0; i < all.length; i += CHUNK) {
@@ -193,8 +261,8 @@ const providerService = {
       }
     }
 
-    logger.info(`Catalog refreshed: ${vodMovies.length} movies, ${vodSeries.length} series`);
-    return { movies: vodMovies.length, series: vodSeries.length, total: all.length };
+    logger.info(`Catalog refreshed: ${vodMovies.length} movies, ${vodSeries.length} series, ${liveStreams.length} live channels`);
+    return { movies: vodMovies.length, series: vodSeries.length, live: liveStreams.length, total: all.length };
   },
 
   // Resolve individual episode stream URL at playback time

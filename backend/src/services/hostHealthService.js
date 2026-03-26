@@ -1,6 +1,7 @@
 const fetch = require('node-fetch');
 const { providerQueries, hostHealthQueries } = require('../db/queries');
 const logger = require('../utils/logger');
+const cache = require('../utils/cache');
 
 const PING_TIMEOUT = 10000; // 10s
 
@@ -28,8 +29,19 @@ const hostHealthService = {
     const providers = await providerQueries.getAllForHealthCheck();
     logger.info(`Health check: checking ${providers.length} providers`);
 
-    for (const provider of providers) {
-      await hostHealthService.checkProvider(provider);
+    // Process providers in parallel batches of 10
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < providers.length; i += BATCH_SIZE) {
+      const batch = providers.slice(i, i + BATCH_SIZE);
+      const results = await Promise.allSettled(
+        batch.map(provider => hostHealthService.checkProvider(provider))
+      );
+      // Log any failures
+      for (let j = 0; j < results.length; j++) {
+        if (results[j].status === 'rejected') {
+          logger.warn(`Health check failed for provider ${batch[j].id}: ${results[j].reason?.message}`);
+        }
+      }
     }
 
     logger.info('Health check complete');
@@ -76,7 +88,17 @@ const hostHealthService = {
   },
 
   async getProviderHealth(providerId) {
-    return hostHealthQueries.getByProvider(providerId);
+    // Check cache first
+    const cached = cache.get('hostHealth', providerId);
+    if (cached) {
+      return cached;
+    }
+
+    // Fetch from database
+    const health = await hostHealthQueries.getByProvider(providerId);
+    // Cache for 5 minutes
+    cache.set('hostHealth', providerId, health);
+    return health;
   },
 };
 

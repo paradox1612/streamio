@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { userAPI } from '../utils/api';
+import {
+  CheckIcon,
+  DocumentDuplicateIcon,
+  SparklesIcon,
+  ArrowPathIcon,
+} from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 
 export default function AddonSettings() {
@@ -17,13 +23,17 @@ export default function AddonSettings() {
 
   const copyUrl = async () => {
     setCopying(true);
-    try { await navigator.clipboard.writeText(addonUrl); toast.success('Copied!'); }
-    catch (_) { toast.error('Copy failed'); }
+    try {
+      await navigator.clipboard.writeText(addonUrl);
+      toast.success('Copied');
+    } catch (_) {
+      toast.error('Copy failed');
+    }
     setTimeout(() => setCopying(false), 1500);
   };
 
   const regenerate = async () => {
-    if (!window.confirm('⚠️ This will invalidate your current addon URL. You will need to re-add the addon in Stremio. Continue?')) return;
+    if (!window.confirm('This will invalidate your current addon URL and require reinstalling it in Stremio. Continue?')) return;
     setRegenerating(true);
     try {
       const res = await userAPI.regenerateAddonUrl();
@@ -41,58 +51,74 @@ export default function AddonSettings() {
     window.open(`stremio://${addonUrl.replace(/^https?:\/\//, '')}`, '_blank');
   };
 
-  if (loading) return <div style={{ color: '#64748b', padding: '40px' }}>Loading...</div>;
+  if (loading) {
+    return <div className="mx-auto max-w-4xl"><div className="panel p-8 text-center text-slate-300/70">Loading addon settings...</div></div>;
+  }
 
   return (
-    <div style={{ maxWidth: '600px' }}>
-      <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#f1f5f9', marginBottom: '8px' }}>Addon Settings</h1>
-      <p style={{ color: '#64748b', marginBottom: '28px' }}>Configure and install your personalized Stremio addon</p>
+    <div className="mx-auto max-w-5xl space-y-8">
+      <section className="panel overflow-hidden p-6 sm:p-8 lg:p-10">
+        <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
+          <div>
+            <div className="kicker mb-5">Personal Addon</div>
+            <h1 className="hero-title">Install the private StreamBridge endpoint for your account.</h1>
+            <p className="hero-copy mt-4">
+              This addon URL is scoped to your account and pulls in the providers you have configured. Keep it private and reinstall it if you regenerate the token.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <button onClick={copyUrl} className="btn-primary">
+                {copying ? <CheckIcon className="h-4 w-4" /> : <DocumentDuplicateIcon className="h-4 w-4" />}
+                {copying ? 'Copied URL' : 'Copy URL'}
+              </button>
+              <button onClick={installInStremio} className="btn-secondary">
+                <SparklesIcon className="h-4 w-4" />
+                Install in Stremio
+              </button>
+            </div>
+          </div>
 
-      {/* Addon URL */}
-      <div style={{ background: '#1e293b', borderRadius: '12px', padding: '24px', border: '1px solid #334155', marginBottom: '20px' }}>
-        <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '16px' }}>Your Addon URL</h2>
+          <div className="panel-soft p-5">
+            <p className="metric-label mb-1">Installation Tip</p>
+            <p className="text-lg font-semibold text-white">Use the direct install button first.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-300/[0.68]">
+              If your device does not catch the protocol automatically, copy the URL and paste it in Stremio under Add Addon.
+            </p>
+          </div>
+        </div>
+      </section>
 
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-          <input readOnly value={addonUrl}
-            style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', background: '#0f172a', border: '1px solid #334155', color: '#94a3b8', fontSize: '0.82rem', outline: 'none' }} />
-          <button onClick={copyUrl}
-            style={{ padding: '10px 16px', borderRadius: '8px', background: copying ? '#14532d' : '#334155', color: copying ? '#86efac' : '#f1f5f9', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
-            {copying ? '✓ Copied' : 'Copy'}
+      <section className="panel-soft p-6 sm:p-8">
+        <p className="eyebrow mb-2">Addon URL</p>
+        <h2 className="section-title">Current endpoint</h2>
+        <div className="mt-5 overflow-x-auto rounded-[22px] border border-white/[0.08] bg-surface-950/75 p-4 font-mono text-sm text-slate-200/[0.82]">
+          {addonUrl}
+        </div>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
+        <div className="panel-soft p-6 sm:p-8">
+          <p className="eyebrow mb-2">Private Token</p>
+          <h2 className="section-title">Keep this secret</h2>
+          <div className="mt-5 overflow-x-auto rounded-[22px] border border-white/[0.08] bg-surface-950/75 p-4 font-mono text-xs text-slate-200/[0.78]">
+            {token}
+          </div>
+          <p className="mt-4 text-sm leading-6 text-slate-300/[0.68]">
+            Your token identifies the personalized addon route. Anyone with it can access your manifest, so treat it like a password.
+          </p>
+        </div>
+
+        <div className="panel-soft border-red-400/[0.15] bg-red-500/5 p-6 sm:p-8">
+          <p className="eyebrow mb-2 text-red-100/60">Security Reset</p>
+          <h2 className="section-title">Regenerate addon URL</h2>
+          <p className="mt-3 text-sm leading-6 text-slate-300/[0.72]">
+            Use this only if the current URL has been shared or compromised. The old route stops working immediately.
+          </p>
+          <button onClick={regenerate} disabled={regenerating} className="btn-danger mt-6">
+            <ArrowPathIcon className="h-4 w-4" />
+            {regenerating ? 'Regenerating...' : 'Regenerate URL'}
           </button>
         </div>
-
-        <button onClick={installInStremio}
-          style={{ width: '100%', padding: '12px', borderRadius: '8px', background: '#4f46e5', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '1rem', marginBottom: '8px' }}>
-          🎬 Install in Stremio
-        </button>
-
-        <div style={{ fontSize: '0.78rem', color: '#64748b', textAlign: 'center' }}>
-          Click the button above or paste the URL manually into Stremio → Add Addon
-        </div>
-      </div>
-
-      {/* Token info */}
-      <div style={{ background: '#1e293b', borderRadius: '12px', padding: '20px', border: '1px solid #334155', marginBottom: '20px' }}>
-        <h2 style={{ fontSize: '0.95rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '12px' }}>Addon Token</h2>
-        <div style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#64748b', background: '#0f172a', padding: '10px 12px', borderRadius: '8px', wordBreak: 'break-all', border: '1px solid #334155' }}>
-          {token}
-        </div>
-        <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '8px' }}>
-          This token uniquely identifies your addon. Keep it private.
-        </div>
-      </div>
-
-      {/* Regenerate */}
-      <div style={{ background: '#1e293b', borderRadius: '12px', padding: '20px', border: '1px solid #7f1d1d' }}>
-        <h2 style={{ fontSize: '0.95rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '8px' }}>⚠️ Regenerate URL</h2>
-        <p style={{ fontSize: '0.82rem', color: '#94a3b8', marginBottom: '16px' }}>
-          This creates a new unique addon URL. Your old URL will stop working immediately, and you'll need to re-add the addon in Stremio.
-        </p>
-        <button onClick={regenerate} disabled={regenerating}
-          style={{ padding: '10px 18px', borderRadius: '8px', background: '#7f1d1d', color: '#fca5a5', border: '1px solid #991b1b', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', opacity: regenerating ? 0.7 : 1 }}>
-          {regenerating ? 'Regenerating...' : 'Regenerate Addon URL'}
-        </button>
-      </div>
+      </section>
     </div>
   );
 }

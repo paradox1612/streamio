@@ -214,7 +214,7 @@ const vodQueries = {
     if (!entries.length) return;
     const values = [];
     const placeholders = entries.map((e, i) => {
-      const base = i * 9;
+      const base = i * 10;
       values.push(
         e.userId,
         e.providerId,
@@ -224,19 +224,21 @@ const vodQueries = {
         e.posterUrl,
         e.category,
         e.vodType,
-        e.containerExtension || null
+        e.containerExtension || null,
+        e.epgChannelId || null
       );
-      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9})`;
+      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10})`;
     });
     await pool.query(
-      `INSERT INTO user_provider_vod (user_id, provider_id, stream_id, raw_title, normalized_title, poster_url, category, vod_type, container_extension)
+      `INSERT INTO user_provider_vod (user_id, provider_id, stream_id, raw_title, normalized_title, poster_url, category, vod_type, container_extension, epg_channel_id)
        VALUES ${placeholders.join(', ')}
        ON CONFLICT (provider_id, stream_id, vod_type) DO UPDATE
        SET raw_title = EXCLUDED.raw_title,
            normalized_title = EXCLUDED.normalized_title,
            poster_url = EXCLUDED.poster_url,
            category = EXCLUDED.category,
-           container_extension = EXCLUDED.container_extension`,
+           container_extension = EXCLUDED.container_extension,
+           epg_channel_id = EXCLUDED.epg_channel_id`,
       values
     );
   },
@@ -384,7 +386,8 @@ const vodQueries = {
               m.confidence_score
        FROM user_provider_vod v
        LEFT JOIN matched_content m ON m.raw_title = v.raw_title
-       WHERE m.id IS NULL OR (m.tmdb_id IS NOT NULL AND m.imdb_id IS NULL)
+       WHERE (m.id IS NULL OR (m.tmdb_id IS NOT NULL AND m.imdb_id IS NULL))
+         AND (m.manually_matched IS NULL OR m.manually_matched = false)
        LIMIT $1`,
       [limit]
     );
@@ -416,6 +419,38 @@ const tmdbQueries = {
     );
   },
 
+  async upsertMovieBatch(entries) {
+    if (!entries.length) return;
+    const values = [];
+    const placeholders = entries.map((e, i) => {
+      const base = i * 8;
+      values.push(
+        e.id,
+        e.original_title,
+        e.normalized_title || null,
+        e.release_year || null,
+        e.popularity || 0,
+        e.poster_path || null,
+        e.overview || null,
+        e.imdb_id || null
+      );
+      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`;
+    });
+    await pool.query(
+      `INSERT INTO tmdb_movies (id, original_title, normalized_title, release_year, popularity, poster_path, overview, imdb_id)
+       VALUES ${placeholders.join(', ')}
+       ON CONFLICT (id) DO UPDATE SET
+         original_title = EXCLUDED.original_title,
+         normalized_title = EXCLUDED.normalized_title,
+         release_year = EXCLUDED.release_year,
+         popularity = EXCLUDED.popularity,
+         poster_path = EXCLUDED.poster_path,
+         overview = EXCLUDED.overview,
+         imdb_id = EXCLUDED.imdb_id`,
+      values
+    );
+  },
+
   async upsertSeries({ id, original_title, normalized_title, first_air_year, popularity, poster_path, overview }) {
     await pool.query(
       `INSERT INTO tmdb_series (id, original_title, normalized_title, first_air_year, popularity, poster_path, overview)
@@ -428,6 +463,36 @@ const tmdbQueries = {
          poster_path = EXCLUDED.poster_path,
          overview = EXCLUDED.overview`,
       [id, original_title, normalized_title, first_air_year, popularity, poster_path, overview]
+    );
+  },
+
+  async upsertSeriesBatch(entries) {
+    if (!entries.length) return;
+    const values = [];
+    const placeholders = entries.map((e, i) => {
+      const base = i * 7;
+      values.push(
+        e.id,
+        e.original_title,
+        e.normalized_title || null,
+        e.first_air_year || null,
+        e.popularity || 0,
+        e.poster_path || null,
+        e.overview || null
+      );
+      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`;
+    });
+    await pool.query(
+      `INSERT INTO tmdb_series (id, original_title, normalized_title, first_air_year, popularity, poster_path, overview)
+       VALUES ${placeholders.join(', ')}
+       ON CONFLICT (id) DO UPDATE SET
+         original_title = EXCLUDED.original_title,
+         normalized_title = EXCLUDED.normalized_title,
+         first_air_year = EXCLUDED.first_air_year,
+         popularity = EXCLUDED.popularity,
+         poster_path = EXCLUDED.poster_path,
+         overview = EXCLUDED.overview`,
+      values
     );
   },
 

@@ -13,6 +13,11 @@
     "react-hot-toast": "^2.4.1",
     "react-copy-to-clipboard": "^5.1.0"
   },
+  "devDependencies": {
+    "tailwindcss": "^3.4.1",
+    "postcss": "^8.4.35",
+    "autoprefixer": "^10.4.17"
+  },
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",

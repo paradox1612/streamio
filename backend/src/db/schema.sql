@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS user_provider_vod (
   normalized_title VARCHAR,
   poster_url VARCHAR,
   category VARCHAR,
-  vod_type VARCHAR CHECK (vod_type IN ('movie', 'series')),
+  vod_type VARCHAR CONSTRAINT user_provider_vod_vod_type_check CHECK (vod_type IN ('movie', 'series', 'live')),
   container_extension VARCHAR DEFAULT 'mp4',
   created_at TIMESTAMP DEFAULT NOW(),
   UNIQUE(provider_id, stream_id, vod_type)
@@ -190,3 +190,45 @@ WHERE normalized_title IS NULL OR normalized_title = '';
 UPDATE user_provider_vod
 SET normalized_title = trim(regexp_replace(lower(unaccent(raw_title)), '[^a-z0-9]+', ' ', 'g'))
 WHERE normalized_title IS NULL OR normalized_title = '';
+
+-- ─────────────────────────────────────────
+-- Additional Performance Indexes
+-- ─────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_matched_content_raw_title_lower ON matched_content(LOWER(raw_title));
+CREATE INDEX IF NOT EXISTS idx_upv_provider_vod_type ON user_provider_vod(provider_id, vod_type);
+CREATE INDEX IF NOT EXISTS idx_upv_user_normalized ON user_provider_vod(user_id, normalized_title);
+CREATE INDEX IF NOT EXISTS idx_upv_stream_lookup ON user_provider_vod(provider_id, stream_id, vod_type);
+CREATE INDEX IF NOT EXISTS idx_mc_tmdb_id ON matched_content(tmdb_id) WHERE tmdb_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_host_health_provider ON host_health(provider_id, status);
+
+-- ─────────────────────────────────────────
+-- Add EPG channel ID for live streams
+-- ─────────────────────────────────────────
+ALTER TABLE user_provider_vod
+  ADD COLUMN IF NOT EXISTS epg_channel_id TEXT;
+
+ALTER TABLE user_provider_vod
+  DROP CONSTRAINT IF EXISTS user_provider_vod_vod_type_check;
+ALTER TABLE user_provider_vod
+  ADD CONSTRAINT user_provider_vod_vod_type_check
+  CHECK (vod_type IN ('movie', 'series', 'live'));
+
+-- ─────────────────────────────────────────
+-- Watch History (for future use)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS watch_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  vod_id UUID REFERENCES user_provider_vod(id) ON DELETE SET NULL,
+  raw_title TEXT,
+  tmdb_id INTEGER,
+  imdb_id TEXT,
+  vod_type TEXT,
+  progress_pct NUMERIC(5,2) DEFAULT 0,
+  last_watched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_id, raw_title)
+);
+CREATE INDEX IF NOT EXISTS idx_watch_history_user ON watch_history(user_id, last_watched_at DESC);
+
+-- manually_matched flag to prevent auto-job from overwriting user corrections
+ALTER TABLE matched_content ADD COLUMN IF NOT EXISTS manually_matched BOOLEAN DEFAULT FALSE;

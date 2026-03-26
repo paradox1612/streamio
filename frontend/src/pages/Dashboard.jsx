@@ -1,87 +1,90 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { userAPI, providerAPI } from '../utils/api';
+import StatCard from '../components/StatCard';
+import ProgressBar from '../components/ProgressBar';
+import StatusBadge from '../components/StatusBadge';
+import EmptyState from '../components/EmptyState';
+import SkeletonCard from '../components/SkeletonCard';
+import {
+  ServerIcon,
+  FilmIcon,
+  SparklesIcon,
+  ClockIcon,
+  CheckIcon,
+  ArrowRightIcon,
+} from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 
 function formatExpiry(expiresAt) {
-  if (!expiresAt) return 'No expiry provided';
+  if (!expiresAt) return 'No expiry';
   const end = new Date(expiresAt);
-  if (Number.isNaN(end.getTime())) return 'No expiry provided';
+  if (Number.isNaN(end.getTime())) return 'No expiry';
   const diffDays = Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
   if (diffDays < 0) return `Expired ${Math.abs(diffDays)}d ago`;
   if (diffDays === 0) return 'Expires today';
   return `${diffDays}d left`;
 }
 
-function formatLastChecked(lastChecked) {
-  if (!lastChecked) return 'Never checked';
-  return new Date(lastChecked).toLocaleString();
+function getExpiryColor(expiresAt) {
+  if (!expiresAt) return 'text-slate-300/60';
+  const diffDays = Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return 'text-red-400';
+  if (diffDays <= 7) return 'text-amber-400';
+  return 'text-emerald-400';
 }
 
-function StatCard({ label, value, sub, color = '#818cf8' }) {
-  return (
-    <div style={{ background: '#1e293b', borderRadius: '12px', padding: '20px', border: '1px solid #334155' }}>
-      <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
-      <div style={{ fontSize: '2rem', fontWeight: 700, color }}>{value ?? '—'}</div>
-      {sub && <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>{sub}</div>}
-    </div>
-  );
-}
-
-function ProviderStatusCard({ provider }) {
+function ProviderCard({ provider }) {
   const online = provider.status === 'online';
   const matchRate = provider.totalTitles ? Math.round((provider.matchedTitles / provider.totalTitles) * 100) : 0;
-  const usageLabel = provider.accountInfo?.maxConnections
-    ? `${provider.accountInfo.activeConnections || 0}/${provider.accountInfo.maxConnections} connections`
-    : 'Connection limit unavailable';
-  const formats = provider.accountInfo?.allowedOutputFormats?.length
-    ? provider.accountInfo.allowedOutputFormats.join(', ')
-    : 'Formats unavailable';
+  const expiryColor = getExpiryColor(provider.accountInfo?.expiresAt);
 
   return (
     <Link
       to={`/providers/${provider.id}`}
-      style={{ background: '#1e293b', borderRadius: '10px', padding: '16px', border: `1px solid ${online ? '#166534' : '#7f1d1d'}`, display: 'block', textDecoration: 'none' }}
+      className="panel-soft group block p-6 no-underline transition-all duration-200 hover:-translate-y-0.5 hover:border-white/[0.15]"
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', marginBottom: '14px', flexWrap: 'wrap' }}>
+      <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '4px' }}>{provider.name}</div>
-          <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-            {provider.active_host || 'No active host'} · {provider.totalTitles.toLocaleString()} titles
-          </div>
+          <p className="metric-label mb-2">Provider</p>
+          <h3 className="text-xl font-bold text-white transition-colors group-hover:text-brand-200">{provider.name}</h3>
+          <p className="mt-2 text-sm text-slate-300/60">{provider.active_host || 'No active host'}</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: online ? '#22c55e' : '#ef4444' }} />
-          <span style={{ fontSize: '0.8rem', color: online ? '#86efac' : '#fca5a5' }}>
-            {online ? 'Online' : provider.status === 'offline' ? 'Offline' : 'Unknown'}
-          </span>
-        </div>
+        <StatusBadge status={online ? 'online' : 'offline'} pulse={online} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginBottom: '12px' }}>
-        {[
-          { label: 'Movies', value: provider.movieCount.toLocaleString() },
-          { label: 'Series', value: provider.seriesCount.toLocaleString() },
-          { label: 'Match Rate', value: `${matchRate}%` },
-          { label: 'Expiry', value: formatExpiry(provider.accountInfo?.expiresAt) },
-        ].map(item => (
-          <div key={item.label} style={{ borderRadius: '8px', background: '#0f172a', border: '1px solid #334155', padding: '10px 12px' }}>
-            <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{item.label}</div>
-            <div style={{ fontSize: '0.92rem', color: '#e2e8f0', fontWeight: 600 }}>{item.value}</div>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="metric-label mb-1">Titles</p>
+            <p className="text-2xl font-bold text-white">{provider.totalTitles.toLocaleString()}</p>
+            <p className="mt-1 text-xs text-slate-300/55">{provider.movieCount} movies, {provider.seriesCount} series</p>
           </div>
-        ))}
-      </div>
+          <div>
+            <p className="metric-label mb-1">Match Rate</p>
+            <p className="text-2xl font-bold text-brand-300">{matchRate}%</p>
+            <p className="mt-1 text-xs text-slate-300/55">{provider.matchedTitles.toLocaleString()} matched</p>
+          </div>
+        </div>
 
-      <div style={{ display: 'grid', gap: '6px' }}>
-        <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-          {usageLabel} {provider.accountInfo?.status ? `· ${provider.accountInfo.status}` : ''} {provider.accountInfo?.isTrial ? '· Trial account' : ''}
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <span className="metric-label">Match Progress</span>
+            <span className="text-xs font-bold text-brand-300">{matchRate}%</span>
+          </div>
+          <ProgressBar value={matchRate} max={100} color="bg-brand-500" />
         </div>
-        <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-          Formats: {formats}
-        </div>
-        <div style={{ fontSize: '0.78rem', color: '#475569' }}>
-          Last health check: {formatLastChecked(provider.last_checked)}
-          {provider.accountInfoError ? ` · Live account info unavailable` : ''}
+
+        {provider.accountInfo?.expiresAt && (
+          <div className="flex items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3">
+            <span className="text-sm text-slate-300/[0.65]">Expiry</span>
+            <span className={`text-sm font-bold ${expiryColor}`}>{formatExpiry(provider.accountInfo.expiresAt)}</span>
+          </div>
+        )}
+
+        <div className="flex items-center pt-2 text-xs font-semibold text-slate-300/55">
+          <ArrowRightIcon className="mr-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+          Open provider details
         </div>
       </div>
     </Link>
@@ -129,6 +132,23 @@ export default function Dashboard() {
         );
 
         setProviders(providerStats);
+
+        // 🔔 Expiry alerts — warn about providers expiring in ≤ 7 days
+        providerStats.forEach(p => {
+          if (!p.accountInfo?.expiresAt) return;
+          const diffDays = Math.ceil((new Date(p.accountInfo.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          if (diffDays < 0) {
+            toast.error(`⚠️ "${p.name}" subscription has expired!`, { duration: 8000 });
+          } else if (diffDays <= 3) {
+            toast.error(`🔴 "${p.name}" expires in ${diffDays} day${diffDays !== 1 ? 's' : ''}!`, { duration: 8000 });
+          } else if (diffDays <= 7) {
+            toast(`⏰ "${p.name}" expires in ${diffDays} days`, {
+              icon: '⚠️',
+              duration: 6000,
+              style: { background: '#451a03', color: '#fef3c7', border: '1px solid #92400e' },
+            });
+          }
+        });
       })
       .catch(() => toast.error('Failed to load dashboard'))
       .finally(() => setLoading(false));
@@ -157,72 +177,129 @@ export default function Dashboard() {
     return diffDays >= 0 && diffDays <= 7;
   }).length;
 
-  if (loading) {
-    return <div style={{ color: '#64748b', padding: '40px' }}>Loading dashboard...</div>;
-  }
-
   return (
-    <div style={{ maxWidth: '900px' }}>
-      <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#f1f5f9', marginBottom: '8px' }}>Overview</h1>
-      <p style={{ color: '#64748b', marginBottom: '28px' }}>Your StreamBridge addon at a glance</p>
-
-      {/* Addon URL Card */}
-      <div style={{ background: '#1e293b', borderRadius: '12px', padding: '24px', border: '1px solid #334155', marginBottom: '28px' }}>
-        <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Your Addon URL</div>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <input
-            readOnly value={addonUrl}
-            style={{ flex: 1, minWidth: 0, padding: '10px 14px', borderRadius: '8px', background: '#0f172a', border: '1px solid #334155', color: '#94a3b8', fontSize: '0.85rem', outline: 'none' }}
-          />
-          <button onClick={copyUrl}
-            style={{ padding: '10px 18px', borderRadius: '8px', background: copying ? '#16a34a' : '#334155', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
-            {copying ? '✓ Copied' : 'Copy'}
-          </button>
-          <button onClick={installInStremio}
-            style={{ padding: '10px 18px', borderRadius: '8px', background: '#4f46e5', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
-            Install in Stremio
-          </button>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px', marginBottom: '28px' }}>
-        <StatCard label="Providers" value={providers.length} sub={`${onlineCount} online`} />
-        <StatCard label="Total Titles" value={totalTitles.toLocaleString()} color="#22d3ee" />
-        <StatCard label="Match Rate" value={`${matchRate}%`} sub={`${totalMatched.toLocaleString()} matched`} color="#a3e635" />
-        <StatCard label="Expiring Soon" value={expiringSoonCount} sub="next 7 days" color="#f59e0b" />
-      </div>
-
-      {/* Provider Status Cards */}
-      {providers.length > 0 ? (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#f1f5f9' }}>Provider Status</h2>
-            <Link to="/providers" style={{ fontSize: '0.85rem', color: '#818cf8', textDecoration: 'none' }}>View all →</Link>
+    <div className="mx-auto max-w-7xl space-y-10">
+      <section className="panel overflow-hidden p-6 sm:p-8 lg:p-10">
+        <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
+          <div>
+            <div className="kicker mb-5">Workspace Overview</div>
+            <h1 className="hero-title">
+              One place to monitor providers, install your addon, and keep your catalog healthy.
+            </h1>
+            <p className="hero-copy mt-4">
+              StreamBridge keeps the operational details visible without getting in the way. Start with your addon, then scan provider health and matching performance below.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              {addonUrl && (
+                <>
+                  <button onClick={copyUrl} className="btn-primary">
+                    {copying ? 'Copied URL' : 'Copy Addon URL'}
+                  </button>
+                  <button onClick={installInStremio} className="btn-secondary">
+                    Install in Stremio
+                  </button>
+                </>
+              )}
+              <Link to="/providers" className="btn-secondary">
+                Manage Providers
+              </Link>
+            </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '28px' }}>
-            {providers.map(p => <ProviderStatusCard key={p.id} provider={p} />)}
+
+          <div className="panel-soft grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-1">
+            <div>
+              <p className="metric-label mb-1">Active Providers</p>
+              <p className="text-3xl font-bold text-white">{onlineCount}</p>
+              <p className="mt-1 text-sm text-slate-300/[0.65]">Healthy sources ready for playback routing.</p>
+            </div>
+            <div>
+              <p className="metric-label mb-1">Catalog Confidence</p>
+              <p className="text-3xl font-bold text-white">{matchRate}%</p>
+              <p className="mt-1 text-sm text-slate-300/[0.65]">{totalMatched.toLocaleString()} matched titles across your library.</p>
+            </div>
           </div>
         </div>
-      ) : (
-        <div style={{ background: '#1e293b', borderRadius: '12px', padding: '32px', border: '1px solid #334155', textAlign: 'center' }}>
-          <div style={{ fontSize: '2rem', marginBottom: '12px' }}>🔌</div>
-          <div style={{ color: '#94a3b8', marginBottom: '16px' }}>No providers yet. Add your first IPTV provider to get started.</div>
-          <Link to="/providers" style={{ padding: '10px 20px', borderRadius: '8px', background: '#4f46e5', color: '#fff', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>
-            Add Provider
-          </Link>
-        </div>
+      </section>
+
+      {addonUrl && (
+        <section className="panel-soft grid gap-6 p-6 lg:grid-cols-[1fr_auto] lg:items-center">
+          <div>
+            <p className="eyebrow mb-2">Personal Addon</p>
+            <h2 className="section-title">Ready to install</h2>
+            <p className="section-copy mt-2">Use your private addon URL in Stremio. Copy it once or launch installation directly.</p>
+            <div className="mt-5 overflow-x-auto rounded-[20px] border border-white/[0.08] bg-surface-950/70 p-4 font-mono text-sm text-slate-200/[0.8]">
+              {addonUrl}
+            </div>
+          </div>
+          <div className="flex flex-col gap-3 lg:w-52">
+            <button
+              onClick={copyUrl}
+              className={`btn-secondary ${copying ? 'border-emerald-300/20 bg-emerald-400/10 text-emerald-50' : ''}`}
+            >
+              {copying ? (
+                <>
+                  <CheckIcon className="h-4 w-4" />
+                  Copied
+                </>
+              ) : (
+                'Copy URL'
+              )}
+            </button>
+            <button onClick={installInStremio} className="btn-primary">
+              Install
+            </button>
+          </div>
+        </section>
       )}
 
-      {/* Quick Actions */}
-      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-        <Link to="/providers" style={{ padding: '10px 18px', borderRadius: '8px', background: '#334155', color: '#f1f5f9', textDecoration: 'none', fontSize: '0.85rem', fontWeight: 500 }}>
-          + Add Provider
-        </Link>
-        <Link to="/addon" style={{ padding: '10px 18px', borderRadius: '8px', background: '#334155', color: '#f1f5f9', textDecoration: 'none', fontSize: '0.85rem', fontWeight: 500 }}>
-          🔗 Addon Settings
-        </Link>
-      </div>
+      {loading ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <SkeletonCard count={4} type="stat" />
+        </div>
+      ) : (
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard icon={ServerIcon} label="Providers" value={providers.length} sub={`${onlineCount} online`} color="text-blue-300" />
+          <StatCard icon={FilmIcon} label="Total Titles" value={totalTitles.toLocaleString()} sub="Movies and series available" color="text-cyan-300" />
+          <StatCard icon={SparklesIcon} label="Match Rate" value={`${matchRate}%`} sub={`${totalMatched.toLocaleString()} matched`} color="text-sky-300" />
+          <StatCard icon={ClockIcon} label="Expiring Soon" value={expiringSoonCount} sub="within 7 days" color="text-amber-300" />
+        </section>
+      )}
+
+      <section>
+        <div className="mb-6 flex items-end justify-between gap-4">
+          <div>
+            <p className="eyebrow mb-2">Sources</p>
+            <h2 className="section-title">Provider activity</h2>
+            <p className="section-copy mt-2">Scan source health, title volume, and subscription timing at a glance.</p>
+          </div>
+          {!loading && providers.length > 0 && (
+            <Link to="/providers" className="btn-secondary">
+              View all
+              <ArrowRightIcon className="h-4 w-4" />
+            </Link>
+          )}
+        </div>
+
+        {loading ? (
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            <SkeletonCard count={4} type="provider" />
+          </div>
+        ) : providers.length > 0 ? (
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            {providers.slice(0, 4).map(p => (
+              <ProviderCard key={p.id} provider={p} />
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            icon={ServerIcon}
+            heading="No providers connected"
+            description="Add your first IPTV provider to start streaming and populate your VOD and Live TV views."
+            action={() => window.location.href = '/providers'}
+            actionLabel="Add Your First Provider"
+          />
+        )}
+      </section>
     </div>
   );
 }

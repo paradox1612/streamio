@@ -1,6 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const { buildManifest, handleCatalog, handleMeta, handleStream } = require('./addon/addonHandler');
 const authRoutes = require('./api/authRoutes');
@@ -9,11 +11,25 @@ const providerRoutes = require('./api/providerRoutes');
 const adminRoutes = require('./admin/adminRoutes');
 const { startScheduler } = require('./jobs/scheduler');
 const logger = require('./utils/logger');
+const cache = require('./utils/cache');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// ─── Startup Guards ───────────────────────────────────────────────────────────
+if (process.env.NODE_ENV === 'production') {
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret || jwtSecret === 'changeme') {
+    logger.error('[FATAL] JWT_SECRET is not set or equals "changeme" in production environment. Exiting.');
+    process.exit(1);
+  }
+}
+
 // ─── Middleware ───────────────────────────────────────────────────────────────
+
+// Security and compression (before other middleware)
+app.use(helmet());
+app.use(compression());
 
 app.use(cors({
   origin: process.env.FRONTEND_URL || '*',
@@ -22,14 +38,27 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limiting
-const limiter = rateLimit({
+// Rate limiting — split into auth and general
+const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500,
+  max: 20,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
 });
-app.use(limiter);
+
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
+});
+
+// Apply auth limiter only to auth routes
+app.use('/api/auth', authLimiter);
+// Apply general limiter to everything else
+app.use(generalLimiter);
 
 // Request logging
 app.use((req, res, next) => {
@@ -50,9 +79,16 @@ const addonCors = cors({ origin: '*' });
 
 app.get('/addon/:token/manifest.json', addonCors, async (req, res) => {
   try {
-    const manifest = await buildManifest(req.params.token);
-    if (!manifest) return res.status(401).json({ error: 'Invalid token' });
-    res.setHeader('Cache-Control', 'no-cache');
+    const token = req.params.token;
+    // Check cache first
+    let manifest = cache.get('manifestByToken', token);
+    if (!manifest) {
+      manifest = await buildManifest(token);
+      if (!manifest) return res.status(401).json({ error: 'Invalid token' });
+      // Cache the manifest for 60 seconds
+      cache.set('manifestByToken', token, manifest);
+    }
+    res.setHeader('Cache-Control', 'max-age=60');
     res.json(manifest);
   } catch (err) {
     logger.error('Manifest error:', err);

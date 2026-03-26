@@ -270,6 +270,46 @@ describe('POST /api/providers', () => {
   });
 });
 
+describe('GET /api/providers/:id/live', () => {
+  it('returns normalized live channels and requests the full live catalog', async () => {
+    const { providerQueries, vodQueries } = require('../../src/db/queries');
+    providerQueries.findByIdAndUser.mockResolvedValue({
+      id: 'prov-1',
+      user_id: 'user-123',
+      username: 'user',
+      password: 'pass',
+      active_host: 'http://iptv.example.com',
+      hosts: ['http://iptv.example.com'],
+    });
+    vodQueries.getByProvider.mockResolvedValue([{
+      id: 'row-1',
+      stream_id: '77',
+      raw_title: 'ESPN HD',
+      poster_url: 'http://img.example.com/espn.png',
+      category: 'SPORTS',
+      container_extension: 'ts',
+      vod_type: 'live',
+    }]);
+
+    const token = makeUserToken();
+    const res = await request(app)
+      .get('/api/providers/prov-1/live')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(vodQueries.getByProvider).toHaveBeenCalledWith('prov-1', expect.objectContaining({
+      type: 'live',
+      limit: 20000,
+    }));
+    expect(res.body).toEqual([expect.objectContaining({
+      id: 'row-1',
+      name: 'ESPN HD',
+      logo: 'http://img.example.com/espn.png',
+      streamUrl: 'http://iptv.example.com/live/user/pass/77.ts',
+    })]);
+  });
+});
+
 // ─── Stremio Addon Routes ─────────────────────────────────────────────────────
 
 describe('GET /addon/:token/manifest.json', () => {

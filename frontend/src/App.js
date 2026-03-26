@@ -12,6 +12,7 @@ import Dashboard from './pages/Dashboard';
 import Providers from './pages/Providers';
 import ProviderDetail from './pages/ProviderDetail';
 import VodBrowser from './pages/VodBrowser';
+import LiveTV from './pages/LiveTV';
 import AddonSettings from './pages/AddonSettings';
 import Account from './pages/Account';
 import ForgotPassword from './pages/ForgotPassword';
@@ -47,7 +48,7 @@ export default function App() {
         <Toaster
           position="top-right"
           toastOptions={{
-            style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
+            style: { background: 'rgba(8, 16, 31, 0.92)', color: '#edf4ff', border: '1px solid rgba(255,255,255,0.1)', backdropFilter: 'blur(18px)' },
             success: { iconTheme: { primary: '#22c55e', secondary: '#f1f5f9' } },
             error: { iconTheme: { primary: '#ef4444', secondary: '#f1f5f9' } },
           }}
@@ -64,6 +65,7 @@ export default function App() {
           <Route path="/providers" element={<UserLayout><Providers /></UserLayout>} />
           <Route path="/providers/:id" element={<UserLayout><ProviderDetail /></UserLayout>} />
           <Route path="/vod" element={<UserLayout><VodBrowser /></UserLayout>} />
+          <Route path="/live" element={<UserLayout><LiveTV /></UserLayout>} />
           <Route path="/addon" element={<UserLayout><AddonSettings /></UserLayout>} />
           <Route path="/account" element={<UserLayout><Account /></UserLayout>} />
 

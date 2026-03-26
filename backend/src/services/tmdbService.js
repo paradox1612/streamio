@@ -232,12 +232,15 @@ const tmdbService = {
       logger.info('Downloading movie export...');
       const movieData = await downloadTmdbExport('movie');
       let movieCount = 0;
+      let movieBuffer = [];
+      const BUFFER_SIZE = 500;
+
       for (const line of movieData.split('\n')) {
         if (!line.trim()) continue;
         try {
           const obj = JSON.parse(line);
           if (!obj.id || !obj.original_title || obj.adult) continue;
-          await tmdbQueries.upsertMovie({
+          movieBuffer.push({
             id: obj.id,
             original_title: obj.original_title,
             normalized_title: normalizeTitle(obj.original_title),
@@ -248,7 +251,18 @@ const tmdbService = {
             imdb_id: null,
           });
           movieCount++;
+
+          if (movieBuffer.length >= BUFFER_SIZE) {
+            await tmdbQueries.upsertMovieBatch(movieBuffer);
+            movieBuffer = [];
+            logger.info(`[Movies] Processed ${movieCount} items...`);
+          }
         } catch (_) {}
+      }
+
+      // Flush remaining movies
+      if (movieBuffer.length > 0) {
+        await tmdbQueries.upsertMovieBatch(movieBuffer);
       }
       logger.info(`Upserted ${movieCount} movies`);
 
@@ -256,12 +270,14 @@ const tmdbService = {
       logger.info('Downloading TV series export...');
       const tvData = await downloadTmdbExport('tv_series');
       let seriesCount = 0;
+      let seriesBuffer = [];
+
       for (const line of tvData.split('\n')) {
         if (!line.trim()) continue;
         try {
           const obj = JSON.parse(line);
           if (!obj.id || !obj.original_name) continue;
-          await tmdbQueries.upsertSeries({
+          seriesBuffer.push({
             id: obj.id,
             original_title: obj.original_name,
             normalized_title: normalizeTitle(obj.original_name),
@@ -271,7 +287,18 @@ const tmdbService = {
             overview: null,
           });
           seriesCount++;
+
+          if (seriesBuffer.length >= BUFFER_SIZE) {
+            await tmdbQueries.upsertSeriesBatch(seriesBuffer);
+            seriesBuffer = [];
+            logger.info(`[Series] Processed ${seriesCount} items...`);
+          }
         } catch (_) {}
+      }
+
+      // Flush remaining series
+      if (seriesBuffer.length > 0) {
+        await tmdbQueries.upsertSeriesBatch(seriesBuffer);
       }
       logger.info(`Upserted ${seriesCount} series`);
 

@@ -81,14 +81,14 @@ const authService = {
 
   async forgotPassword(email) {
     const user = await userQueries.findByEmail(email.toLowerCase());
-    if (!user) return; // Silent — don't reveal whether email exists
+    if (!user) return { sent: true }; // Silent — don't reveal whether email exists
 
     const resetToken = uuidv4();
     const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
     await userQueries.setResetToken(user.id, resetToken, expires);
-    logger.info(`Password reset requested for: ${email}`);
-    // In production, email the reset link. For now we return the token.
-    return resetToken;
+    // TODO: Send reset link via email to user
+    logger.info(`[DEV] Reset token for ${email}: ${resetToken}`);
+    return { sent: true };
   },
 
   async resetPassword(resetToken, newPassword) {

@@ -62,6 +62,12 @@ export const providerAPI = {
   getStats: (id) => api.get(`/api/providers/${id}/stats`),
   getVod: (id, params) => api.get(`/api/providers/${id}/vod`, { params }),
   getUnmatched: (id) => api.get(`/api/providers/${id}/unmatched`),
+  getLive: (id, params) => api.get(`/api/providers/${id}/live`, { params }),
+  getEpg: (id) => api.get(`/api/providers/${id}/epg`),
+  refreshEpg: (id) => api.post(`/api/providers/${id}/epg/refresh`),
+  // Manual match override
+  tmdbSearch: (id, q, type) => api.get(`/api/providers/${id}/tmdb-search`, { params: { q, type } }),
+  manualMatch: (id, data) => api.post(`/api/providers/${id}/manual-match`, data),
 };
 
 // ─── Admin ────────────────────────────────────────────────────────────────────

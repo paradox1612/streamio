@@ -2,13 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authAPI, userAPI } from '../utils/api';
+import { CheckIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
-
-const inputStyle = {
-  width: '100%', padding: '10px 14px', borderRadius: '8px',
-  background: '#0f172a', border: '1px solid #334155',
-  color: '#f1f5f9', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box',
-};
 
 export default function Account() {
   const { user, logout } = useAuth();
@@ -34,8 +29,8 @@ export default function Account() {
   };
 
   const handleDeleteAccount = async () => {
-    if (!window.confirm('⚠️ Permanently delete your account and all data? This cannot be undone.')) return;
-    if (!window.confirm('Are you absolutely sure? Type "yes" in the next dialog.')) return;
+    if (!window.confirm('Permanently delete your account and all data? This cannot be undone.')) return;
+    if (!window.confirm('Are you absolutely sure?')) return;
     const confirm = window.prompt('Type "delete" to confirm:');
     if (confirm !== 'delete') return toast.error('Cancelled');
     setDeleting(true);
@@ -51,70 +46,107 @@ export default function Account() {
   };
 
   return (
-    <div style={{ maxWidth: '560px' }}>
-      <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#f1f5f9', marginBottom: '8px' }}>Account</h1>
-      <p style={{ color: '#64748b', marginBottom: '28px' }}>Manage your account settings</p>
-
-      {/* Account Info */}
-      <div style={{ background: '#1e293b', borderRadius: '12px', padding: '24px', border: '1px solid #334155', marginBottom: '20px' }}>
-        <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '16px' }}>Account Info</h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Email</span>
-            <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{user?.email}</span>
+    <div className="mx-auto max-w-6xl space-y-8">
+      <section className="panel overflow-hidden p-6 sm:p-8 lg:p-10">
+        <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
+          <div>
+            <div className="kicker mb-5">Account</div>
+            <h1 className="hero-title">Secure your workspace and keep access predictable.</h1>
+            <p className="hero-copy mt-4">
+              Your account controls provider access, addon identity, and route-level security. Keep your password current and treat destructive actions carefully.
+            </p>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Member Since</span>
-            <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{user?.created_at ? new Date(user.created_at).toLocaleDateString() : '—'}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Last Seen</span>
-            <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{user?.last_seen ? new Date(user.last_seen).toLocaleString() : '—'}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Account Status</span>
-            <span style={{ fontSize: '0.85rem', color: user?.is_active ? '#86efac' : '#fca5a5' }}>{user?.is_active ? 'Active' : 'Suspended'}</span>
+          <div className="panel-soft p-5">
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-100">
+              <ShieldCheckIcon className="h-4 w-4" />
+              {user?.is_active ? 'Account active' : 'Account suspended'}
+            </div>
+            <p className="mt-4 text-sm leading-6 text-slate-300/[0.68]">
+              Email, addon token, and provider records are bound to this account identity.
+            </p>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Change Password */}
-      <div style={{ background: '#1e293b', borderRadius: '12px', padding: '24px', border: '1px solid #334155', marginBottom: '20px' }}>
-        <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '16px' }}>Change Password</h2>
-        <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div>
-            <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.8rem', color: '#94a3b8' }}>Current Password</label>
-            <input style={inputStyle} type="password" required placeholder="••••••••"
-              value={passwords.current} onChange={e => setPasswords(p => ({ ...p, current: e.target.value }))} />
+      <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="panel-soft p-6 sm:p-8">
+          <p className="eyebrow mb-2">Profile</p>
+          <h2 className="section-title">Account information</h2>
+          <div className="mt-6 space-y-4">
+            {[
+              ['Email', user?.email || '—'],
+              ['Member Since', user?.created_at ? new Date(user.created_at).toLocaleDateString() : '—'],
+              ['Last Seen', user?.last_seen ? new Date(user.last_seen).toLocaleDateString() : '—'],
+            ].map(([label, value]) => (
+              <div key={label} className="flex items-center justify-between gap-4 border-b border-white/[0.08] pb-4">
+                <span className="text-sm text-slate-300/60">{label}</span>
+                <span className="text-sm font-medium text-white">{value}</span>
+              </div>
+            ))}
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-sm text-slate-300/60">Status</span>
+              <span className={`inline-flex items-center gap-2 text-sm font-medium ${user?.is_active ? 'text-emerald-100' : 'text-red-100'}`}>
+                {user?.is_active && <CheckIcon className="h-4 w-4" />}
+                {user?.is_active ? 'Active' : 'Suspended'}
+              </span>
+            </div>
           </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.8rem', color: '#94a3b8' }}>New Password</label>
-            <input style={inputStyle} type="password" required placeholder="Min. 8 characters"
-              value={passwords.new} onChange={e => setPasswords(p => ({ ...p, new: e.target.value }))} />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.8rem', color: '#94a3b8' }}>Confirm New Password</label>
-            <input style={inputStyle} type="password" required placeholder="Repeat new password"
-              value={passwords.confirm} onChange={e => setPasswords(p => ({ ...p, confirm: e.target.value }))} />
-          </div>
-          <button type="submit" disabled={changingPw}
-            style={{ padding: '10px', borderRadius: '8px', background: '#4f46e5', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600, opacity: changingPw ? 0.7 : 1 }}>
-            {changingPw ? 'Changing...' : 'Change Password'}
-          </button>
-        </form>
-      </div>
+        </div>
 
-      {/* Danger Zone */}
-      <div style={{ background: '#1e293b', borderRadius: '12px', padding: '24px', border: '1px solid #7f1d1d' }}>
-        <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '8px' }}>⚠️ Danger Zone</h2>
-        <p style={{ fontSize: '0.82rem', color: '#94a3b8', marginBottom: '16px' }}>
-          Permanently delete your account and all associated providers, VOD data, and addon URLs. This action is irreversible.
+        <div className="panel-soft p-6 sm:p-8">
+          <p className="eyebrow mb-2">Security</p>
+          <h2 className="section-title">Change password</h2>
+          <form onSubmit={handleChangePassword} className="mt-6 space-y-5">
+            <div>
+              <label className="field-label">Current Password</label>
+              <input
+                type="password"
+                required
+                placeholder="••••••••"
+                value={passwords.current}
+                onChange={e => setPasswords(p => ({ ...p, current: e.target.value }))}
+                className="field-input"
+              />
+            </div>
+            <div>
+              <label className="field-label">New Password</label>
+              <input
+                type="password"
+                required
+                placeholder="Minimum 8 characters"
+                value={passwords.new}
+                onChange={e => setPasswords(p => ({ ...p, new: e.target.value }))}
+                className="field-input"
+              />
+            </div>
+            <div>
+              <label className="field-label">Confirm New Password</label>
+              <input
+                type="password"
+                required
+                placeholder="Repeat new password"
+                value={passwords.confirm}
+                onChange={e => setPasswords(p => ({ ...p, confirm: e.target.value }))}
+                className="field-input"
+              />
+            </div>
+            <button type="submit" disabled={changingPw} className="btn-primary w-full">
+              {changingPw ? 'Updating password...' : 'Update Password'}
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <section className="panel-soft border-red-400/[0.15] bg-red-500/5 p-6 sm:p-8">
+        <p className="eyebrow mb-2 text-red-100/60">Danger Zone</p>
+        <h2 className="section-title">Delete account</h2>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300/[0.72]">
+          This removes your account, providers, and addon access permanently. There is no recovery path after confirmation.
         </p>
-        <button onClick={handleDeleteAccount} disabled={deleting}
-          style={{ padding: '10px 18px', borderRadius: '8px', background: '#7f1d1d', color: '#fca5a5', border: '1px solid #991b1b', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', opacity: deleting ? 0.7 : 1 }}>
-          {deleting ? 'Deleting...' : 'Delete Account'}
+        <button onClick={handleDeleteAccount} disabled={deleting} className="btn-danger mt-6">
+          {deleting ? 'Deleting account...' : 'Delete Account'}
         </button>
-      </div>
+      </section>
     </div>
   );
 }
