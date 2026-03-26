@@ -138,6 +138,25 @@ describe('addonHandler buildManifest', () => {
 });
 
 describe('addonHandler handleCatalog', () => {
+  it('passes Stremio search extras through to provider lookup', async () => {
+    mockCache.get.mockReturnValue(null);
+    mockUserQueries.findByToken.mockResolvedValue({ id: 'user-1' });
+    mockProviderQueries.findByIdAndUser.mockResolvedValue({ id: '123e4567-e89b-12d3-a456-426614174000', name: 'Startshare' });
+    mockVodQueries.getByProvider.mockResolvedValue([]);
+
+    await handleCatalog('token-1', 'movie', 'sb_123e4567-e89b-12d3-a456-426614174000_movies', { search: 'matrix', skip: '0' });
+
+    expect(mockVodQueries.getByProvider).toHaveBeenCalledWith(
+      '123e4567-e89b-12d3-a456-426614174000',
+      expect.objectContaining({
+        type: 'movie',
+        search: 'matrix',
+        page: 1,
+        limit: 100,
+      })
+    );
+  });
+
   it('filters live catalog results by selected Stremio genre', async () => {
     mockCache.get.mockReturnValue(null);
     mockUserQueries.findByToken.mockResolvedValue({ id: 'user-1' });

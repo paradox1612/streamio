@@ -338,6 +338,13 @@ describe('GET /addon/:token/catalog/:type/:id.json', () => {
     expect(res.body.metas).toBeDefined();
     expect(Array.isArray(res.body.metas)).toBe(true);
   });
+
+  it('accepts Stremio path extras for catalog search', async () => {
+    const res = await request(app).get('/addon/abc123token/catalog/movie/sb_unknownprovider_movies/search=matrix.json');
+    expect(res.status).toBe(200);
+    expect(res.body.metas).toBeDefined();
+    expect(Array.isArray(res.body.metas)).toBe(true);
+  });
 });
 
 describe('GET /addon/:token/stream/:type/:id.json', () => {

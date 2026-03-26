@@ -16,6 +16,20 @@ const cache = require('./utils/cache');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+function parseAddonCatalogExtra(req) {
+  const extra = { ...req.query };
+  const rawPathExtra = req.params.extra;
+
+  if (!rawPathExtra) return extra;
+
+  const params = new URLSearchParams(rawPathExtra.replace(/\//g, '&'));
+  for (const [key, value] of params.entries()) {
+    if (!(key in extra)) extra[key] = value;
+  }
+
+  return extra;
+}
+
 // ─── Startup Guards ───────────────────────────────────────────────────────────
 if (process.env.NODE_ENV === 'production') {
   const jwtSecret = process.env.JWT_SECRET;
@@ -96,10 +110,10 @@ app.get('/addon/:token/manifest.json', addonCors, async (req, res) => {
   }
 });
 
-app.get('/addon/:token/catalog/:type/:id.json', addonCors, async (req, res) => {
+async function catalogHandler(req, res) {
   try {
     const { token, type, id } = req.params;
-    const extra = req.query;
+    const extra = parseAddonCatalogExtra(req);
     const result = await handleCatalog(token, type, id, extra);
     res.setHeader('Cache-Control', 'max-age=300'); // 5 min cache
     res.json(result);
@@ -107,7 +121,10 @@ app.get('/addon/:token/catalog/:type/:id.json', addonCors, async (req, res) => {
     logger.error('Catalog error:', err);
     res.json({ metas: [] });
   }
-});
+}
+
+app.get('/addon/:token/catalog/:type/:id.json', addonCors, catalogHandler);
+app.get('/addon/:token/catalog/:type/:id/:extra(*)?.json', addonCors, catalogHandler);
 
 app.get('/addon/:token/meta/:type/:id.json', addonCors, async (req, res) => {
   try {
