@@ -320,6 +320,7 @@ async function tryOnDemandMatch(userId, baseId, type) {
 
   const targetNormalized = target.normalized_title || normalizeTitle(target.original_title || '');
   const targetType = target.tmdb_type === 'series' ? 'series' : 'movie';
+  let matchedAny = false;
 
   for (const candidate of candidates) {
     const exactResult = await (targetType === 'series'
@@ -338,10 +339,11 @@ async function tryOnDemandMatch(userId, baseId, type) {
       imdbId: target.imdb_id || (baseId.startsWith('tt') ? baseId : null),
       confidenceScore: result.score,
     });
-
+    matchedAny = true;
     logger.info(`On-demand match resolved "${candidate.raw_title}" to ${baseId}`);
-    return resolveVodItem(userId, baseId);
   }
+
+  if (matchedAny) return resolveVodItem(userId, baseId);
 
   logger.info(`On-demand match found no candidate for ${baseId} (${targetNormalized})`);
   return null;
@@ -668,5 +670,6 @@ module.exports = {
   __test__: {
     getTargetTmdbRecord,
     resolveVodItemsForStream,
+    tryOnDemandMatch,
   },
 };

@@ -2,6 +2,10 @@ jest.mock('node-fetch', () => jest.fn());
 
 const mockTmdbQueries = {
   upsertMovie: jest.fn(),
+  exactMatchMovie: jest.fn(),
+  fuzzyMatchMovie: jest.fn(),
+  exactMatchSeries: jest.fn(),
+  fuzzyMatchSeries: jest.fn(),
 };
 const mockUserQueries = {
   findByToken: jest.fn(),
@@ -13,6 +17,10 @@ const mockProviderQueries = {
 const mockVodQueries = {
   getCategoryBreakdown: jest.fn(),
   getByProvider: jest.fn(),
+  findOnDemandCandidateForUser: jest.fn(),
+};
+const mockMatchQueries = {
+  upsert: jest.fn(),
 };
 const mockHostHealthQueries = {
   getByProvider: jest.fn(),
@@ -27,7 +35,7 @@ jest.mock('../../src/db/queries', () => ({
   providerQueries: mockProviderQueries,
   vodQueries: mockVodQueries,
   tmdbQueries: mockTmdbQueries,
-  matchQueries: {},
+  matchQueries: mockMatchQueries,
   hostHealthQueries: mockHostHealthQueries,
   pool: {
     query: jest.fn(),
@@ -200,5 +208,46 @@ describe('addonHandler handleStream', () => {
         },
       ],
     });
+  });
+});
+
+describe('addonHandler tryOnDemandMatch', () => {
+  it('backfills all successful movie variants for the same IMDb id', async () => {
+    pool.query
+      .mockResolvedValueOnce({ rows: [{ id: 1265609, original_title: 'War Machine', normalized_title: 'war machine', year: 2026, imdb_id: 'tt15940132', tmdb_type: 'movie' }] })
+      .mockResolvedValueOnce({ rows: [{ raw_title: 'War Machine (2026)', provider_id: 'provider-1' }] });
+    mockVodQueries.findOnDemandCandidateForUser.mockResolvedValue([
+      { raw_title: 'War Machine (2026)', normalized_title: 'war machine 2026' },
+      { raw_title: 'War Machine (2026) (Hindi)', normalized_title: 'war machine 2026' },
+      { raw_title: 'War Machine (2026) (Tamil)', normalized_title: 'war machine 2026' },
+    ]);
+    mockTmdbQueries.exactMatchMovie.mockResolvedValue(null);
+    mockTmdbQueries.fuzzyMatchMovie.mockResolvedValue({ id: 1265609, score: 0.7058824 });
+
+    const result = await __test__.tryOnDemandMatch('user-1', 'tt15940132', 'movie');
+
+    expect(mockMatchQueries.upsert).toHaveBeenCalledTimes(3);
+    expect(mockMatchQueries.upsert).toHaveBeenNthCalledWith(1, {
+      rawTitle: 'War Machine (2026)',
+      tmdbId: 1265609,
+      tmdbType: 'movie',
+      imdbId: 'tt15940132',
+      confidenceScore: 0.7058824,
+    });
+    expect(mockMatchQueries.upsert).toHaveBeenNthCalledWith(2, {
+      rawTitle: 'War Machine (2026) (Hindi)',
+      tmdbId: 1265609,
+      tmdbType: 'movie',
+      imdbId: 'tt15940132',
+      confidenceScore: 0.7058824,
+    });
+    expect(mockMatchQueries.upsert).toHaveBeenNthCalledWith(3, {
+      rawTitle: 'War Machine (2026) (Tamil)',
+      tmdbId: 1265609,
+      tmdbType: 'movie',
+      imdbId: 'tt15940132',
+      confidenceScore: 0.7058824,
+    });
+    expect(result).toEqual({ raw_title: 'War Machine (2026)', provider_id: 'provider-1' });
   });
 });

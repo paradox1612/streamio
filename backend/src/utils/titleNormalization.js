@@ -1,5 +1,5 @@
 const TITLE_NOISE_PATTERNS = [
-  /\b(arabic|hindi|dubbed|multi|english|french|german|spanish|italian|turkish|persian|urdu)\b/gi,
+  /\b(arabic|hindi|tamil|telugu|malayalam|kannada|bangla|bengali|punjabi|dubbed|multi|english|french|german|spanish|italian|turkish|persian|urdu)\b/gi,
   /\b(hd|fhd|uhd|4k|1080p|720p|480p|bluray|blu-ray|webrip|web-dl|hdtv|dvdrip|xvid|x264|x265|hevc|avc)\b/gi,
   /\b(s\d{2}e\d{2}|season\s*\d+|episode\s*\d+)\b/gi,
   /[\[\](){}|_]/g,
