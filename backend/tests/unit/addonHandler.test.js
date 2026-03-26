@@ -209,6 +209,64 @@ describe('addonHandler handleStream', () => {
       ],
     });
   });
+
+  it('filters movie variants by the user language preferences', async () => {
+    mockCache.get.mockReturnValue(null);
+    mockUserQueries.findByToken.mockResolvedValue({
+      id: 'user-1',
+      preferred_languages: ['hindi'],
+      excluded_languages: [],
+    });
+    pool.query.mockResolvedValueOnce({
+      rows: [
+        {
+          provider_id: 'provider-1',
+          raw_title: 'War Machine (2026)',
+          active_host: 'http://fallback-1.test',
+          username: 'alice',
+          password: 'secret',
+          stream_id: '101',
+          vod_type: 'movie',
+          container_extension: 'mp4',
+        },
+        {
+          provider_id: 'provider-1',
+          raw_title: 'War Machine (2026) (Hindi)',
+          active_host: 'http://fallback-1.test',
+          username: 'alice',
+          password: 'secret',
+          stream_id: '102',
+          vod_type: 'movie',
+          container_extension: 'mp4',
+        },
+        {
+          provider_id: 'provider-1',
+          raw_title: 'War Machine (2026) (Tamil)',
+          active_host: 'http://fallback-1.test',
+          username: 'alice',
+          password: 'secret',
+          stream_id: '103',
+          vod_type: 'movie',
+          container_extension: 'mp4',
+        },
+      ],
+    });
+    mockHostHealthQueries.getByProvider
+      .mockResolvedValueOnce([{ status: 'online', host_url: 'http://host-1.test', response_time_ms: 500 }]);
+
+    const result = await handleStream('token-1', 'movie', 'tt15940132');
+
+    expect(result).toEqual({
+      streams: [
+        {
+          url: 'http://host-1.test/movie/alice/secret/102.mp4',
+          title: 'War Machine (2026) (Hindi) — StreamBridge (Host 1, 500ms)',
+          name: 'War Machine (2026) (Hindi)',
+          behaviorHints: { notWebReady: false },
+        },
+      ],
+    });
+  });
 });
 
 describe('addonHandler tryOnDemandMatch', () => {

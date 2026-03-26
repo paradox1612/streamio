@@ -8,16 +8,54 @@ import {
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 
+const LANGUAGE_OPTIONS = [
+  'arabic',
+  'bangla',
+  'english',
+  'french',
+  'german',
+  'hindi',
+  'italian',
+  'kannada',
+  'malayalam',
+  'persian',
+  'punjabi',
+  'spanish',
+  'tamil',
+  'telugu',
+  'turkish',
+  'urdu',
+];
+
 export default function AddonSettings() {
   const [addonUrl, setAddonUrl] = useState('');
   const [token, setToken] = useState('');
+  const [languageMode, setLanguageMode] = useState('all');
+  const [selectedLanguages, setSelectedLanguages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [copying, setCopying] = useState(false);
+  const [savingLanguages, setSavingLanguages] = useState(false);
 
   useEffect(() => {
-    userAPI.getAddonUrl()
-      .then(res => { setAddonUrl(res.data.addonUrl); setToken(res.data.token); })
+    Promise.all([userAPI.getAddonUrl(), userAPI.getProfile()])
+      .then(([addonRes, profileRes]) => {
+        setAddonUrl(addonRes.data.addonUrl);
+        setToken(addonRes.data.token);
+        const user = profileRes.data.user || {};
+        const preferred = user.preferred_languages || [];
+        const excluded = user.excluded_languages || [];
+        if (preferred.length) {
+          setLanguageMode('include');
+          setSelectedLanguages(preferred);
+        } else if (excluded.length) {
+          setLanguageMode('exclude');
+          setSelectedLanguages(excluded);
+        } else {
+          setLanguageMode('all');
+          setSelectedLanguages([]);
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -49,6 +87,29 @@ export default function AddonSettings() {
 
   const installInStremio = () => {
     window.open(`stremio://${addonUrl.replace(/^https?:\/\//, '')}`, '_blank');
+  };
+
+  const toggleLanguage = (language) => {
+    setSelectedLanguages((current) => current.includes(language)
+      ? current.filter(item => item !== language)
+      : [...current, language]
+    );
+  };
+
+  const saveLanguagePreferences = async () => {
+    setSavingLanguages(true);
+    try {
+      const payload = {
+        preferredLanguages: languageMode === 'include' ? selectedLanguages : [],
+        excludedLanguages: languageMode === 'exclude' ? selectedLanguages : [],
+      };
+      await userAPI.updateProfile(payload);
+      toast.success('Language filter saved');
+    } catch (_) {
+      toast.error('Failed to save language filter');
+    } finally {
+      setSavingLanguages(false);
+    }
   };
 
   if (loading) {
@@ -116,6 +177,73 @@ export default function AddonSettings() {
           <button onClick={regenerate} disabled={regenerating} className="btn-danger mt-6">
             <ArrowPathIcon className="h-4 w-4" />
             {regenerating ? 'Regenerating...' : 'Regenerate URL'}
+          </button>
+        </div>
+      </section>
+
+      <section className="panel-soft p-6 sm:p-8">
+        <p className="eyebrow mb-2">Stream Languages</p>
+        <h2 className="section-title">Filter which language variants appear in Stremio</h2>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300/[0.72]">
+          Default is all variants. Switch to only selected languages or hide selected languages if your providers carry multiple dubbed versions.
+        </p>
+
+        <div className="mt-6 grid gap-3 md:grid-cols-3">
+          {[
+            ['all', 'Show all', 'Do not filter stream variants.'],
+            ['include', 'Only selected', 'Only show variants tagged with the selected languages.'],
+            ['exclude', 'Hide selected', 'Hide variants tagged with the selected languages.'],
+          ].map(([value, label, description]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setLanguageMode(value)}
+              className={`rounded-[22px] border p-4 text-left transition ${
+                languageMode === value
+                  ? 'border-cyan-300/60 bg-cyan-400/10 text-white'
+                  : 'border-white/[0.08] bg-surface-950/60 text-slate-300/72'
+              }`}
+            >
+              <div className="text-sm font-semibold">{label}</div>
+              <div className="mt-2 text-xs leading-5">{description}</div>
+            </button>
+          ))}
+        </div>
+
+        <div className={`mt-6 ${languageMode === 'all' ? 'opacity-50' : ''}`}>
+          <div className="mb-3 text-sm font-medium text-white">Languages</div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {LANGUAGE_OPTIONS.map((language) => (
+              <label
+                key={language}
+                className="flex items-center gap-3 rounded-[18px] border border-white/[0.08] bg-surface-950/65 px-4 py-3 text-sm text-slate-200"
+              >
+                <input
+                  type="checkbox"
+                  disabled={languageMode === 'all'}
+                  checked={selectedLanguages.includes(language)}
+                  onChange={() => toggleLanguage(language)}
+                  className="h-4 w-4 rounded border-white/20 bg-transparent text-cyan-300 focus:ring-cyan-300"
+                />
+                <span className="capitalize">{language}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          <button onClick={saveLanguagePreferences} disabled={savingLanguages} className="btn-primary">
+            {savingLanguages ? 'Saving...' : 'Save Language Filter'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setLanguageMode('all');
+              setSelectedLanguages([]);
+            }}
+            className="btn-secondary"
+          >
+            Reset to All
           </button>
         </div>
       </section>

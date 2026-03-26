@@ -16,12 +16,17 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR UNIQUE NOT NULL,
   password_hash VARCHAR NOT NULL,
   addon_token VARCHAR UNIQUE NOT NULL,
+  preferred_languages TEXT[] DEFAULT ARRAY[]::TEXT[],
+  excluded_languages TEXT[] DEFAULT ARRAY[]::TEXT[],
   is_active BOOLEAN DEFAULT true,
   reset_token VARCHAR,
   reset_token_expires TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW(),
   last_seen TIMESTAMP
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_languages TEXT[] DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE users ADD COLUMN IF NOT EXISTS excluded_languages TEXT[] DEFAULT ARRAY[]::TEXT[];
 
 -- ─────────────────────────────────────────
 -- Admin Users

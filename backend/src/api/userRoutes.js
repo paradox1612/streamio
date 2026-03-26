@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { requireAuth } = require('../middleware/auth');
 const { userQueries } = require('../db/queries');
 const authService = require('../services/authService');
+const cache = require('../utils/cache');
 
 // GET /api/user/profile
 router.get('/profile', requireAuth, async (req, res) => {
@@ -10,8 +11,25 @@ router.get('/profile', requireAuth, async (req, res) => {
 
 // PATCH /api/user/profile
 router.patch('/profile', requireAuth, async (req, res) => {
-  // Email update would require re-verification; not implemented in MVP
-  res.json({ message: 'Profile updated', user: req.user });
+  const normalizeArray = (value) => {
+    if (!Array.isArray(value)) return [];
+    return Array.from(new Set(
+      value
+        .map(item => String(item || '').trim().toLowerCase())
+        .filter(Boolean)
+    ));
+  };
+
+  const preferredLanguages = normalizeArray(req.body.preferredLanguages);
+  const excludedLanguages = normalizeArray(req.body.excludedLanguages);
+
+  const user = await userQueries.updateLanguagePreferences(req.user.id, {
+    preferredLanguages,
+    excludedLanguages,
+  });
+
+  cache.del('userByToken', req.user.addon_token);
+  res.json({ message: 'Profile updated', user });
 });
 
 // GET /api/user/addon-url

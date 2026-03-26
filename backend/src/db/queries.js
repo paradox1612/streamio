@@ -13,7 +13,7 @@ const userQueries = {
 
   async findById(id) {
     const { rows } = await pool.query(
-      'SELECT id, email, addon_token, is_active, created_at, last_seen FROM users WHERE id = $1',
+      'SELECT id, email, addon_token, preferred_languages, excluded_languages, is_active, created_at, last_seen FROM users WHERE id = $1',
       [id]
     );
     return rows[0];
@@ -38,8 +38,19 @@ const userQueries = {
   async create({ email, passwordHash, addonToken }) {
     const { rows } = await pool.query(
       `INSERT INTO users (email, password_hash, addon_token)
-       VALUES ($1, $2, $3) RETURNING id, email, addon_token, is_active, created_at`,
+       VALUES ($1, $2, $3) RETURNING id, email, addon_token, preferred_languages, excluded_languages, is_active, created_at`,
       [email, passwordHash, addonToken]
+    );
+    return rows[0];
+  },
+
+  async updateLanguagePreferences(id, { preferredLanguages, excludedLanguages }) {
+    const { rows } = await pool.query(
+      `UPDATE users
+       SET preferred_languages = $1, excluded_languages = $2
+       WHERE id = $3
+       RETURNING id, email, addon_token, preferred_languages, excluded_languages, is_active, created_at, last_seen`,
+      [preferredLanguages, excludedLanguages, id]
     );
     return rows[0];
   },

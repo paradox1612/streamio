@@ -43,6 +43,7 @@ export const authAPI = {
 // ─── User ─────────────────────────────────────────────────────────────────────
 export const userAPI = {
   getProfile: () => api.get('/api/user/profile'),
+  updateProfile: (data) => api.patch('/api/user/profile', data),
   getAddonUrl: () => api.get('/api/user/addon-url'),
   regenerateAddonUrl: () => api.post('/api/user/addon-url/regenerate'),
   deleteAccount: () => api.delete('/api/user/account'),

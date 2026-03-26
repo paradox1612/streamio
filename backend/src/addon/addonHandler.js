@@ -4,7 +4,7 @@ const providerService = require('../services/providerService');
 const epgService = require('../services/epgService');
 const cache = require('../utils/cache');
 const logger = require('../utils/logger');
-const { normalizeTitle } = require('../utils/titleNormalization');
+const { normalizeTitle, extractContentLanguages } = require('../utils/titleNormalization');
 const { beginAddonRequest, endAddonRequest } = require('../utils/loadManager');
 
 const TMDB_POSTER_BASE = 'https://image.tmdb.org/t/p/w500';
@@ -230,6 +230,27 @@ async function resolveVodItemsForStream(userId, baseId) {
   }
 
   return [];
+}
+
+function applyLanguagePreferences(vodItems, user) {
+  const preferred = Array.isArray(user?.preferred_languages) ? user.preferred_languages : [];
+  const excluded = Array.isArray(user?.excluded_languages) ? user.excluded_languages : [];
+
+  if (!preferred.length && !excluded.length) return vodItems;
+
+  return vodItems.filter((item) => {
+    const languages = extractContentLanguages(item.raw_title);
+
+    if (preferred.length) {
+      return languages.some(language => preferred.includes(language));
+    }
+
+    if (excluded.length) {
+      return !languages.some(language => excluded.includes(language));
+    }
+
+    return true;
+  });
 }
 
 async function getTargetTmdbRecord(baseId, type) {
@@ -466,6 +487,8 @@ async function handleStream(token, type, id) {
       }
     }
 
+    vodItems = applyLanguagePreferences(vodItems, user);
+
     if (!vodItems.length) return { streams: [] };
 
     const vodItem = vodItems[0];
@@ -668,6 +691,7 @@ module.exports = {
   handleStream,
   handleLiveStream,
   __test__: {
+    applyLanguagePreferences,
     getTargetTmdbRecord,
     resolveVodItemsForStream,
     tryOnDemandMatch,
