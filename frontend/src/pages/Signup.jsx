@@ -81,12 +81,15 @@ export default function Signup() {
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
               <div>
-                <label className="field-label">Email Address</label>
+                <label htmlFor="signup-email" className="field-label">Email Address</label>
                 <input
+                  id="signup-email"
                   type="email"
                   required
+                  autoComplete="email"
+                  spellCheck="false"
                   placeholder="you@example.com"
                   value={form.email}
                   onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
@@ -95,10 +98,12 @@ export default function Signup() {
               </div>
 
               <div>
-                <label className="field-label">Password</label>
+                <label htmlFor="signup-password" className="field-label">Password</label>
                 <input
+                  id="signup-password"
                   type="password"
                   required
+                  autoComplete="new-password"
                   placeholder="Minimum 8 characters"
                   value={form.password}
                   onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
@@ -108,10 +113,12 @@ export default function Signup() {
               </div>
 
               <div>
-                <label className="field-label">Confirm Password</label>
+                <label htmlFor="signup-confirm" className="field-label">Confirm Password</label>
                 <input
+                  id="signup-confirm"
                   type="password"
                   required
+                  autoComplete="new-password"
                   placeholder="Repeat password"
                   value={form.confirm}
                   onChange={e => setForm(f => ({ ...f, confirm: e.target.value }))}
@@ -120,8 +127,8 @@ export default function Signup() {
               </div>
 
               <button type="submit" disabled={loading} className="btn-primary w-full">
-                {loading ? 'Creating account...' : 'Create Free Account'}
-                {!loading && <ArrowRightIcon className="h-4 w-4" />}
+                {loading ? 'Creating account\u2026' : 'Create Free Account'}
+                {!loading && <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />}
               </button>
             </form>
 

@@ -11,29 +11,34 @@ import {
 import { useAuth } from '../context/AuthContext';
 import BrandMark from '../components/BrandMark';
 
+const proofPoints = [
+  'Switch providers without rebuilding the addon config',
+  'Keep provider health and expiry visible in one workspace',
+  'Repair metadata where it matters instead of across multiple tools',
+];
+
 const pillars = [
   {
-    title: 'Multi-provider routing',
-    copy: 'Keep several Xtream sources under one account and switch between healthy hosts without reconfiguring Stremio.',
+    title: 'Route several IPTV sources through one install flow',
+    copy: 'Add providers once, keep them health-checked, and stop rebuilding Stremio every time a host changes.',
     icon: ServerStackIcon,
   },
   {
-    title: 'Metadata that stays usable',
-    copy: 'Posters, TMDB matching, and manual correction live in the same workspace instead of scattered tools.',
+    title: 'Keep posters and titles usable without side tools',
+    copy: 'Matching, TMDB enrichment, and manual correction stay close to the catalog instead of becoming another workflow.',
     icon: FilmIcon,
   },
   {
-    title: 'Private account delivery',
-    copy: 'Each account gets one private addon URL, ready to install and easy to rotate if it ever leaks.',
+    title: 'Deliver a private endpoint that feels production-ready',
+    copy: 'Every account keeps a scoped install URL that is simple to reinstall, rotate, and trust.',
     icon: ShieldCheckIcon,
   },
 ];
 
-const proofPoints = [
-  'Private addon URL per account',
-  'Host failover and health rechecks',
-  'Live TV, VOD, and matching in one workspace',
-  'No separate addon config per provider',
+const workflow = [
+  ['Create your account', 'Start with one workspace built for your own provider stack.'],
+  ['Connect providers', 'Bring in credentials once and let StreamBridge monitor host health.'],
+  ['Install one addon', 'Use a single private URL in Stremio instead of juggling separate configs.'],
 ];
 
 export default function Landing() {
@@ -45,164 +50,220 @@ export default function Landing() {
   return (
     <div className="marketing-shell min-h-screen">
       <div className="marketing-chrome">
+
+        {/* ── Nav ── */}
         <header className="sticky top-0 z-30 border-b border-white/10 bg-surface-950/70 backdrop-blur-2xl">
-          <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6 lg:px-8">
             <BrandMark compact />
-            <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex sm:items-center sm:gap-3">
-              <Link to="/login" className="btn-secondary !w-full !px-4 !py-2 sm:!w-auto sm:!px-5 sm:!py-2.5">
+            <nav className="flex items-center gap-2 sm:gap-3" aria-label="Main navigation">
+              <Link to="/login" className="btn-secondary !px-4 !py-2">
                 Sign In
               </Link>
-              <Link to="/signup" className="btn-primary !w-full !px-4 !py-2 sm:!w-auto sm:!px-5 sm:!py-2.5">
+              <Link to="/signup" className="btn-primary !px-4 !py-2 sm:!px-5">
                 Start Free
               </Link>
-            </div>
+            </nav>
           </div>
         </header>
 
         <main>
-          <section className="relative overflow-hidden border-b border-white/10">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(20,145,255,0.18),transparent_30%),linear-gradient(180deg,rgba(6,11,22,0.28),rgba(5,8,22,0.96))]" />
-            <div className="relative mx-auto grid min-h-[calc(100svh-122px)] max-w-7xl gap-8 px-4 py-6 sm:min-h-[calc(100svh-73px)] sm:px-6 sm:py-16 lg:grid-cols-[0.95fr_1.05fr] lg:items-center lg:px-8 lg:py-20">
-              <div className="max-w-xl lg:order-1">
-                <div className="kicker mb-5">
-                  <BoltIcon className="h-4 w-4" />
-                  One bridge from IPTV to Stremio
+          {/* ── Hero ── */}
+          <section className="relative overflow-hidden border-b border-white/10" aria-label="Hero">
+            {/* Ambient orbs */}
+            <div className="ambient-orb left-[-8rem] top-[10rem] h-72 w-72 bg-cyan-300/20" aria-hidden="true" />
+            <div className="ambient-orb right-[-6rem] top-[4rem] h-96 w-96 bg-brand-400/18 [animation-delay:2s]" aria-hidden="true" />
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,8,22,0.14),rgba(5,8,22,0.82))]" aria-hidden="true" />
+
+            <div className="relative mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:px-6 sm:py-16 lg:grid-cols-2 lg:items-center lg:gap-16 lg:px-8 lg:py-20 xl:py-24">
+
+              {/* Left: copy */}
+              <div className="fade-rise">
+                <div className="kicker">
+                  <BoltIcon className="h-4 w-4" aria-hidden="true" />
+                  IPTV infrastructure, cleaned up for Stremio
                 </div>
-                <h1 className="max-w-[9ch] text-[2.35rem] font-bold leading-[0.94] tracking-[-0.05em] text-white sm:max-w-none sm:text-5xl lg:text-7xl">
-                  <span className="sm:hidden">Your IPTV bridge into Stremio.</span>
-                  <span className="hidden sm:inline">StreamBridge keeps your streaming setup clear, private, and installable.</span>
-                </h1>
-                <p className="mt-4 max-w-md text-[15px] leading-6 text-slate-200/72 sm:text-lg sm:leading-7">
-                  <span className="sm:hidden">Add providers once, keep metadata usable, and install one private addon URL.</span>
-                  <span className="hidden sm:inline">Connect providers once, keep metadata readable, and install a single private addon URL instead of juggling multiple brittle setups.</span>
+
+                <p className="mt-8 text-[11px] font-semibold uppercase tracking-[0.26em] text-sky-100/50">
+                  StreamBridge
                 </p>
-                <div className="mt-6 grid gap-3 sm:mt-8 sm:flex sm:flex-row">
-                  <Link to="/signup" className="btn-primary !w-full !justify-between sm:!w-auto sm:!justify-center">
+                <h1 className="hero-display mt-2">
+                  One private bridge for the providers you actually use.
+                </h1>
+                <p className="hero-support mt-6">
+                  StreamBridge turns a messy IPTV setup into one installable, account-scoped Stremio addon with provider routing, health visibility, and metadata repair built in.
+                </p>
+
+                <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                  <Link to="/signup" className="btn-primary">
                     Create Free Account
-                    <ArrowRightIcon className="h-4 w-4" />
+                    <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
                   </Link>
-                  <Link to="/login" className="btn-secondary !w-full sm:!w-auto">
+                  <Link to="/login" className="btn-secondary">
                     I already have an account
                   </Link>
                 </div>
-                <div className="mt-6 grid gap-3 sm:mt-8 sm:grid-cols-2">
-                  {proofPoints.map((point, index) => (
-                    <div key={point} className={`items-start gap-3 rounded-[20px] border border-white/[0.08] bg-white/[0.03] px-4 py-4 ${index > 1 ? 'hidden sm:flex' : 'flex'}`}>
-                      <CheckCircleIcon className="mt-0.5 h-5 w-5 flex-shrink-0 text-brand-300" />
-                      <span className="text-sm leading-6 text-slate-100/88">{point}</span>
+
+                {/* Proof metrics */}
+                <div className="mt-10 flex items-center gap-6 border-t border-white/[0.08] pt-8">
+                  {[
+                    { value: '1', label: 'Private URL per account' },
+                    { value: 'Auto', label: 'Host failover' },
+                    { value: '91%', label: 'Catalogs matched' },
+                  ].map(({ value, label }) => (
+                    <div key={label} className="min-w-0">
+                      <p className="text-2xl font-bold text-white" aria-label={`${value}: ${label}`}>{value}</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-300/60">{label}</p>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="relative lg:order-2">
-                <div className="panel mx-auto max-w-2xl overflow-hidden p-3 sm:p-5">
-                  <div className="rounded-[24px] border border-white/10 bg-surface-950/85 p-4 sm:rounded-[26px] sm:p-6">
-                    <div className="flex flex-col gap-3 border-b border-white/10 pb-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-                      <div>
-                        <p className="metric-label mb-1">Personal Addon</p>
-                        <h2 className="text-xl font-bold text-white sm:text-2xl">Install-ready endpoint</h2>
-                      </div>
-                      <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-100">
-                        <span className="h-2 w-2 rounded-full bg-emerald-300" />
-                        Active
-                      </div>
-                    </div>
+              {/* Right: app preview card */}
+              <div className="fade-rise [animation-delay:0.12s]">
+                <div className="panel overflow-hidden p-6 sm:p-8">
 
-                    <div className="mt-5 rounded-[22px] border border-white/[0.08] bg-white/[0.03] p-4">
-                      <p className="metric-label mb-2">Private URL</p>
-                      <div className="overflow-x-auto font-mono text-xs leading-6 text-brand-100/85 sm:text-sm">
-                        https://streambridge.app/addon/<span className="text-brand-300">acc_x2f9c4f1</span>/manifest.json
-                      </div>
+                  {/* Endpoint header */}
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="metric-label mb-2">Private addon endpoint</p>
+                      <h2 className="text-2xl font-bold text-white">Install-ready</h2>
                     </div>
+                    <span className="metric-chip flex-shrink-0">
+                      <span className="h-2 w-2 flex-shrink-0 rounded-full bg-emerald-400" aria-hidden="true" />
+                      Active
+                    </span>
+                  </div>
 
-                    <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
-                      <div className="panel-soft p-4">
-                        <p className="metric-label mb-2">Providers</p>
-                        <p className="text-3xl font-bold text-white">3</p>
-                        <p className="mt-2 text-sm text-slate-300/65">Healthy sources available.</p>
-                      </div>
-                      <div className="panel-soft p-4">
-                        <p className="metric-label mb-2">Match Rate</p>
-                        <p className="text-3xl font-bold text-white">91%</p>
-                        <p className="mt-2 text-sm text-slate-300/65">Metadata corrected and ready.</p>
-                      </div>
-                      <div className="panel-soft p-4">
-                        <p className="metric-label mb-2">Failover</p>
-                        <p className="text-3xl font-bold text-white">Auto</p>
-                        <p className="mt-2 text-sm text-slate-300/65">Switches to the next host.</p>
-                      </div>
-                    </div>
+                  {/* URL bar */}
+                  <div className="mt-5 overflow-x-auto rounded-2xl border border-white/[0.08] bg-surface-950/70 px-4 py-3 font-mono text-xs leading-7 text-brand-100/80 sm:text-sm">
+                    https://streambridge.app/addon/<wbr />
+                    <span className="text-brand-300">acc_x2f9c4f1</span>/manifest.json
+                  </div>
 
-                    <div className="mt-5 grid gap-3">
-                      <div className="flex flex-col gap-3 rounded-[20px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-white">Northstream</p>
-                          <p className="text-xs text-slate-300/55">Healthy host selected</p>
+                  {/* Feature list */}
+                  <div className="surface-divider mt-6 pt-6">
+                    <p className="metric-label mb-4">Why operators keep this open</p>
+                    <ul className="space-y-3" role="list">
+                      {proofPoints.map((point) => (
+                        <li key={point} className="flex items-start gap-3 text-sm leading-6 text-slate-200/78">
+                          <CheckCircleIcon className="mt-0.5 h-5 w-5 flex-shrink-0 text-brand-300" aria-hidden="true" />
+                          <span>{point}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* At-a-glance stats */}
+                  <div className="surface-divider mt-6 pt-6">
+                    <div className="grid grid-cols-3 divide-x divide-white/[0.06]">
+                      {[
+                        { value: '3', label: 'Sources', tone: 'text-white' },
+                        { value: '57K', label: 'Titles', tone: 'text-white' },
+                        { value: 'Online', label: 'Routing', tone: 'text-emerald-300' },
+                      ].map(({ value, label, tone }) => (
+                        <div key={label} className="px-4 text-center first:pl-0 last:pr-0">
+                          <p className={`text-xl font-bold ${tone}`}>{value}</p>
+                          <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300/55">{label}</p>
                         </div>
-                        <span className="w-fit rounded-full bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-100">online</span>
-                      </div>
-                      <div className="flex flex-col gap-3 rounded-[20px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-white">CinemaVault</p>
-                          <p className="text-xs text-slate-300/55">57,481 matched titles</p>
-                        </div>
-                        <span className="w-fit rounded-full bg-white/[0.06] px-3 py-1 text-xs font-medium text-slate-100">94%</span>
-                      </div>
+                      ))}
                     </div>
                   </div>
                 </div>
-                <div className="pointer-events-none absolute -bottom-8 left-10 right-10 hidden h-24 rounded-full bg-brand-400/20 blur-3xl sm:block" />
               </div>
             </div>
           </section>
 
-          <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
-            <div className="mb-8 max-w-2xl sm:mb-10">
-              <p className="eyebrow mb-3">Why it feels better</p>
-              <h2 className="text-3xl font-bold text-white sm:text-4xl">One system for setup, maintenance, and day-to-day use.</h2>
-              <p className="mt-4 text-base leading-7 text-slate-300/72">
-                StreamBridge is strongest when it removes repeated setup work. The app keeps routing, health, metadata, and install flow in the same place.
+          {/* ── Pillars ── */}
+          <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24" aria-label="Features">
+            <div className="mx-auto max-w-2xl text-center">
+              <p className="eyebrow mb-3">Built for operators</p>
+              <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                The value is obvious in under a minute.
+              </h2>
+              <p className="mt-4 text-base leading-7 text-slate-300/70">
+                Users do not need a long onboarding sequence. They need routing, repair, and install in the same place.
               </p>
             </div>
-            <div className="grid gap-4 lg:grid-cols-3">
+
+            <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {pillars.map(({ title, copy, icon: Icon }) => (
-                <div key={title} className="panel-soft p-5 sm:p-7">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/10 bg-white/[0.04]">
-                    <Icon className="h-5 w-5 text-brand-300" />
+                <div key={title} className="panel-soft p-6">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.04]">
+                    <Icon className="h-5 w-5 text-brand-300" aria-hidden="true" />
                   </div>
-                  <h3 className="mt-5 text-xl font-bold text-white sm:text-2xl">{title}</h3>
-                  <p className="mt-3 text-sm leading-6 text-slate-300/72">{copy}</p>
+                  <h3 className="mt-5 text-lg font-bold text-white">{title}</h3>
+                  <p className="mt-3 text-sm leading-6 text-slate-300/70">{copy}</p>
                 </div>
               ))}
             </div>
           </section>
 
-          <section className="border-y border-white/10 bg-white/[0.02]">
-            <div className="mx-auto grid max-w-7xl gap-8 px-4 py-14 sm:px-6 lg:grid-cols-[1fr_auto] lg:items-center lg:px-8">
+          {/* ── How it works ── */}
+          <section className="border-y border-white/10 bg-white/[0.015]" aria-label="How it works">
+            <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:grid lg:grid-cols-[0.75fr_1.25fr] lg:gap-16 lg:px-8 lg:py-24">
               <div>
-                <p className="eyebrow mb-3">Start here</p>
-                <h2 className="text-3xl font-bold text-white sm:text-4xl">Create the account first. Add providers right after.</h2>
-                <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300/72">
-                  The fastest path is account, provider credentials, then one install-ready addon URL. No complex onboarding wizard is required to get value.
+                <p className="eyebrow mb-3">Three steps</p>
+                <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                  Fast path from signup to playback.
+                </h2>
+                <p className="mt-4 text-base leading-7 text-slate-300/70">
+                  Get access, connect sources, install once.
                 </p>
               </div>
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Link to="/signup" className="btn-primary">
-                  Create Account
-                </Link>
-                <Link to="/login" className="btn-secondary">
-                  Sign In
-                </Link>
+
+              <ol className="mt-10 grid gap-4 lg:mt-0" role="list">
+                {workflow.map(([title, copy], index) => (
+                  <li
+                    key={title}
+                    className="grid gap-4 rounded-[24px] border border-white/[0.08] bg-white/[0.03] p-5 sm:grid-cols-[auto_1fr] sm:items-start sm:p-6"
+                  >
+                    <div
+                      className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-sm font-bold text-white"
+                      aria-hidden="true"
+                    >
+                      0{index + 1}
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-white">{title}</h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-300/70">{copy}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </section>
+
+          {/* ── CTA ── */}
+          <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24" aria-label="Call to action">
+            <div className="panel overflow-hidden p-8 sm:p-10 lg:p-12">
+              <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
+                <div>
+                  <p className="eyebrow mb-3">Start now</p>
+                  <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                    Create the account, bring in providers, and ship one cleaner setup.
+                  </h2>
+                  <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300/70">
+                    StreamBridge is strongest when the first session ends with a working addon URL.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row lg:flex-col xl:flex-row">
+                  <Link to="/signup" className="btn-primary">
+                    Start Free
+                    <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
+                  </Link>
+                  <Link to="/login" className="btn-secondary">
+                    Sign In
+                  </Link>
+                </div>
               </div>
             </div>
           </section>
         </main>
 
         <footer className="border-t border-white/10">
-          <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-6 text-sm text-slate-400/75 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+          <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-6 text-sm text-slate-400/70 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
             <span>StreamBridge</span>
-            <span>Private Stremio addon delivery for IPTV accounts</span>
+            <span>Private Stremio addon delivery for real IPTV accounts</span>
           </div>
         </footer>
       </div>
