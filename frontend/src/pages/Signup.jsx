@@ -1,31 +1,85 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRightIcon, CheckCircleIcon, SparklesIcon } from '@heroicons/react/24/outline';
+import { motion } from 'framer-motion';
+import { Eye, EyeOff, ArrowRight, Link2, Activity, LayoutDashboard, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
-import AuthShowcase from '../components/AuthShowcase';
 import BrandMark from '../components/BrandMark';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 
-const benefits = [
-  'Create your private addon URL',
-  'Add providers right after signup',
-  'Fix metadata from one poster-first workspace',
+const perks = [
+  {
+    icon: Link2,
+    title: 'One private addon URL',
+    desc: 'Every provider flows through a single account-scoped endpoint.',
+  },
+  {
+    icon: Activity,
+    title: 'Provider control after signup',
+    desc: 'Credentials, failover, and refresh tools live in the product — not in setup emails.',
+  },
+  {
+    icon: LayoutDashboard,
+    title: 'Ready on any device',
+    desc: 'Manage catalog health and routing from the same workspace anywhere.',
+  },
 ];
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 20 },
+  visible: (i = 0) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay: i * 0.08, duration: 0.5, ease: [0.22, 1, 0.36, 1] },
+  }),
+};
+
+function PasswordStrength({ password }) {
+  const score = [
+    password.length >= 8,
+    /[A-Z]/.test(password),
+    /[0-9]/.test(password),
+    /[^A-Za-z0-9]/.test(password),
+  ].filter(Boolean).length;
+
+  if (!password) return null;
+
+  const colors = ['bg-red-500', 'bg-orange-400', 'bg-amber-400', 'bg-emerald-400'];
+  const labels = ['Weak', 'Fair', 'Good', 'Strong'];
+
+  return (
+    <div className="mt-2">
+      <div className="flex gap-1.5">
+        {[0, 1, 2, 3].map(i => (
+          <div
+            key={i}
+            className={`h-1 flex-1 rounded-full transition-all duration-300 ${
+              i < score ? colors[score - 1] : 'bg-white/10'
+            }`}
+          />
+        ))}
+      </div>
+      <p className={`mt-1.5 text-xs font-medium ${score > 0 ? 'text-slate-300/70' : ''}`}>
+        {password ? labels[score - 1] || 'Weak' : ''}
+      </p>
+    </div>
+  );
+}
 
 export default function Signup() {
   const { signup } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: '', password: '', confirm: '' });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (form.password !== form.confirm) {
-      return toast.error('Passwords do not match');
-    }
-    if (form.password.length < 8) {
-      return toast.error('Password must be at least 8 characters');
-    }
+    if (form.password !== form.confirm) return toast.error('Passwords do not match');
+    if (form.password.length < 8) return toast.error('Password must be at least 8 characters');
     setLoading(true);
     try {
       await signup(form.email, form.password);
@@ -41,106 +95,211 @@ export default function Signup() {
   return (
     <div className="auth-shell">
       <div className="auth-grid">
-        <AuthShowcase
-          eyebrow="Fastest Path To Value"
-          title="Create the account now, add providers next, and install one private addon URL."
-          body="Signup should take less than a minute. The real setup happens after this step, so the form stays short and the payoff stays clear."
-          bullets={[
-            ['One account, one addon route', 'Every provider you add later flows through the same account-scoped endpoint.'],
-            ['Provider control after signup', 'Credentials, host failover, and refresh tools all live in the product, not in setup email chains.'],
-            ['Ready for mobile and desktop', 'Use the same workspace to manage catalog health wherever you are.'],
-          ]}
-        />
 
-        <div className="auth-form-wrap">
+        {/* ── Left panel ── */}
+        <div className="auth-side">
+          <div className="ambient-orb left-[-4rem] top-20 h-56 w-56 bg-cyan-400/20" />
+          <div className="ambient-orb bottom-16 right-[-4rem] h-64 w-64 bg-brand-400/20 [animation-delay:3s]" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-surface-950/80 to-transparent" />
+
+          <div className="relative z-10 flex h-full flex-col">
+            <BrandMark />
+
+            <div className="mt-auto pb-4 pt-16">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <span className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-200">
+                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                  Get started free
+                </span>
+              </motion.div>
+
+              <motion.h2
+                variants={fadeUp}
+                initial="hidden"
+                animate="visible"
+                custom={1}
+                className="mt-6 text-4xl font-bold leading-[1.08] text-white lg:text-5xl"
+              >
+                One account.<br />One clean setup.
+              </motion.h2>
+
+              <motion.p
+                variants={fadeUp}
+                initial="hidden"
+                animate="visible"
+                custom={2}
+                className="mt-4 max-w-sm text-base leading-7 text-slate-300/70"
+              >
+                Sign up takes under a minute. Provider credentials and addon setup happen right after.
+              </motion.p>
+
+              <div className="mt-10 grid gap-3">
+                {perks.map(({ icon: Icon, title, desc }, i) => (
+                  <motion.div
+                    key={title}
+                    variants={fadeUp}
+                    initial="hidden"
+                    animate="visible"
+                    custom={i + 3}
+                    className="flex items-start gap-4 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-4 py-4 backdrop-blur-sm"
+                  >
+                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05]">
+                      <Icon className="h-4 w-4 text-cyan-300" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-white">{title}</p>
+                      <p className="mt-0.5 text-xs leading-5 text-slate-300/60">{desc}</p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Right: form ── */}
+        <div className="auth-form-wrap flex flex-col justify-center">
           <div className="mb-6 lg:hidden">
             <BrandMark />
           </div>
 
-          <div className="mb-6 sm:mb-8">
-            <div className="kicker">
-              <SparklesIcon className="h-4 w-4" />
-              New Account
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <div className="mb-8">
+              <h1 className="text-3xl font-bold text-white sm:text-4xl">Create your workspace</h1>
+              <p className="mt-2 text-sm text-slate-300/65">
+                Start free. No credit card required.
+              </p>
             </div>
-            <h2 className="mt-5 text-[2rem] font-bold leading-tight text-white sm:mt-6 sm:text-4xl">Create your workspace</h2>
-            <p className="mt-3 max-w-md text-sm leading-6 text-slate-300/[0.72]">
-              Start with your account now. Provider credentials and addon setup happen right after sign up.
-            </p>
-          </div>
 
-          <div className="panel p-5 sm:p-8">
-            <div className="mb-5 rounded-[20px] border border-brand-300/15 bg-brand-400/8 p-4 sm:rounded-[24px]">
-              <p className="text-sm font-semibold text-white">What you unlock immediately</p>
-              <div className="mt-3 grid gap-3">
-                {benefits.map((benefit) => (
-                  <div key={benefit} className="flex items-start gap-3 text-sm text-slate-100/84">
-                    <CheckCircleIcon className="mt-0.5 h-5 w-5 flex-shrink-0 text-brand-300" />
-                    <span>{benefit}</span>
+            <div className="panel p-6 sm:p-8">
+              <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+
+                <div className="space-y-2">
+                  <Label htmlFor="signup-email">Email address</Label>
+                  <Input
+                    id="signup-email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    spellCheck="false"
+                    placeholder="you@example.com"
+                    value={form.email}
+                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="signup-password">Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="signup-password"
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      autoComplete="new-password"
+                      placeholder="Min. 8 characters"
+                      value={form.password}
+                      onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                      className="pr-11"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(v => !v)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400/60 hover:text-slate-300 transition-colors"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <PasswordStrength password={form.password} />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="signup-confirm">Confirm password</Label>
+                  <div className="relative">
+                    <Input
+                      id="signup-confirm"
+                      type={showConfirm ? 'text' : 'password'}
+                      required
+                      autoComplete="new-password"
+                      placeholder="Repeat password"
+                      value={form.confirm}
+                      onChange={e => setForm(f => ({ ...f, confirm: e.target.value }))}
+                      className={`pr-11 ${
+                        form.confirm && form.confirm !== form.password
+                          ? 'border-red-400/40 focus:border-red-400/60 focus:shadow-[0_0_0_3px_rgba(248,113,113,0.12)]'
+                          : form.confirm && form.confirm === form.password
+                          ? 'border-emerald-400/40'
+                          : ''
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirm(v => !v)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400/60 hover:text-slate-300 transition-colors"
+                      aria-label={showConfirm ? 'Hide password' : 'Show password'}
+                    >
+                      {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  {form.confirm && form.confirm !== form.password && (
+                    <p className="text-xs text-red-400">Passwords don't match</p>
+                  )}
+                </div>
+
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full"
+                  size="lg"
+                >
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Creating account…
+                    </span>
+                  ) : (
+                    <>
+                      Create Free Account
+                      <ArrowRight className="h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </form>
+
+              <div className="my-6 flex items-center gap-3">
+                <div className="h-px flex-1 bg-white/[0.08]" />
+                <span className="text-xs text-slate-400/50 font-medium">WHAT YOU UNLOCK</span>
+                <div className="h-px flex-1 bg-white/[0.08]" />
+              </div>
+
+              <div className="grid gap-2">
+                {['Private addon URL created instantly', 'Add providers right after signup', 'Metadata repair from one poster-first workspace'].map(item => (
+                  <div key={item} className="flex items-center gap-2.5 text-xs text-slate-300/70">
+                    <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-emerald-400" />
+                    {item}
                   </div>
                 ))}
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-              <div>
-                <label htmlFor="signup-email" className="field-label">Email Address</label>
-                <input
-                  id="signup-email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  spellCheck="false"
-                  placeholder="you@example.com"
-                  value={form.email}
-                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                  className="field-input"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="signup-password" className="field-label">Password</label>
-                <input
-                  id="signup-password"
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  placeholder="Minimum 8 characters"
-                  value={form.password}
-                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                  className="field-input"
-                />
-                <p className="mt-2 text-xs leading-5 text-slate-300/55">Use at least 8 characters. You can change it later in Account settings.</p>
-              </div>
-
-              <div>
-                <label htmlFor="signup-confirm" className="field-label">Confirm Password</label>
-                <input
-                  id="signup-confirm"
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  placeholder="Repeat password"
-                  value={form.confirm}
-                  onChange={e => setForm(f => ({ ...f, confirm: e.target.value }))}
-                  className="field-input"
-                />
-              </div>
-
-              <button type="submit" disabled={loading} className="btn-primary w-full">
-                {loading ? 'Creating account\u2026' : 'Create Free Account'}
-                {!loading && <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />}
-              </button>
-            </form>
-
-            <div className="mt-8 border-t border-white/10 pt-6">
-              <p className="text-sm text-slate-300/70">
-                Already have an account?{' '}
-                <Link to="/login" className="font-semibold text-brand-300 transition-colors hover:text-brand-200">
-                  Sign in
-                </Link>
-              </p>
-            </div>
-          </div>
+            <p className="mt-6 text-center text-sm text-slate-300/55">
+              Already have an account?{' '}
+              <Link to="/login" className="font-semibold text-brand-300 hover:text-brand-200 transition-colors">
+                Sign in
+              </Link>
+            </p>
+          </motion.div>
         </div>
       </div>
     </div>

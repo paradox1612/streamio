@@ -1,37 +1,30 @@
 import React from 'react';
 import { Link, Navigate } from 'react-router-dom';
+import { motion, useInView } from 'framer-motion';
+import { useRef } from 'react';
 import {
-  ArrowRightIcon,
-  BoltIcon,
-  CheckCircleIcon,
-  FilmIcon,
-  ServerStackIcon,
-  ShieldCheckIcon,
-} from '@heroicons/react/24/outline';
+  ArrowRight, Zap, Server, Film, ShieldCheck, CheckCircle2,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import BrandMark from '../components/BrandMark';
-
-const proofPoints = [
-  'Switch providers without rebuilding the addon config',
-  'Keep provider health and expiry visible in one workspace',
-  'Repair metadata where it matters instead of across multiple tools',
-];
+import { Button } from '../components/ui/button';
+import { Badge } from '../components/ui/badge';
 
 const pillars = [
   {
     title: 'Route several IPTV sources through one install flow',
     copy: 'Add providers once, keep them health-checked, and stop rebuilding Stremio every time a host changes.',
-    icon: ServerStackIcon,
+    icon: Server,
   },
   {
     title: 'Keep posters and titles usable without side tools',
     copy: 'Matching, TMDB enrichment, and manual correction stay close to the catalog instead of becoming another workflow.',
-    icon: FilmIcon,
+    icon: Film,
   },
   {
     title: 'Deliver a private endpoint that feels production-ready',
     copy: 'Every account keeps a scoped install URL that is simple to reinstall, rotate, and trust.',
-    icon: ShieldCheckIcon,
+    icon: ShieldCheck,
   },
 ];
 
@@ -40,6 +33,37 @@ const workflow = [
   ['Connect providers', 'Bring in credentials once and let StreamBridge monitor host health.'],
   ['Install one addon', 'Use a single private URL in Stremio instead of juggling separate configs.'],
 ];
+
+const proofPoints = [
+  'Switch providers without rebuilding the addon config',
+  'Keep provider health and expiry visible in one workspace',
+  'Repair metadata where it matters instead of across multiple tools',
+];
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 28 },
+  visible: (i = 0) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay: i * 0.1, duration: 0.55, ease: [0.22, 1, 0.36, 1] },
+  }),
+};
+
+function AnimatedSection({ children, className }) {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, margin: '-80px' });
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, y: 32 }}
+      animate={inView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
 
 export default function Landing() {
   const { user, loading } = useAuth();
@@ -52,108 +76,147 @@ export default function Landing() {
       <div className="marketing-chrome">
 
         {/* ── Nav ── */}
-        <header className="sticky top-0 z-30 border-b border-white/10 bg-surface-950/70 backdrop-blur-2xl">
+        <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-surface-950/60 backdrop-blur-2xl">
           <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6 lg:px-8">
             <BrandMark compact />
             <nav className="flex items-center gap-2 sm:gap-3" aria-label="Main navigation">
-              <Link to="/login" className="btn-secondary !px-4 !py-2">
-                Sign In
-              </Link>
-              <Link to="/signup" className="btn-primary !px-4 !py-2 sm:!px-5">
-                Start Free
-              </Link>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/login">Sign In</Link>
+              </Button>
+              <Button asChild size="sm">
+                <Link to="/signup">
+                  Start Free
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
             </nav>
           </div>
         </header>
 
         <main>
           {/* ── Hero ── */}
-          <section className="relative overflow-hidden border-b border-white/10" aria-label="Hero">
-            {/* Ambient orbs */}
-            <div className="ambient-orb left-[-8rem] top-[10rem] h-72 w-72 bg-cyan-300/20" aria-hidden="true" />
-            <div className="ambient-orb right-[-6rem] top-[4rem] h-96 w-96 bg-brand-400/18 [animation-delay:2s]" aria-hidden="true" />
-            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,8,22,0.14),rgba(5,8,22,0.82))]" aria-hidden="true" />
+          <section className="relative overflow-hidden border-b border-white/[0.08]" aria-label="Hero">
+            <div className="ambient-orb left-[-8rem] top-[8rem] h-80 w-80 bg-cyan-300/18 opacity-70" aria-hidden="true" />
+            <div className="ambient-orb right-[-6rem] top-[3rem] h-96 w-96 bg-brand-400/16 opacity-70 [animation-delay:2s]" aria-hidden="true" />
+            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-surface-950/10 to-surface-950/60" aria-hidden="true" />
 
-            <div className="relative mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:px-6 sm:py-16 lg:grid-cols-2 lg:items-center lg:gap-16 lg:px-8 lg:py-20 xl:py-24">
+            <div className="relative mx-auto grid max-w-7xl gap-10 px-4 py-16 sm:px-6 sm:py-20 lg:grid-cols-2 lg:items-center lg:gap-16 lg:px-8 lg:py-24 xl:py-28">
 
               {/* Left: copy */}
-              <div className="fade-rise">
-                <div className="kicker">
-                  <BoltIcon className="h-4 w-4" aria-hidden="true" />
-                  IPTV infrastructure, cleaned up for Stremio
-                </div>
+              <div>
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.92 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <Badge variant="brand" className="mb-6 gap-1.5">
+                    <Zap className="h-3 w-3" />
+                    IPTV infrastructure, cleaned up for Stremio
+                  </Badge>
+                </motion.div>
 
-                <p className="mt-8 text-[11px] font-semibold uppercase tracking-[0.26em] text-sky-100/50">
+                <motion.p
+                  variants={fadeUp}
+                  initial="hidden"
+                  animate="visible"
+                  custom={1}
+                  className="text-[11px] font-semibold uppercase tracking-[0.26em] text-sky-100/45"
+                >
                   StreamBridge
-                </p>
-                <h1 className="hero-display mt-2">
+                </motion.p>
+                <motion.h1
+                  variants={fadeUp}
+                  initial="hidden"
+                  animate="visible"
+                  custom={2}
+                  className="hero-display mt-2"
+                >
                   One private bridge for the providers you actually use.
-                </h1>
-                <p className="hero-support mt-6">
+                </motion.h1>
+                <motion.p
+                  variants={fadeUp}
+                  initial="hidden"
+                  animate="visible"
+                  custom={3}
+                  className="hero-support mt-6"
+                >
                   StreamBridge turns a messy IPTV setup into one installable, account-scoped Stremio addon with provider routing, health visibility, and metadata repair built in.
-                </p>
+                </motion.p>
 
-                <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                  <Link to="/signup" className="btn-primary">
-                    Create Free Account
-                    <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
-                  </Link>
-                  <Link to="/login" className="btn-secondary">
-                    I already have an account
-                  </Link>
-                </div>
+                <motion.div
+                  variants={fadeUp}
+                  initial="hidden"
+                  animate="visible"
+                  custom={4}
+                  className="mt-8 flex flex-col gap-3 sm:flex-row"
+                >
+                  <Button asChild size="lg">
+                    <Link to="/signup">
+                      Create Free Account
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                  <Button asChild variant="outline" size="lg">
+                    <Link to="/login">I already have an account</Link>
+                  </Button>
+                </motion.div>
 
                 {/* Proof metrics */}
-                <div className="mt-10 flex items-center gap-6 border-t border-white/[0.08] pt-8">
+                <motion.div
+                  variants={fadeUp}
+                  initial="hidden"
+                  animate="visible"
+                  custom={5}
+                  className="mt-10 flex items-center gap-6 border-t border-white/[0.08] pt-8"
+                >
                   {[
                     { value: '1', label: 'Private URL per account' },
                     { value: 'Auto', label: 'Host failover' },
                     { value: '91%', label: 'Catalogs matched' },
                   ].map(({ value, label }) => (
                     <div key={label} className="min-w-0">
-                      <p className="text-2xl font-bold text-white" aria-label={`${value}: ${label}`}>{value}</p>
-                      <p className="mt-1 text-xs leading-5 text-slate-300/60">{label}</p>
+                      <p className="text-2xl font-bold text-white">{value}</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-300/55">{label}</p>
                     </div>
                   ))}
-                </div>
+                </motion.div>
               </div>
 
               {/* Right: app preview card */}
-              <div className="fade-rise [animation-delay:0.12s]">
+              <motion.div
+                initial={{ opacity: 0, y: 32, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ delay: 0.18, duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+              >
                 <div className="panel overflow-hidden p-6 sm:p-8">
-
-                  {/* Endpoint header */}
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="metric-label mb-2">Private addon endpoint</p>
                       <h2 className="text-2xl font-bold text-white">Install-ready</h2>
                     </div>
-                    <span className="metric-chip flex-shrink-0">
-                      <span className="h-2 w-2 flex-shrink-0 rounded-full bg-emerald-400" aria-hidden="true" />
+                    <Badge variant="success">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                       Active
-                    </span>
+                    </Badge>
                   </div>
 
-                  {/* URL bar */}
                   <div className="mt-5 overflow-x-auto rounded-2xl border border-white/[0.08] bg-surface-950/70 px-4 py-3 font-mono text-xs leading-7 text-brand-100/80 sm:text-sm">
                     https://streambridge.app/addon/<wbr />
                     <span className="text-brand-300">acc_x2f9c4f1</span>/manifest.json
                   </div>
 
-                  {/* Feature list */}
                   <div className="surface-divider mt-6 pt-6">
                     <p className="metric-label mb-4">Why operators keep this open</p>
                     <ul className="space-y-3" role="list">
                       {proofPoints.map((point) => (
                         <li key={point} className="flex items-start gap-3 text-sm leading-6 text-slate-200/78">
-                          <CheckCircleIcon className="mt-0.5 h-5 w-5 flex-shrink-0 text-brand-300" aria-hidden="true" />
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-brand-300" />
                           <span>{point}</span>
                         </li>
                       ))}
                     </ul>
                   </div>
 
-                  {/* At-a-glance stats */}
                   <div className="surface-divider mt-6 pt-6">
                     <div className="grid grid-cols-3 divide-x divide-white/[0.06]">
                       {[
@@ -169,39 +232,50 @@ export default function Landing() {
                     </div>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             </div>
           </section>
 
           {/* ── Pillars ── */}
           <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24" aria-label="Features">
-            <div className="mx-auto max-w-2xl text-center">
-              <p className="eyebrow mb-3">Built for operators</p>
-              <h2 className="text-3xl font-bold text-white sm:text-4xl">
-                The value is obvious in under a minute.
-              </h2>
-              <p className="mt-4 text-base leading-7 text-slate-300/70">
-                Users do not need a long onboarding sequence. They need routing, repair, and install in the same place.
-              </p>
-            </div>
+            <AnimatedSection>
+              <div className="mx-auto max-w-2xl text-center">
+                <p className="eyebrow mb-3">Built for operators</p>
+                <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                  The value is obvious in under a minute.
+                </h2>
+                <p className="mt-4 text-base leading-7 text-slate-300/70">
+                  Users do not need a long onboarding sequence. They need routing, repair, and install in the same place.
+                </p>
+              </div>
+            </AnimatedSection>
 
             <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {pillars.map(({ title, copy, icon: Icon }) => (
-                <div key={title} className="panel-soft p-6">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.04]">
-                    <Icon className="h-5 w-5 text-brand-300" aria-hidden="true" />
-                  </div>
-                  <h3 className="mt-5 text-lg font-bold text-white">{title}</h3>
-                  <p className="mt-3 text-sm leading-6 text-slate-300/70">{copy}</p>
-                </div>
+              {pillars.map(({ title, copy, icon: Icon }, i) => (
+                <AnimatedSection key={title}>
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: i * 0.1, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                    whileHover={{ y: -4, transition: { duration: 0.2 } }}
+                    className="panel-soft h-full p-6 cursor-default"
+                  >
+                    <div className="flex h-11 w-11 items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.04]">
+                      <Icon className="h-5 w-5 text-brand-300" />
+                    </div>
+                    <h3 className="mt-5 text-lg font-bold text-white">{title}</h3>
+                    <p className="mt-3 text-sm leading-6 text-slate-300/70">{copy}</p>
+                  </motion.div>
+                </AnimatedSection>
               ))}
             </div>
           </section>
 
           {/* ── How it works ── */}
-          <section className="border-y border-white/10 bg-white/[0.015]" aria-label="How it works">
+          <section className="border-y border-white/[0.08] bg-white/[0.015]" aria-label="How it works">
             <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:grid lg:grid-cols-[0.75fr_1.25fr] lg:gap-16 lg:px-8 lg:py-24">
-              <div>
+              <AnimatedSection>
                 <p className="eyebrow mb-3">Three steps</p>
                 <h2 className="text-3xl font-bold text-white sm:text-4xl">
                   Fast path from signup to playback.
@@ -209,25 +283,27 @@ export default function Landing() {
                 <p className="mt-4 text-base leading-7 text-slate-300/70">
                   Get access, connect sources, install once.
                 </p>
-              </div>
+              </AnimatedSection>
 
               <ol className="mt-10 grid gap-4 lg:mt-0" role="list">
                 {workflow.map(([title, copy], index) => (
-                  <li
-                    key={title}
-                    className="grid gap-4 rounded-[24px] border border-white/[0.08] bg-white/[0.03] p-5 sm:grid-cols-[auto_1fr] sm:items-start sm:p-6"
-                  >
-                    <div
-                      className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-sm font-bold text-white"
-                      aria-hidden="true"
+                  <AnimatedSection key={title}>
+                    <motion.li
+                      initial={{ opacity: 0, x: 20 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ delay: index * 0.12, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                      className="grid gap-4 rounded-[24px] border border-white/[0.08] bg-white/[0.03] p-5 sm:grid-cols-[auto_1fr] sm:items-start sm:p-6"
                     >
-                      0{index + 1}
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-white">{title}</h3>
-                      <p className="mt-2 text-sm leading-6 text-slate-300/70">{copy}</p>
-                    </div>
-                  </li>
+                      <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-sm font-bold text-white">
+                        0{index + 1}
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-white">{title}</h3>
+                        <p className="mt-2 text-sm leading-6 text-slate-300/70">{copy}</p>
+                      </div>
+                    </motion.li>
+                  </AnimatedSection>
                 ))}
               </ol>
             </div>
@@ -235,33 +311,37 @@ export default function Landing() {
 
           {/* ── CTA ── */}
           <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24" aria-label="Call to action">
-            <div className="panel overflow-hidden p-8 sm:p-10 lg:p-12">
-              <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
-                <div>
-                  <p className="eyebrow mb-3">Start now</p>
-                  <h2 className="text-3xl font-bold text-white sm:text-4xl">
-                    Create the account, bring in providers, and ship one cleaner setup.
-                  </h2>
-                  <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300/70">
-                    StreamBridge is strongest when the first session ends with a working addon URL.
-                  </p>
-                </div>
-                <div className="flex flex-col gap-3 sm:flex-row lg:flex-col xl:flex-row">
-                  <Link to="/signup" className="btn-primary">
-                    Start Free
-                    <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
-                  </Link>
-                  <Link to="/login" className="btn-secondary">
-                    Sign In
-                  </Link>
+            <AnimatedSection>
+              <div className="panel overflow-hidden p-8 sm:p-10 lg:p-12">
+                <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
+                  <div>
+                    <p className="eyebrow mb-3">Start now</p>
+                    <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                      Create the account, bring in providers, and ship one cleaner setup.
+                    </h2>
+                    <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300/70">
+                      StreamBridge is strongest when the first session ends with a working addon URL.
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-3 sm:flex-row lg:flex-col xl:flex-row">
+                    <Button asChild size="lg">
+                      <Link to="/signup">
+                        Start Free
+                        <ArrowRight className="h-4 w-4" />
+                      </Link>
+                    </Button>
+                    <Button asChild variant="outline" size="lg">
+                      <Link to="/login">Sign In</Link>
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
+            </AnimatedSection>
           </section>
         </main>
 
-        <footer className="border-t border-white/10">
-          <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-6 text-sm text-slate-400/70 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+        <footer className="border-t border-white/[0.08]">
+          <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-6 text-sm text-slate-400/60 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
             <span>StreamBridge</span>
             <span>Private Stremio addon delivery for real IPTV accounts</span>
           </div>
