@@ -8,6 +8,7 @@ const { buildManifest, handleCatalog, handleMeta, handleStream } = require('./ad
 const authRoutes = require('./api/authRoutes');
 const userRoutes = require('./api/userRoutes');
 const providerRoutes = require('./api/providerRoutes');
+const previewRoutes = require('./api/previewRoutes');
 const adminRoutes = require('./admin/adminRoutes');
 const { startScheduler } = require('./jobs/scheduler');
 const logger = require('./utils/logger');
@@ -52,13 +53,23 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limiting — split into auth and general
+// Rate limiting — split into auth, preview, and general
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.ip,
+});
+
+// Strict limiter for the unauthenticated preview endpoint
+const previewLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
+  message: { error: 'Too many preview requests. Please try again in a few minutes.' },
 });
 
 const generalLimiter = rateLimit({
@@ -153,6 +164,7 @@ app.get('/addon/:token/stream/:type/:id.json', addonCors, async (req, res) => {
 // ─── API Routes ───────────────────────────────────────────────────────────────
 
 app.use('/api/auth', authRoutes);
+app.use('/api/preview', previewLimiter, previewRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/providers', providerRoutes);
 app.use('/admin', adminRoutes);

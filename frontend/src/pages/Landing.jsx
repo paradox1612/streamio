@@ -10,13 +10,14 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 
 // ── Sera UI components ──────────────────────────────────────────────────────
-import ShimmerButton      from '../components/sera/ShimmerButton';
-import GlowButton         from '../components/sera/GlowButton';
-import NumberTicker       from '../components/sera/NumberTicker';
-import Marquee            from '../components/sera/Marquee';
-import GridBackground     from '../components/sera/GridBackground';
-import AnnouncementBanner from '../components/sera/AnnouncementBanner';
-import SectionDivider     from '../components/sera/SectionDivider';
+import ShimmerButton         from '../components/sera/ShimmerButton';
+import GlowButton            from '../components/sera/GlowButton';
+import NumberTicker          from '../components/sera/NumberTicker';
+import Marquee               from '../components/sera/Marquee';
+import GridBackground        from '../components/sera/GridBackground';
+import AnnouncementBanner    from '../components/sera/AnnouncementBanner';
+import SectionDivider        from '../components/sera/SectionDivider';
+import ProviderPreviewWidget from '../components/ProviderPreviewWidget';
 
 // ── Data ────────────────────────────────────────────────────────────────────
 const pillars = [
@@ -337,6 +338,27 @@ export default function Landing() {
                 ))}
               </ol>
             </div>
+          </section>
+
+          {/* Sera UI – Section Divider */}
+          <div className="mx-auto max-w-7xl px-8">
+            <SectionDivider label="Try it now" />
+          </div>
+
+          {/* ── Provider Preview Widget ───────────────────────────────────── */}
+          <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-16" aria-label="Try your provider">
+            <AnimatedSection>
+              <div className="mx-auto max-w-3xl text-center mb-8">
+                <p className="eyebrow mb-3">No account needed yet</p>
+                <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                  Works with your provider? Find out in 10 seconds.
+                </h2>
+                <p className="mt-4 text-base leading-7 text-slate-300/70">
+                  Enter your Xtream credentials and StreamBridge will scan your catalog live — channels, movies, series — before you ever touch a signup form.
+                </p>
+              </div>
+              <ProviderPreviewWidget />
+            </AnimatedSection>
           </section>
 
           {/* Sera UI – Section Divider */}

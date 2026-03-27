@@ -7,7 +7,7 @@
  *   • Staggered containerAnimation / itemAnimation for the grid
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { motion, AnimatePresence, useInView } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { providerAPI } from '../utils/api';
 import {
   MagnifyingGlassIcon,
@@ -228,16 +228,18 @@ function FixMatchModal({ item, providerId, allItems, currentIndex, onClose, onSu
 }
 
 // ── VodCard (Sera UI Video Gallery card pattern) ─────────────────────────────
-function VodCard({ item, providerId, onMatchFixed, onOpenModal }) {
+function VodCard({ item, onOpenModal, animVariants }) {
   const matched  = item.tmdb_id != null;
   const score    = item.confidence_score ? Math.round(item.confidence_score * 100) : null;
 
   return (
     <motion.div
       layout
-      className="group relative cursor-pointer overflow-hidden rounded-[20px] border border-white/[0.08] bg-surface-850/50 sm:rounded-[22px]"
+      variants={animVariants}
+      /* aspect ratio on the card itself — no outer wrapper needed */
+      className="group relative cursor-pointer overflow-hidden rounded-[20px] border border-white/[0.08] bg-surface-800/60 sm:rounded-[22px]"
       style={{ aspectRatio: '2/3' }}
-      whileHover={{ scale: 1.03, y: -6, transition: { stiffness: 300, damping: 20 } }}
+      whileHover={{ scale: 1.03, y: -6, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
       whileTap={{ scale: 0.98 }}
       onClick={() => onOpenModal(item)}
     >
@@ -335,8 +337,6 @@ export default function VodBrowser() {
 
   const debounceRef = useRef(null);
   const searchRef   = useRef(null);
-  const gridRef     = useRef(null);
-  const gridInView  = useInView(gridRef, { once: true, amount: 0.05 });
 
   // "/" shortcut → focus search
   useEffect(() => {
@@ -549,31 +549,23 @@ export default function VodBrowser() {
           ) : (
             <>
               {/* Sera UI Video Gallery grid – AnimatePresence + layout */}
+              {/* Each VodCard carries its own animation variants — no wrapper div needed */}
               <motion.section
-                ref={gridRef}
                 layout
                 variants={containerAnim}
                 initial="hidden"
-                animate={gridInView ? 'visible' : 'hidden'}
+                animate="visible"
                 className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8"
               >
                 <AnimatePresence mode="popLayout">
                   {items.map((item) => (
-                    <motion.div
-                      layout
+                    <VodCard
                       key={item.id}
-                      variants={itemAnim}
-                      initial="hidden"
-                      animate="visible"
-                      exit={{ opacity: 0, scale: 0.88, transition: { duration: 0.25 } }}
-                    >
-                      <VodCard
-                        item={item}
-                        providerId={selectedProvider}
-                        onMatchFixed={() => { setItems([]); setFilter((f) => ({ ...f, page: 1 })); }}
-                        onOpenModal={openModal}
-                      />
-                    </motion.div>
+                      item={item}
+                      animVariants={itemAnim}
+                      onMatchFixed={() => { setItems([]); setFilter((f) => ({ ...f, page: 1 })); }}
+                      onOpenModal={openModal}
+                    />
                   ))}
                 </AnimatePresence>
 

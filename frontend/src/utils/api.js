@@ -105,4 +105,10 @@ export const adminAPI = {
   getDbStats: () => api.get('/admin/system/db'),
 };
 
+// ─── Public Preview (no auth) ─────────────────────────────────────────────────
+export const previewAPI = {
+  check: (host, username, password) =>
+    api.post('/api/preview', { host, username, password }),
+};
+
 export default api;

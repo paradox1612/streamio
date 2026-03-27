@@ -179,7 +179,7 @@ export default function Layout({ children }) {
           </header>
 
           {/* Page content */}
-          <main className="relative z-10 flex-1 overflow-y-auto">
+          <main className="relative z-10 flex-1 overflow-x-hidden overflow-y-auto">
             <motion.div
               key={location.pathname}
               initial={{ opacity: 0, y: 8 }}

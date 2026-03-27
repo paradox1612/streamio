@@ -262,7 +262,7 @@ export default function Dashboard() {
             <p className="eyebrow mb-2">Personal addon</p>
             <h2 className="section-title">Install once, keep it private</h2>
             <p className="section-copy mt-2">Your account-scoped endpoint is ready.</p>
-            <div className="mt-5 overflow-x-auto rounded-[18px] border border-white/[0.08] bg-surface-950/70 p-4 font-mono text-sm text-slate-200/80">
+            <div className="mt-5 overflow-x-auto whitespace-nowrap rounded-[18px] border border-white/[0.08] bg-surface-950/70 p-4 font-mono text-sm text-slate-200/80">
               {addonUrl}
             </div>
           </Card>
