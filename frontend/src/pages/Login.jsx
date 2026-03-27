@@ -1,40 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Eye, EyeOff, ArrowRight, Shield, Zap, Tv2, CheckCircle2 } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
-import BrandMark from '../components/BrandMark';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-
-const features = [
-  {
-    icon: Shield,
-    title: 'Private addon endpoint',
-    desc: 'Your account-scoped URL stays available and reinstallable anytime.',
-  },
-  {
-    icon: Zap,
-    title: 'Provider health at a glance',
-    desc: 'Expiry, host failover, and catalog repair — all in one workspace.',
-  },
-  {
-    icon: Tv2,
-    title: 'Back to playback fast',
-    desc: 'No reconfiguration maze. Pick up exactly where you left off.',
-  },
-];
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 20 },
-  visible: (i = 0) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay: i * 0.08, duration: 0.5, ease: [0.22, 1, 0.36, 1] },
-  }),
-};
 
 export default function Login() {
   const { login } = useAuth();
@@ -59,139 +27,66 @@ export default function Login() {
 
   return (
     <div className="auth-shell">
-      <div className="auth-grid">
+      <div className="relative z-10 flex items-center justify-center p-4 w-full">
+        <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
 
-        {/* ── Left panel ── */}
-        <div className="auth-side">
-          {/* Ambient orbs */}
-          <div className="ambient-orb left-[-4rem] top-16 h-56 w-56 bg-brand-400/25" />
-          <div className="ambient-orb bottom-20 right-[-4rem] h-64 w-64 bg-cyan-400/15 [animation-delay:3s]" />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-surface-950/80 to-transparent" />
-
-          <div className="relative z-10 flex h-full flex-col">
-            <BrandMark />
-
-            <div className="mt-auto pb-4 pt-16">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-              >
-                <span className="inline-flex items-center gap-2 rounded-full border border-brand-400/20 bg-brand-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-200">
-                  <span className="h-1.5 w-1.5 rounded-full bg-brand-300" />
-                  Returning workspace
-                </span>
-              </motion.div>
-
-              <motion.h2
-                variants={fadeUp}
-                initial="hidden"
-                animate="visible"
-                custom={1}
-                className="mt-6 text-4xl font-bold leading-[1.08] text-white lg:text-5xl"
-              >
-                Your streaming stack,<br />back online fast.
-              </motion.h2>
-
-              <motion.p
-                variants={fadeUp}
-                initial="hidden"
-                animate="visible"
-                custom={2}
-                className="mt-4 max-w-sm text-base leading-7 text-slate-300/70"
-              >
-                Provider routing, metadata repair, Live TV, and your private addon URL — all from one workspace.
-              </motion.p>
-
-              <div className="mt-10 grid gap-3">
-                {features.map(({ icon: Icon, title, desc }, i) => (
-                  <motion.div
-                    key={title}
-                    variants={fadeUp}
-                    initial="hidden"
-                    animate="visible"
-                    custom={i + 3}
-                    className="flex items-start gap-4 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-4 py-4 backdrop-blur-sm"
-                  >
-                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05]">
-                      <Icon className="h-4 w-4 text-brand-300" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-white">{title}</p>
-                      <p className="mt-0.5 text-xs leading-5 text-slate-300/60">{desc}</p>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Right: form ── */}
-        <div className="auth-form-wrap flex flex-col justify-center">
-          <div className="mb-6 lg:hidden">
-            <BrandMark />
+          {/* Heading */}
+          <div className="flex flex-col space-y-2 text-center">
+            <h1 className="text-2xl font-semibold tracking-tight text-white">
+              Welcome back
+            </h1>
+            <p className="text-sm text-slate-400">
+              Enter your email below to sign in to your account
+            </p>
           </div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-          >
-            {/* Heading */}
-            <div className="mb-8">
-              <h1 className="text-3xl font-bold text-white sm:text-4xl">Welcome back</h1>
-              <p className="mt-2 text-sm text-slate-300/65">
-                Sign in to access your workspace.
-              </p>
-            </div>
-
-            {/* Form card */}
-            <div className="panel p-6 sm:p-8">
-              <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-
+          <div className="grid gap-6">
+            <form onSubmit={handleSubmit}>
+              <div className="grid gap-4">
                 {/* Email */}
-                <div className="space-y-2">
-                  <Label htmlFor="login-email">Email address</Label>
-                  <Input
-                    id="login-email"
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium text-slate-200" htmlFor="email">
+                    Email
+                  </label>
+                  <input
+                    id="email"
                     type="email"
                     required
                     autoComplete="email"
-                    spellCheck="false"
-                    placeholder="you@example.com"
+                    placeholder="name@example.com"
                     value={form.email}
                     onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                    className="flex h-10 w-full rounded-md border border-white/10 bg-surface-900/80 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 transition-colors"
                   />
                 </div>
 
                 {/* Password */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="login-password">Password</Label>
+                <div className="grid gap-2">
+                  <div className="flex items-center">
+                    <label className="text-sm font-medium text-slate-200" htmlFor="password">
+                      Password
+                    </label>
                     <Link
                       to="/forgot-password"
-                      className="text-xs font-medium text-brand-300 hover:text-brand-200 transition-colors"
+                      className="ml-auto inline-block text-sm underline text-slate-400 hover:text-slate-200 transition-colors"
                     >
-                      Forgot password?
+                      Forgot your password?
                     </Link>
                   </div>
                   <div className="relative">
-                    <Input
-                      id="login-password"
+                    <input
+                      id="password"
                       type={showPassword ? 'text' : 'password'}
                       required
                       autoComplete="current-password"
-                      placeholder="••••••••"
                       value={form.password}
                       onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                      className="pr-11"
+                      className="flex h-10 w-full rounded-md border border-white/10 bg-surface-900/80 px-3 py-2 pr-10 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 transition-colors"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(v => !v)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400/60 hover:text-slate-300 transition-colors"
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-300 transition-colors"
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
@@ -199,53 +94,60 @@ export default function Login() {
                 </div>
 
                 {/* Submit */}
-                <Button
+                <button
                   type="submit"
                   disabled={loading}
-                  className="w-full"
-                  size="lg"
+                  className="inline-flex items-center justify-center rounded-md text-sm font-medium h-10 px-4 py-2 w-full bg-brand-500 text-white hover:bg-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:ring-offset-2 focus:ring-offset-surface-900 disabled:pointer-events-none disabled:opacity-50 transition-colors"
                 >
-                  {loading ? (
-                    <span className="flex items-center gap-2">
-                      <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      Signing in…
-                    </span>
-                  ) : (
-                    <>
-                      Enter Workspace
-                      <ArrowRight className="h-4 w-4" />
-                    </>
-                  )}
-                </Button>
-              </form>
-
-              {/* Divider */}
-              <div className="my-6 flex items-center gap-3">
-                <div className="h-px flex-1 bg-white/[0.08]" />
-                <span className="text-xs text-slate-400/50 font-medium">SECURE</span>
-                <div className="h-px flex-1 bg-white/[0.08]" />
+                  {loading ? 'Signing in…' : 'Sign In'}
+                </button>
               </div>
+            </form>
 
-              {/* Security note */}
-              <div className="flex items-start gap-3 rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.07] px-4 py-3">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-400" />
-                <p className="text-xs leading-5 text-emerald-100/80">
-                  End-to-end encrypted sign-in for your providers, addon endpoint, and account data.
-                </p>
+            {/* Divider */}
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-white/[0.08]" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-surface-950 px-2 text-slate-500">Or continue with</span>
               </div>
             </div>
 
-            {/* Footer link */}
-            <p className="mt-6 text-center text-sm text-slate-300/55">
-              New to StreamBridge?{' '}
-              <Link to="/signup" className="font-semibold text-brand-300 hover:text-brand-200 transition-colors">
-                Create a free account
-              </Link>
-            </p>
-          </motion.div>
+            {/* Social buttons */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-md text-sm font-medium h-10 px-4 py-2 w-full border border-white/10 bg-surface-900/80 text-slate-200 hover:bg-surface-800 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+              >
+                <svg className="mr-2 h-4 w-4 flex-shrink-0" viewBox="0 0 48 48">
+                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.42-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+                  <path fill="none" d="M0 0h48v48H0z" />
+                </svg>
+                Google
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-md text-sm font-medium h-10 px-4 py-2 w-full border border-white/10 bg-surface-900/80 text-slate-200 hover:bg-surface-800 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+              >
+                <svg className="mr-2 h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
+                </svg>
+                GitHub
+              </button>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <p className="px-8 text-center text-sm text-slate-400">
+            Don&apos;t have an account?{' '}
+            <Link to="/signup" className="underline underline-offset-4 hover:text-white transition-colors">
+              Sign up
+            </Link>
+          </p>
         </div>
       </div>
     </div>

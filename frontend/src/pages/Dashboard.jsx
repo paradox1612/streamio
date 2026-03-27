@@ -14,6 +14,10 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 
+// ── Sera UI ─────────────────────────────────────────────────────────────────
+import NumberTicker  from '../components/sera/NumberTicker';
+import ShimmerButton from '../components/sera/ShimmerButton';
+
 function formatExpiry(expiresAt) {
   if (!expiresAt) return 'No expiry';
   const end = new Date(expiresAt);
@@ -169,11 +173,12 @@ export default function Dashboard() {
     return diffDays >= 0 && diffDays <= 7;
   });
 
+  // Raw numeric values – rendered via Sera UI NumberTicker
   const stats = [
-    { label: 'Providers', value: providers.length, sub: `${onlineCount} online`, icon: Server, tone: 'text-blue-300', badgeVariant: 'brand' },
-    { label: 'Total titles', value: totalTitles.toLocaleString(), sub: 'Movies & series', icon: Film, tone: 'text-cyan-300' },
-    { label: 'Matched titles', value: totalMatched.toLocaleString(), sub: `${matchRate}% of catalog`, icon: Sparkles, tone: 'text-sky-300' },
-    { label: 'Expiring soon', value: expiringSoon.length, sub: 'Within 7 days', icon: Clock, tone: expiringSoon.length > 0 ? 'text-amber-300' : 'text-slate-300/60' },
+    { label: 'Providers',     numVal: providers.length,  sub: `${onlineCount} online`,        icon: Server,   tone: 'text-blue-300' },
+    { label: 'Total titles',  numVal: totalTitles,        sub: 'Movies & series',               icon: Film,     tone: 'text-cyan-300' },
+    { label: 'Matched titles',numVal: totalMatched,       sub: `${matchRate}% of catalog`,      icon: Sparkles, tone: 'text-sky-300'  },
+    { label: 'Expiring soon', numVal: expiringSoon.length,sub: 'Within 7 days',                 icon: Clock,    tone: expiringSoon.length > 0 ? 'text-amber-300' : 'text-slate-300/60' },
   ];
 
   return (
@@ -201,9 +206,12 @@ export default function Dashboard() {
               <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                 {addonUrl && (
                   <>
-                    <Button onClick={copyUrl} size="lg">
-                      {copying ? <><Check className="h-4 w-4" /> Copied!</> : <><Copy className="h-4 w-4" /> Copy Addon URL</>}
-                    </Button>
+                    {/* Sera UI – Shimmer Button for primary addon action */}
+                    <ShimmerButton onClick={copyUrl} className="text-sm font-semibold">
+                      {copying
+                        ? <><Check className="h-4 w-4 inline-block mr-1" /> Copied!</>
+                        : <><Copy className="h-4 w-4 inline-block mr-1" /> Copy Addon URL</>}
+                    </ShimmerButton>
                     <Button onClick={installInStremio} variant="outline" size="lg">
                       <ExternalLink className="h-4 w-4" />
                       Install in Stremio
@@ -221,14 +229,19 @@ export default function Dashboard() {
 
             <div className="grid gap-4 sm:grid-cols-2">
               {[
-                { label: 'Providers online', value: onlineCount, desc: providers.length ? `${providers.length - onlineCount} need attention.` : 'No providers added yet.' },
-                { label: 'Catalog confidence', value: `${matchRate}%`, desc: `${totalMatched.toLocaleString()} matched titles.` },
-                { label: 'Addon status', value: addonUrl ? 'Ready' : 'Pending', desc: 'Private install path available.' },
-                { label: 'Expiring soon', value: expiringSoon.length, desc: 'Providers due within 7 days.' },
-              ].map(({ label, value, desc }) => (
+                { label: 'Providers online',  numVal: onlineCount,        desc: providers.length ? `${providers.length - onlineCount} need attention.` : 'No providers added yet.' },
+                { label: 'Catalog confidence',numVal: matchRate, suffix:'%', desc: `${totalMatched.toLocaleString()} matched titles.` },
+                { label: 'Addon status',      display: addonUrl ? 'Ready' : 'Pending', desc: 'Private install path available.' },
+                { label: 'Expiring soon',     numVal: expiringSoon.length, desc: 'Providers due within 7 days.' },
+              ].map(({ label, numVal, suffix, display, desc }) => (
                 <div key={label} className="rounded-[22px] border border-white/[0.07] bg-white/[0.025] p-5">
                   <p className="metric-label mb-2">{label}</p>
-                  <p className="text-4xl font-bold text-white">{value}</p>
+                  {/* Sera UI – NumberTicker for numeric cells */}
+                  <p className="text-4xl font-bold text-white">
+                    {numVal !== undefined
+                      ? <NumberTicker value={numVal} suffix={suffix || ''} duration={1200} className="text-4xl font-bold text-white" />
+                      : display}
+                  </p>
                   <p className="mt-2 text-sm text-slate-300/60">{desc}</p>
                 </div>
               ))}
@@ -276,7 +289,7 @@ export default function Dashboard() {
         </div>
       ) : (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {stats.map(({ label, value, sub, icon: Icon, tone }, i) => (
+          {stats.map(({ label, numVal, sub, icon: Icon, tone }, i) => (
             <motion.div
               key={label}
               variants={fadeUp}
@@ -288,10 +301,18 @@ export default function Dashboard() {
                 <div className="mb-5 flex items-center justify-between gap-4">
                   <p className="metric-label">{label}</p>
                   <span className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-white/[0.08] bg-white/[0.04]">
-                    <Icon className={`h-4.5 w-4.5 h-[18px] w-[18px] ${tone}`} />
+                    <Icon className={`h-[18px] w-[18px] ${tone}`} />
                   </span>
                 </div>
-                <p className="text-[2rem] font-bold text-white">{value}</p>
+                {/* Sera UI – NumberTicker for animated stat values */}
+                <p className="text-[2rem] font-bold text-white">
+                  <NumberTicker
+                    value={numVal}
+                    duration={1400}
+                    delay={i * 80}
+                    className="text-[2rem] font-bold text-white"
+                  />
+                </p>
                 <p className="mt-2 text-sm leading-6 text-slate-300/65">{sub}</p>
               </Card>
             </motion.div>

@@ -1,29 +1,28 @@
 import React from 'react';
+import SeraProgressBar from './sera/SeraProgressBar';
 
-export default function ProgressBar({ value, max = 100, color = 'bg-indigo-500', label = null, showLabel = false }) {
-  const percentage = Math.round((value / max) * 100);
-
-  let colorClass = color;
-  if (!color.includes('bg-')) {
-    if (percentage >= 70) colorClass = 'bg-emerald-500';
-    else if (percentage >= 40) colorClass = 'bg-amber-500';
-    else colorClass = 'bg-red-500';
+/**
+ * ProgressBar — now delegates to the Sera UI SeraProgressBar.
+ * Keeps the same external API so existing callers don't break.
+ */
+export default function ProgressBar({ value, max = 100, color, label = null, showLabel = false }) {
+  // Map old color class strings → Sera UI color tokens
+  let seraColor = 'brand';
+  if (color) {
+    if (color.includes('emerald') || color.includes('green')) seraColor = 'emerald';
+    else if (color.includes('amber') || color.includes('yellow')) seraColor = 'amber';
+    else if (color.includes('red')) seraColor = 'red';
+    else seraColor = 'brand';
   }
 
   return (
-    <div className="w-full">
-      {(label || showLabel) && (
-        <div className="mb-2 flex justify-between">
-          <span className="text-xs font-medium text-slate-300/60">{label || 'Progress'}</span>
-          <span className="text-xs font-semibold text-slate-100">{percentage}%</span>
-        </div>
-      )}
-      <div className="h-2.5 w-full overflow-hidden rounded-full border border-white/[0.08] bg-white/[0.05]">
-        <div
-          className={`h-full rounded-full ${colorClass} transition-all duration-300`}
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-    </div>
+    <SeraProgressBar
+      value={value}
+      max={max}
+      color={seraColor}
+      label={label}
+      showLabel={showLabel}
+      size="md"
+    />
   );
 }
