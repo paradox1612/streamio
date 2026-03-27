@@ -8,7 +8,10 @@
  * Security:
  *   - Strict per-IP rate limit (5 req / 15 min) applied in index.js
  *   - Credentials are NEVER persisted — used only for the outbound fetch
- *   - Only a small sample of channel names is returned (no stream URLs)
+ *   - Only a sample of channel/title names is returned (no stream URLs)
+ *
+ * NOTE: Bad provider credentials return HTTP 400 (not 401) so the global
+ * axios interceptor on the frontend does not treat this as a session expiry.
  */
 
 const router = require('express').Router();
@@ -42,69 +45,94 @@ async function xtreamFetch(host, username, password, action) {
   }
 }
 
+/**
+ * Validates credentials and measures round-trip latency.
+ * Returns { ok, latencyMs, accountInfo, serverInfo } on success
+ * or { ok: false, error } on failure.
+ */
 async function validateCredentials(host, username, password) {
   const url = `${host}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+  const startedAt = Date.now();
   try {
     const res = await fetch(url, { signal: controller.signal });
+    const latencyMs = Date.now() - startedAt;
     clearTimeout(timer);
-    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+
+    if (!res.ok) return { ok: false, error: `Provider returned HTTP ${res.status}` };
     const data = await res.json();
 
     const auth = data?.user_info?.auth;
     if (auth === 0 || auth === '0' || auth === false) {
-      return { ok: false, error: 'Invalid credentials' };
+      return { ok: false, error: 'Invalid username or password' };
     }
     if (!data?.user_info) {
-      return { ok: false, error: 'Unexpected provider response' };
+      return { ok: false, error: 'Unexpected response from provider' };
     }
 
     const u = data.user_info;
+    const s = data.server_info || {};
     const expDate = u.exp_date ? new Date(Number(u.exp_date) * 1000) : null;
+
+    // Derive a clean server hostname from server_info if available
+    let serverHost = null;
+    if (s.url) {
+      try {
+        serverHost = new URL(s.url).hostname;
+      } catch (_) {
+        serverHost = s.url;
+      }
+    }
 
     return {
       ok: true,
+      latencyMs,
       accountInfo: {
         status: u.status || 'active',
         isTrial: u.is_trial === 1 || u.is_trial === '1' || u.is_trial === true,
         expiresAt: expDate ? expDate.toISOString() : null,
         maxConnections: u.max_connections != null ? parseInt(u.max_connections, 10) : null,
         activeConnections: u.active_cons != null ? parseInt(u.active_cons, 10) : null,
+        allowedFormats: Array.isArray(u.allowed_output_formats) ? u.allowed_output_formats : [],
+      },
+      serverInfo: {
+        host: serverHost,
+        timezone: s.timezone || null,
+        port: s.port || null,
+        httpsPort: s.https_port || null,
       },
     };
   } catch (err) {
     clearTimeout(timer);
-    return { ok: false, error: err.name === 'AbortError' ? 'Connection timed out' : err.message };
+    return {
+      ok: false,
+      error: err.name === 'AbortError' ? 'Connection timed out — provider unreachable' : 'Could not reach provider',
+    };
   }
 }
 
-// Sample up to `max` items; pick diverse entries across categories
-function sampleChannels(channels, categoryMap, max = 18) {
-  if (!Array.isArray(channels) || channels.length === 0) return [];
+// Sample up to `max` items across categories for variety
+function sampleItems(items, getCategoryFn, getNameFn, max = 12) {
+  if (!Array.isArray(items) || items.length === 0) return [];
 
-  // Group by category
   const byCategory = {};
-  for (const ch of channels) {
-    const catId = String(ch.category_id || '');
-    const catName = categoryMap[catId] || firstNonEmpty(ch.category_name, ch.group) || 'General';
-    if (!byCategory[catName]) byCategory[catName] = [];
-    byCategory[catName].push(ch.name || String(ch.stream_id));
+  for (const item of items) {
+    const cat = getCategoryFn(item) || 'General';
+    if (!byCategory[cat]) byCategory[cat] = [];
+    byCategory[cat].push(getNameFn(item));
   }
 
   const cats = Object.keys(byCategory);
-  const perCat = Math.max(1, Math.floor(max / cats.length));
+  const perCat = Math.max(1, Math.ceil(max / cats.length));
   const result = [];
 
   for (const cat of cats) {
-    const items = byCategory[cat].slice(0, perCat);
-    for (const name of items) {
+    for (const name of byCategory[cat].slice(0, perCat)) {
       result.push({ category: cat, name });
-      if (result.length >= max) break;
+      if (result.length >= max) return result;
     }
-    if (result.length >= max) break;
   }
-
   return result;
 }
 
@@ -121,15 +149,14 @@ router.post(
       return res.status(400).json({ error: 'host, username, and password are required.' });
     }
 
-    // Normalise host — strip trailing slashes, ensure protocol
     let { host, username, password } = req.body;
     host = host.replace(/\/+$/, '');
     if (!/^https?:\/\//i.test(host)) host = `http://${host}`;
 
-    // 1 — Validate credentials
+    // 1 — Validate credentials (HTTP 400 for bad creds — NOT 401)
     const authResult = await validateCredentials(host, username, password);
     if (!authResult.ok) {
-      return res.status(401).json({ error: authResult.error || 'Could not connect to provider.' });
+      return res.status(400).json({ error: authResult.error });
     }
 
     // 2 — Fetch category maps + streams in parallel (best-effort)
@@ -150,22 +177,39 @@ router.post(
       }
     }
 
-    const liveCount  = Array.isArray(liveStreams) ? liveStreams.length : 0;
-    const movieCount = Array.isArray(vodMovies)   ? vodMovies.length  : 0;
-    const seriesCount = Array.isArray(vodSeries)  ? vodSeries.length  : 0;
+    const liveCount   = Array.isArray(liveStreams) ? liveStreams.length : 0;
+    const movieCount  = Array.isArray(vodMovies)   ? vodMovies.length  : 0;
+    const seriesCount = Array.isArray(vodSeries)   ? vodSeries.length  : 0;
 
-    const channelSample = sampleChannels(liveStreams, categoryMap, 18);
+    // Sample live channels
+    const liveSample = sampleItems(
+      liveStreams,
+      ch => categoryMap[String(ch.category_id)] || firstNonEmpty(ch.category_name, ch.group) || 'General',
+      ch => ch.name || String(ch.stream_id),
+      12
+    );
 
-    // Return preview — no credentials echoed back, no stream URLs
+    // Sample VOD (movies + series combined)
+    const vodSample = sampleItems(
+      [...(Array.isArray(vodMovies) ? vodMovies.slice(0, 500) : []),
+       ...(Array.isArray(vodSeries) ? vodSeries.slice(0, 500) : [])],
+      item => firstNonEmpty(item.category_name) || 'VOD',
+      item => item.name || String(item.stream_id || item.series_id),
+      8
+    );
+
     return res.json({
+      latencyMs: authResult.latencyMs,
       accountInfo: authResult.accountInfo,
+      serverInfo: authResult.serverInfo,
       counts: {
         live: liveCount,
         movies: movieCount,
         series: seriesCount,
         total: liveCount + movieCount + seriesCount,
       },
-      channelSample,
+      liveSample,
+      vodSample,
     });
   }
 );

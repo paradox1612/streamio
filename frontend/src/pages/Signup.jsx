@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import { providerAPI } from '../utils/api';
+import { PENDING_PROVIDER_KEY } from '../components/ProviderPreviewWidget';
 
 const CheckIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -24,7 +26,31 @@ export default function Signup() {
     setLoading(true);
     try {
       await signup(form.email, form.password);
-      toast.success('Account created! Welcome aboard');
+
+      // Auto-connect provider if the user came from the landing page preview widget
+      let providerConnected = false;
+      try {
+        const raw = sessionStorage.getItem(PENDING_PROVIDER_KEY);
+        if (raw) {
+          const pending = JSON.parse(raw);
+          sessionStorage.removeItem(PENDING_PROVIDER_KEY);
+          await providerAPI.create({
+            name: pending.name || 'My Provider',
+            hosts: [pending.host],
+            username: pending.username,
+            password: pending.password,
+          });
+          providerConnected = true;
+        }
+      } catch (_) {
+        // Provider auto-connect failed — not fatal, user can add it manually
+      }
+
+      if (providerConnected) {
+        toast.success('Account created and provider connected!');
+      } else {
+        toast.success('Account created! Welcome aboard');
+      }
       navigate('/dashboard');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Signup failed');
