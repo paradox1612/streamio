@@ -1,16 +1,24 @@
-FROM node:20-alpine
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm ci
 
 COPY public ./public
 COPY src ./src
 
-# REACT_APP_* vars must be present at npm start time (CRA dev server reads them live)
-ENV REACT_APP_API_URL=http://localhost:3001
+# CRA injects REACT_APP_* values at build time.
+ARG REACT_APP_API_URL=http://localhost:3001
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
 
-EXPOSE 3000
+RUN npm run build
 
-CMD ["npm", "start"]
+FROM nginx:1.27-alpine
+
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/build /usr/share/nginx/html
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

@@ -41,7 +41,7 @@ cp backend/.env.example backend/.env
 # Edit backend/.env with your TMDB API key and secrets
 
 # Start everything
-docker compose up -d
+docker compose up -d --build
 
 # Run migrations (first time only)
 docker exec streambridge_backend npm run migrate
@@ -51,6 +51,9 @@ App will be at:
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:3001
 - Admin panel: http://localhost:3000/admin/login
+
+The Docker frontend runs as a production build served by Nginx. If you change
+`REACT_APP_API_URL`, rebuild the frontend image with `docker compose up -d --build`.
 
 ### Without Docker
 
