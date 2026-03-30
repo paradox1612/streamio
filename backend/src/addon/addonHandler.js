@@ -1,5 +1,5 @@
 const fetch = require('node-fetch');
-const { userQueries, providerQueries, vodQueries, tmdbQueries, matchQueries, pool } = require('../db/queries');
+const { userQueries, providerQueries, vodQueries, watchHistoryQueries, tmdbQueries, matchQueries, pool } = require('../db/queries');
 const providerService = require('../services/providerService');
 const epgService = require('../services/epgService');
 const hostHealthService = require('../services/hostHealthService');
@@ -15,6 +15,22 @@ const pendingOnDemandMatches = new Map();
 
 function normalizeCategoryName(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function recordWatchStart(userId, vodItem) {
+  if (!userId || !vodItem?.raw_title) return;
+
+  watchHistoryQueries.upsertFromVod({
+    userId,
+    vodId: vodItem.id,
+    rawTitle: vodItem.raw_title,
+    tmdbId: vodItem.tmdb_id,
+    imdbId: vodItem.imdb_id,
+    vodType: vodItem.vod_type,
+    progressPct: 0,
+  }).catch((err) => {
+    logger.warn(`Failed to record watch history for "${vodItem.raw_title}": ${err.message}`);
+  });
 }
 
 // ─── Manifest ─────────────────────────────────────────────────────────────────
@@ -616,6 +632,7 @@ async function handleStream(token, type, id) {
 
     // ── Movie stream ───────────────────────────────────────────────────────────
     if (vod_type === 'movie') {
+      recordWatchStart(user.id, vodItem);
       const providerIds = [...new Set(vodItems
         .map(item => item.provider_id)
         .filter(Boolean))];
@@ -667,6 +684,8 @@ async function handleStream(token, type, id) {
         logger.warn(`Series stream requested without episode info: ${id}`);
         return { streams: [] };
       }
+
+      recordWatchStart(user.id, vodItem);
 
       try {
         // Check cache first for episodes

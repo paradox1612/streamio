@@ -278,15 +278,26 @@ const vodQueries = {
     await pool.query('DELETE FROM user_provider_vod WHERE provider_id = $1', [providerId]);
   },
 
-  async getByProvider(providerId, { type, page = 1, limit = 100, search = '', matched } = {}) {
+  async getByProvider(providerId, { userId, type, page = 1, limit = 100, search = '', matched } = {}) {
     let query = `
-      SELECT v.*, m.tmdb_id, m.tmdb_type, m.confidence_score, m.imdb_id
+      SELECT
+        v.*,
+        m.tmdb_id,
+        m.tmdb_type,
+        m.confidence_score,
+        m.imdb_id,
+        wh.progress_pct AS watch_progress_pct,
+        wh.last_watched_at,
+        (wh.id IS NOT NULL) AS is_watched
       FROM user_provider_vod v
       LEFT JOIN matched_content m ON m.raw_title = v.raw_title
+      LEFT JOIN watch_history wh
+        ON wh.user_id = $2
+       AND wh.raw_title = v.raw_title
       WHERE v.provider_id = $1
     `;
-    const params = [providerId];
-    let idx = 2;
+    const params = [providerId, userId || null];
+    let idx = 3;
     if (type) { query += ` AND v.vod_type = $${idx++}`; params.push(type); }
     if (search) { query += ` AND v.raw_title ILIKE $${idx++}`; params.push(`%${search}%`); }
     if (matched === true) { query += ` AND m.tmdb_id IS NOT NULL`; }
@@ -440,6 +451,58 @@ const vodQueries = {
   async totalCount() {
     const { rows } = await pool.query('SELECT COUNT(*) FROM user_provider_vod');
     return parseInt(rows[0].count);
+  },
+};
+
+// ─── Watch History ───────────────────────────────────────────────────────────
+
+const watchHistoryQueries = {
+  async upsertFromVod({ userId, vodId, rawTitle, tmdbId, imdbId, vodType, progressPct = 0 }) {
+    await pool.query(
+      `INSERT INTO watch_history (user_id, vod_id, raw_title, tmdb_id, imdb_id, vod_type, progress_pct, last_watched_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+       ON CONFLICT (user_id, raw_title) DO UPDATE SET
+         vod_id = EXCLUDED.vod_id,
+         tmdb_id = EXCLUDED.tmdb_id,
+         imdb_id = EXCLUDED.imdb_id,
+         vod_type = EXCLUDED.vod_type,
+         progress_pct = GREATEST(COALESCE(watch_history.progress_pct, 0), EXCLUDED.progress_pct),
+         last_watched_at = NOW()`,
+      [userId, vodId || null, rawTitle, tmdbId || null, imdbId || null, vodType || null, progressPct]
+    );
+  },
+
+  async getRecentForUser(userId, { limit = 12 } = {}) {
+    const { rows } = await pool.query(
+      `SELECT
+         wh.id,
+         wh.raw_title,
+         wh.tmdb_id,
+         wh.imdb_id,
+         wh.vod_type,
+         wh.progress_pct,
+         wh.last_watched_at,
+         v.id AS vod_id,
+         v.provider_id,
+         v.poster_url,
+         v.category,
+         p.name AS provider_name
+       FROM watch_history wh
+       LEFT JOIN LATERAL (
+         SELECT v.id, v.provider_id, v.poster_url, v.category
+         FROM user_provider_vod v
+         WHERE v.user_id = wh.user_id
+           AND v.raw_title = wh.raw_title
+         ORDER BY CASE WHEN wh.vod_id IS NOT NULL AND v.id = wh.vod_id THEN 0 ELSE 1 END, v.created_at DESC
+         LIMIT 1
+       ) v ON true
+       LEFT JOIN user_providers p ON p.id = v.provider_id
+       WHERE wh.user_id = $1
+       ORDER BY wh.last_watched_at DESC
+       LIMIT $2`,
+      [userId, limit]
+    );
+    return rows;
   },
 };
 
@@ -748,6 +811,7 @@ module.exports = {
   userQueries,
   providerQueries,
   vodQueries,
+  watchHistoryQueries,
   tmdbQueries,
   matchQueries,
   hostHealthQueries,

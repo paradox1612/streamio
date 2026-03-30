@@ -36,6 +36,27 @@ function getExpiryTone(expiresAt) {
   return 'text-emerald-300';
 }
 
+function formatLastWatched(value) {
+  if (!value) return 'Not watched yet';
+
+  const then = new Date(value);
+  if (Number.isNaN(then.getTime())) return 'Recently watched';
+
+  const diffMs = Date.now() - then.getTime();
+  const diffMinutes = Math.max(Math.floor(diffMs / (1000 * 60)), 0);
+
+  if (diffMinutes < 1) return 'Just now';
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+
+  return then.toLocaleDateString();
+}
+
 const fadeUp = {
   hidden: { opacity: 0, y: 16 },
   visible: (i = 0) => ({
@@ -105,13 +126,15 @@ function ProviderRow({ provider }) {
 export default function Dashboard() {
   const [addonUrl, setAddonUrl] = useState('');
   const [providers, setProviders] = useState([]);
+  const [watchHistory, setWatchHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [copying, setCopying] = useState(false);
 
   useEffect(() => {
-    Promise.all([userAPI.getAddonUrl(), providerAPI.list()])
-      .then(async ([urlRes, provsRes]) => {
+    Promise.all([userAPI.getAddonUrl(), providerAPI.list(), userAPI.getWatchHistory({ limit: 6 })])
+      .then(async ([urlRes, provsRes, watchRes]) => {
         setAddonUrl(urlRes.data.addonUrl);
+        setWatchHistory(Array.isArray(watchRes.data) ? watchRes.data : []);
         const providerStats = await Promise.all(
           provsRes.data.map(async (provider) => {
             try {
@@ -357,6 +380,36 @@ export default function Dashboard() {
         </div>
 
         <div className="space-y-5">
+          <Card className="p-5 sm:p-6">
+            <p className="eyebrow mb-2">Watch history</p>
+            <h2 className="section-title">Recent Stremio activity</h2>
+            <div className="mt-5 grid gap-3">
+              {watchHistory.length > 0 ? watchHistory.map((item) => (
+                <div key={`${item.raw_title}-${item.last_watched_at}`} className="flex items-center gap-3 rounded-[18px] border border-white/[0.07] bg-white/[0.025] p-3">
+                  <div className="h-16 w-12 overflow-hidden rounded-[12px] border border-white/[0.08] bg-surface-950/70">
+                    {item.poster_url ? (
+                      <img src={item.poster_url} alt={item.raw_title} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400/55">
+                        {item.vod_type || 'vod'}
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-white">{item.raw_title}</p>
+                    <p className="mt-1 text-xs text-slate-300/55">
+                      {item.provider_name || 'Provider unavailable'} · {formatLastWatched(item.last_watched_at)}
+                    </p>
+                  </div>
+                </div>
+              )) : (
+                <div className="rounded-[18px] border border-white/[0.07] bg-white/[0.025] p-4 text-sm leading-6 text-slate-300/65">
+                  Start a movie or episode from Stremio and it will appear here automatically.
+                </div>
+              )}
+            </div>
+          </Card>
+
           <Card className="p-5 sm:p-6">
             <p className="eyebrow mb-2">Attention</p>
             <h2 className="section-title">What to watch next</h2>

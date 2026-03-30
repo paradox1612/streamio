@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const { requireAuth } = require('../middleware/auth');
-const { userQueries } = require('../db/queries');
+const { userQueries, watchHistoryQueries } = require('../db/queries');
 const authService = require('../services/authService');
 const cache = require('../utils/cache');
 
@@ -37,6 +37,17 @@ router.get('/addon-url', requireAuth, async (req, res) => {
   const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
   const addonUrl = `${baseUrl}/addon/${req.user.addon_token}/manifest.json`;
   res.json({ addonUrl, token: req.user.addon_token });
+});
+
+// GET /api/user/watch-history
+router.get('/watch-history', requireAuth, async (req, res) => {
+  const requestedLimit = parseInt(req.query.limit, 10);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(requestedLimit, 1), 50)
+    : 12;
+
+  const items = await watchHistoryQueries.getRecentForUser(req.user.id, { limit });
+  res.json(items);
 });
 
 // POST /api/user/addon-url/regenerate

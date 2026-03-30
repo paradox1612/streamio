@@ -129,6 +129,7 @@ router.get('/:id/vod', requireAuth, async (req, res) => {
 
     const { type, page, limit, search, matched } = req.query;
     const items = await vodQueries.getByProvider(req.params.id, {
+      userId: req.user.id,
       type,
       page: parseInt(page) || 1,
       limit: Math.min(parseInt(limit) || 50, 200),

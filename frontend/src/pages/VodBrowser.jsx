@@ -31,6 +31,27 @@ const itemAnim = {
   visible: { opacity: 1, y: 0,  scale: 1,  transition: { duration: 0.45, ease: 'easeOut' } },
 };
 
+function formatLastWatched(value) {
+  if (!value) return '';
+
+  const then = new Date(value);
+  if (Number.isNaN(then.getTime())) return 'Recently watched';
+
+  const diffMs = Date.now() - then.getTime();
+  const diffMinutes = Math.max(Math.floor(diffMs / (1000 * 60)), 0);
+
+  if (diffMinutes < 1) return 'Just now';
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+
+  return then.toLocaleDateString();
+}
+
 // ── FixMatch Modal (Sera UI lightbox-style) ──────────────────────────────────
 function FixMatchModal({ item, providerId, allItems, currentIndex, onClose, onSuccess, onNavigate }) {
   const [query, setQuery]       = useState(item.raw_title);
@@ -231,13 +252,16 @@ function FixMatchModal({ item, providerId, allItems, currentIndex, onClose, onSu
 function VodCard({ item, onOpenModal, animVariants }) {
   const matched  = item.tmdb_id != null;
   const score    = item.confidence_score ? Math.round(item.confidence_score * 100) : null;
+  const watchedLabel = formatLastWatched(item.last_watched_at);
 
   return (
     <motion.div
       layout
       variants={animVariants}
       /* aspect ratio on the card itself — no outer wrapper needed */
-      className="group relative cursor-pointer overflow-hidden rounded-[20px] border border-white/[0.08] bg-surface-800/60 sm:rounded-[22px]"
+      className={`group relative cursor-pointer overflow-hidden rounded-[20px] border bg-surface-800/60 sm:rounded-[22px] ${
+        item.is_watched ? 'border-emerald-300/35 shadow-[0_0_0_1px_rgba(110,231,183,0.15)]' : 'border-white/[0.08]'
+      }`}
       style={{ aspectRatio: '2/3' }}
       whileHover={{ scale: 1.03, y: -6, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
       whileTap={{ scale: 0.98 }}
@@ -266,6 +290,12 @@ function VodCard({ item, onOpenModal, animVariants }) {
       <div className="absolute left-2.5 top-2.5 rounded-full border border-white/10 bg-black/50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-slate-100 backdrop-blur-sm">
         {item.vod_type}
       </div>
+
+      {item.is_watched && (
+        <div className="absolute left-2.5 top-9 rounded-full border border-emerald-200/25 bg-emerald-400/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-emerald-50 backdrop-blur-sm">
+          Watched
+        </div>
+      )}
 
       {/* Match badge top-right */}
       <div className={`absolute right-2.5 top-2.5 rounded-full px-2 py-0.5 text-[9px] font-bold backdrop-blur-sm ${
@@ -296,6 +326,17 @@ function VodCard({ item, onOpenModal, animVariants }) {
               transition={{ delay: 0.1 }}
             >
               {item.category}
+            </motion.p>
+          )}
+
+          {item.is_watched && watchedLabel && (
+            <motion.p
+              className="mt-1 text-[10px] font-medium text-emerald-200/90"
+              initial={{ y: 10, opacity: 0 }}
+              whileInView={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.12 }}
+            >
+              Started in Stremio {watchedLabel}
             </motion.p>
           )}
 
