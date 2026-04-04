@@ -8,6 +8,7 @@ const { buildManifest, handleCatalog, handleMeta, handleStream } = require('./ad
 const authRoutes = require('./api/authRoutes');
 const userRoutes = require('./api/userRoutes');
 const providerRoutes = require('./api/providerRoutes');
+const freeAccessRoutes = require('./api/freeAccessRoutes');
 const previewRoutes = require('./api/previewRoutes');
 const adminRoutes = require('./admin/adminRoutes');
 const { startScheduler } = require('./jobs/scheduler');
@@ -167,6 +168,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/preview', previewLimiter, previewRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/providers', providerRoutes);
+app.use('/api/free-access', freeAccessRoutes);
 app.use('/admin', adminRoutes);
 
 // ─── Error Handler ────────────────────────────────────────────────────────────

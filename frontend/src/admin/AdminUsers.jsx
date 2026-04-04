@@ -50,6 +50,7 @@ export default function AdminUsers() {
             <tr style={{ background: '#0f172a', color: '#64748b', borderBottom: '1px solid #334155' }}>
               <th style={{ textAlign: 'left', padding: '12px 16px', fontWeight: 500 }}>Email</th>
               <th style={{ textAlign: 'center', padding: '12px 8px', fontWeight: 500 }}>Providers</th>
+              <th style={{ textAlign: 'center', padding: '12px 8px', fontWeight: 500 }}>Free Access</th>
               <th style={{ textAlign: 'center', padding: '12px 8px', fontWeight: 500 }}>Status</th>
               <th style={{ textAlign: 'right', padding: '12px 8px', fontWeight: 500 }}>Created</th>
               <th style={{ textAlign: 'right', padding: '12px 8px', fontWeight: 500 }}>Last Seen</th>
@@ -61,6 +62,17 @@ export default function AdminUsers() {
               <tr key={user.id} style={{ borderBottom: '1px solid #334155' }}>
                 <td style={{ padding: '12px 16px', color: '#f1f5f9' }}>{user.email}</td>
                 <td style={{ textAlign: 'center', padding: '12px 8px', color: '#94a3b8' }}>{user.provider_count}</td>
+                <td style={{ textAlign: 'center', padding: '12px 8px' }}>
+                  <span style={{
+                    fontSize: '0.72rem',
+                    padding: '2px 8px',
+                    borderRadius: '20px',
+                    background: user.free_access_status === 'active' ? '#14532d' : user.free_access_status === 'expired' ? '#78350f' : '#1e293b',
+                    color: user.free_access_status === 'active' ? '#86efac' : user.free_access_status === 'expired' ? '#fde68a' : '#94a3b8',
+                  }}>
+                    {user.free_access_status || 'inactive'}
+                  </span>
+                </td>
                 <td style={{ textAlign: 'center', padding: '12px 8px' }}>
                   <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '20px', background: user.is_active ? '#14532d' : '#7f1d1d', color: user.is_active ? '#86efac' : '#fca5a5' }}>
                     {user.is_active ? 'Active' : 'Suspended'}
@@ -80,7 +92,7 @@ export default function AdminUsers() {
               </tr>
             ))}
             {users.length === 0 && (
-              <tr><td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>No users found</td></tr>
+              <tr><td colSpan="7" style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>No users found</td></tr>
             )}
           </tbody>
         </table>

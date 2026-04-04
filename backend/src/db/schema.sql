@@ -144,6 +144,93 @@ CREATE TABLE IF NOT EXISTS job_runs (
 );
 
 -- ─────────────────────────────────────────
+-- Free Access Provider Groups
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS free_access_provider_groups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR NOT NULL,
+  is_active BOOLEAN DEFAULT true,
+  trial_days INTEGER DEFAULT 7,
+  allow_live BOOLEAN DEFAULT false,
+  notes TEXT,
+  catalog_last_refreshed_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ─────────────────────────────────────────
+-- Free Access Provider Hosts
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS free_access_provider_hosts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  provider_group_id UUID REFERENCES free_access_provider_groups(id) ON DELETE CASCADE,
+  host VARCHAR NOT NULL,
+  priority INTEGER DEFAULT 100,
+  is_active BOOLEAN DEFAULT true,
+  last_checked_at TIMESTAMP,
+  last_status VARCHAR DEFAULT 'unknown',
+  last_response_ms INTEGER,
+  UNIQUE(provider_group_id, host)
+);
+
+-- ─────────────────────────────────────────
+-- Free Access Provider Accounts
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS free_access_provider_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  provider_group_id UUID REFERENCES free_access_provider_groups(id) ON DELETE CASCADE,
+  username VARCHAR NOT NULL,
+  password VARCHAR NOT NULL,
+  status VARCHAR DEFAULT 'available'
+    CHECK (status IN ('available', 'assigned', 'suspended', 'expired', 'invalid')),
+  max_connections INTEGER,
+  last_active_connections INTEGER,
+  last_expiration_at TIMESTAMP,
+  last_checked_at TIMESTAMP,
+  last_assigned_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(provider_group_id, username)
+);
+
+-- ─────────────────────────────────────────
+-- User Free Access Assignments
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS user_free_access_assignments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  provider_group_id UUID REFERENCES free_access_provider_groups(id) ON DELETE CASCADE,
+  account_id UUID REFERENCES free_access_provider_accounts(id) ON DELETE CASCADE,
+  status VARCHAR DEFAULT 'active'
+    CHECK (status IN ('active', 'expired', 'revoked', 'renewed')),
+  started_at TIMESTAMP DEFAULT NOW(),
+  expires_at TIMESTAMP NOT NULL,
+  expired_at TIMESTAMP,
+  last_stream_at TIMESTAMP,
+  renewal_number INTEGER DEFAULT 0
+);
+
+-- ─────────────────────────────────────────
+-- Shared Free Access Catalog
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS free_access_catalog (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  provider_group_id UUID REFERENCES free_access_provider_groups(id) ON DELETE CASCADE,
+  stream_id VARCHAR NOT NULL,
+  raw_title VARCHAR NOT NULL,
+  normalized_title VARCHAR,
+  canonical_title VARCHAR,
+  canonical_normalized_title VARCHAR,
+  title_year INTEGER,
+  content_languages TEXT[] DEFAULT ARRAY[]::TEXT[],
+  quality_tags TEXT[] DEFAULT ARRAY[]::TEXT[],
+  poster_url VARCHAR,
+  category VARCHAR,
+  vod_type VARCHAR CHECK (vod_type IN ('movie', 'series')),
+  container_extension VARCHAR DEFAULT 'mp4',
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(provider_group_id, stream_id, vod_type)
+);
+
+-- ─────────────────────────────────────────
 -- Incremental migrations (safe to re-run)
 -- ─────────────────────────────────────────
 ALTER TABLE user_provider_vod
@@ -164,6 +251,8 @@ ALTER TABLE tmdb_movies
   ADD COLUMN IF NOT EXISTS normalized_title VARCHAR;
 ALTER TABLE tmdb_series
   ADD COLUMN IF NOT EXISTS normalized_title VARCHAR;
+ALTER TABLE free_access_provider_groups
+  ADD COLUMN IF NOT EXISTS catalog_last_refreshed_at TIMESTAMP;
 
 -- ─────────────────────────────────────────
 -- Indexes
@@ -186,6 +275,23 @@ CREATE INDEX IF NOT EXISTS idx_matched_content_raw_title ON matched_content(raw_
 CREATE INDEX IF NOT EXISTS idx_matched_content_tmdb_id ON matched_content(tmdb_id);
 CREATE INDEX IF NOT EXISTS idx_host_health_provider_id ON host_health(provider_id);
 CREATE INDEX IF NOT EXISTS idx_job_runs_job_name ON job_runs(job_name);
+CREATE INDEX IF NOT EXISTS idx_free_access_groups_active ON free_access_provider_groups(is_active);
+CREATE INDEX IF NOT EXISTS idx_free_access_hosts_group_id ON free_access_provider_hosts(provider_group_id);
+CREATE INDEX IF NOT EXISTS idx_free_access_accounts_group_id ON free_access_provider_accounts(provider_group_id);
+CREATE INDEX IF NOT EXISTS idx_free_access_accounts_status ON free_access_provider_accounts(status);
+CREATE INDEX IF NOT EXISTS idx_user_free_access_assignments_user_id ON user_free_access_assignments(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_free_access_assignments_status ON user_free_access_assignments(status);
+CREATE INDEX IF NOT EXISTS idx_free_access_catalog_group_id ON free_access_catalog(provider_group_id);
+CREATE INDEX IF NOT EXISTS idx_free_access_catalog_vod_type ON free_access_catalog(vod_type);
+CREATE INDEX IF NOT EXISTS idx_free_access_catalog_normalized_title ON free_access_catalog(normalized_title);
+CREATE INDEX IF NOT EXISTS idx_free_access_catalog_canonical_normalized_title ON free_access_catalog(canonical_normalized_title);
+CREATE INDEX IF NOT EXISTS free_access_catalog_normalized_title_trgm_gist ON free_access_catalog
+  USING gist(normalized_title gist_trgm_ops);
+CREATE INDEX IF NOT EXISTS free_access_catalog_canonical_title_trgm_gist ON free_access_catalog
+  USING gist(canonical_normalized_title gist_trgm_ops);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_free_access_active_assignment
+  ON user_free_access_assignments(user_id)
+  WHERE status = 'active';
 
 -- Trigram indexes for fuzzy title matching
 CREATE INDEX IF NOT EXISTS tmdb_movies_title_trgm ON tmdb_movies
@@ -220,6 +326,18 @@ SET canonical_title = raw_title
 WHERE canonical_title IS NULL OR canonical_title = '';
 
 UPDATE user_provider_vod
+SET canonical_normalized_title = normalized_title
+WHERE canonical_normalized_title IS NULL OR canonical_normalized_title = '';
+
+UPDATE free_access_catalog
+SET normalized_title = trim(regexp_replace(lower(unaccent(raw_title)), '[^a-z0-9]+', ' ', 'g'))
+WHERE normalized_title IS NULL OR normalized_title = '';
+
+UPDATE free_access_catalog
+SET canonical_title = raw_title
+WHERE canonical_title IS NULL OR canonical_title = '';
+
+UPDATE free_access_catalog
 SET canonical_normalized_title = normalized_title
 WHERE canonical_normalized_title IS NULL OR canonical_normalized_title = '';
 

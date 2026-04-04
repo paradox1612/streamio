@@ -7,6 +7,7 @@ const navItems = [
   { path: '/admin/dashboard', label: 'Overview', icon: '📊' },
   { path: '/admin/users', label: 'Users', icon: '👥' },
   { path: '/admin/providers', label: 'Providers', icon: '🔌' },
+  { path: '/admin/free-access', label: 'Free Access', icon: '🎁' },
   { path: '/admin/health', label: 'Host Health', icon: '🩺' },
   { path: '/admin/tmdb', label: 'TMDB Matching', icon: '🎯' },
   { path: '/admin/system', label: 'System', icon: '⚙️' },

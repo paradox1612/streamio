@@ -1,6 +1,7 @@
 const fetch = require('node-fetch');
 const { userQueries, providerQueries, vodQueries, watchHistoryQueries, tmdbQueries, matchQueries, pool } = require('../db/queries');
 const providerService = require('../services/providerService');
+const freeAccessService = require('../services/freeAccessService');
 const epgService = require('../services/epgService');
 const hostHealthService = require('../services/hostHealthService');
 const cache = require('../utils/cache');
@@ -17,12 +18,36 @@ function normalizeCategoryName(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function buildExpiredMeta(baseId, type) {
+  return {
+    meta: {
+      id: baseId,
+      type: type === 'series' ? 'series' : 'movie',
+      name: 'Free access expired',
+      description: 'Extend free access or add your own provider to keep watching.',
+      posterShape: 'poster',
+    },
+  };
+}
+
+function buildExpiredStreamResponse() {
+  const frontendUrl = process.env.FRONTEND_URL || process.env.BASE_URL || 'http://localhost:3000';
+  return {
+    streams: [{
+      name: 'StreamBridge',
+      title: 'Free access ended — extend free access or add your own provider',
+      externalUrl: `${frontendUrl.replace(/\/+$/, '')}/dashboard?freeAccess=expired`,
+      behaviorHints: { notWebReady: false },
+    }],
+  };
+}
+
 function recordWatchStart(userId, vodItem) {
   if (!userId || !vodItem?.raw_title) return;
 
   watchHistoryQueries.upsertFromVod({
     userId,
-    vodId: vodItem.id,
+    vodId: vodItem.provider_id ? vodItem.id : null,
     rawTitle: vodItem.raw_title,
     tmdbId: vodItem.tmdb_id,
     imdbId: vodItem.imdb_id,
@@ -251,6 +276,41 @@ async function resolveVodItemsForStream(userId, baseId) {
   }
 
   return [];
+}
+
+async function resolveFallbackVodItem(user, baseId, type) {
+  let item = await freeAccessService.resolveFallbackVodItem(user.id, baseId, type);
+  if (item) return item;
+
+  if (!(baseId.startsWith('tt') || baseId.startsWith('tmdb:'))) return null;
+
+  const target = await getTargetTmdbRecord(baseId, type);
+  if (!target) return null;
+
+  const candidates = await freeAccessService.resolveFallbackOnDemandCandidate(user.id, {
+    vodType: target.tmdb_type === 'series' ? 'series' : 'movie',
+    normalizedTitle: target.normalized_title || normalizeTitle(target.original_title || ''),
+    year: target.year || null,
+    tmdbId: target.id,
+    imdbId: target.imdb_id || (baseId.startsWith('tt') ? baseId : null),
+  });
+
+  if (!candidates.length) return null;
+
+  for (const candidate of candidates) {
+    const result = await resolveCandidateMatch(candidate, target);
+    if (!result) continue;
+
+    await matchQueries.upsert({
+      rawTitle: candidate.raw_title,
+      tmdbId: target.id,
+      tmdbType: target.tmdb_type === 'series' ? 'series' : 'movie',
+      imdbId: target.imdb_id || (baseId.startsWith('tt') ? baseId : null),
+      confidenceScore: result.score,
+    });
+  }
+
+  return freeAccessService.resolveFallbackVodItem(user.id, baseId, type);
 }
 
 function applyLanguagePreferences(vodItems, user) {
@@ -520,7 +580,15 @@ async function handleMeta(token, type, id) {
     if (!vodItem && (baseId.startsWith('tt') || baseId.startsWith('tmdb:'))) {
       vodItem = await resolveOnDemandMatchShared(user.id, baseId, type);
     }
-    if (!vodItem) return { meta: null };
+    if (!vodItem && type !== 'tv') {
+      vodItem = await resolveFallbackVodItem(user, baseId, type);
+    }
+    if (!vodItem) {
+      if (user.free_access_status === 'expired' && type !== 'tv') {
+        return buildExpiredMeta(baseId, type);
+      }
+      return { meta: null };
+    }
 
     const meta = {
       id: baseId,
@@ -531,13 +599,18 @@ async function handleMeta(token, type, id) {
     };
 
     // For series: fetch episode list with caching
-    if (vodItem.vod_type === 'series' && vodItem.provider_id && vodItem.stream_id) {
+    if (vodItem.vod_type === 'series' && vodItem.stream_id) {
       try {
-        const { fallbackHost } = await resolveProviderPlaybackHosts(user.id, vodItem.provider_id);
+        const fallbackHost = vodItem.access_source === 'free_access'
+          ? vodItem.playback_hosts?.[0]?.host
+          : (await resolveProviderPlaybackHosts(user.id, vodItem.provider_id)).fallbackHost;
         if (!fallbackHost) return { meta };
 
         // Check cache first
-        let episodesObj = cache.get('seriesEpisodes', vodItem.stream_id);
+        const episodeCacheKey = vodItem.access_source === 'free_access'
+          ? `free:${vodItem.provider_group_id}:${vodItem.stream_id}`
+          : vodItem.stream_id;
+        let episodesObj = cache.get('seriesEpisodes', episodeCacheKey);
         if (!episodesObj) {
           episodesObj = await providerService.getSeriesEpisodes(
             fallbackHost,
@@ -546,7 +619,7 @@ async function handleMeta(token, type, id) {
             vodItem.stream_id
           );
           // Cache episodes for 10 minutes
-          cache.set('seriesEpisodes', vodItem.stream_id, episodesObj);
+          cache.set('seriesEpisodes', episodeCacheKey, episodesObj);
         }
 
         const videos = [];
@@ -623,9 +696,21 @@ async function handleStream(token, type, id) {
       }
     }
 
+    if (!vodItems.length && type !== 'tv') {
+      const fallbackItem = await resolveFallbackVodItem(user, baseId, type);
+      if (fallbackItem) {
+        vodItems = [fallbackItem];
+      }
+    }
+
     vodItems = applyLanguagePreferences(vodItems, user);
 
-    if (!vodItems.length) return { streams: [] };
+    if (!vodItems.length) {
+      if (type !== 'tv' && user.free_access_status === 'expired') {
+        return buildExpiredStreamResponse();
+      }
+      return { streams: [] };
+    }
 
     const vodItem = vodItems[0];
     const { username, password, stream_id, vod_type, container_extension, provider_id } = vodItem;
@@ -633,21 +718,19 @@ async function handleStream(token, type, id) {
     // ── Movie stream ───────────────────────────────────────────────────────────
     if (vod_type === 'movie') {
       recordWatchStart(user.id, vodItem);
-      const providerIds = [...new Set(vodItems
-        .map(item => item.provider_id)
-        .filter(Boolean))];
-      const providerHosts = new Map(
-        await Promise.all(providerIds.map(async (itemProviderId) => ([
-          itemProviderId,
-          await resolveProviderPlaybackHosts(user.id, itemProviderId, null, { recheckOnMiss: false }),
-        ])))
-      );
       const streams = [];
 
       for (const item of vodItems) {
-        if (!item.provider_id) continue;
-
-        const hostData = providerHosts.get(item.provider_id);
+        const isFreeAccess = item.access_source === 'free_access';
+        const hostData = isFreeAccess
+          ? {
+            onlineHosts: (item.playback_hosts || []).map(host => ({
+              host_url: host.host,
+              response_time_ms: host.responseTimeMs,
+            })),
+            fallbackHost: item.playback_hosts?.[0]?.host || null,
+          }
+          : await resolveProviderPlaybackHosts(user.id, item.provider_id, null, { recheckOnMiss: false });
         const { onlineHosts, fallbackHost } = hostData;
         const ext = item.container_extension || 'mp4';
         const streamLabel = item.raw_title || item.name || 'Stream';
@@ -675,6 +758,9 @@ async function handleStream(token, type, id) {
         }));
       }
 
+      if (vodItem.access_source === 'free_access') {
+        await freeAccessService.recordResolvedStream(vodItem.assignment_id);
+      }
       return { streams };
     }
 
@@ -689,20 +775,28 @@ async function handleStream(token, type, id) {
 
       try {
         // Check cache first for episodes
-        let episodesObj = cache.get('seriesEpisodes', stream_id);
+        const episodeCacheKey = vodItem.access_source === 'free_access'
+          ? `free:${vodItem.provider_group_id}:${stream_id}`
+          : stream_id;
+        let episodesObj = cache.get('seriesEpisodes', episodeCacheKey);
         if (!episodesObj) {
-          const { onlineHosts, fallbackHost } = await resolveProviderPlaybackHosts(
-            user.id,
-            provider_id,
-            null,
-            { recheckOnMiss: false }
-          );
-          const hostToUse = onlineHosts[0]?.host_url || fallbackHost;
+          const hostData = vodItem.access_source === 'free_access'
+            ? {
+              onlineHosts: (vodItem.playback_hosts || []).map(host => ({ host_url: host.host })),
+              fallbackHost: vodItem.playback_hosts?.[0]?.host || null,
+            }
+            : await resolveProviderPlaybackHosts(
+              user.id,
+              provider_id,
+              null,
+              { recheckOnMiss: false }
+            );
+          const hostToUse = hostData.onlineHosts[0]?.host_url || hostData.fallbackHost;
           if (!hostToUse) return { streams: [] };
           episodesObj = await providerService.getSeriesEpisodes(
             hostToUse, username, password, stream_id
           );
-          cache.set('seriesEpisodes', stream_id, episodesObj);
+          cache.set('seriesEpisodes', episodeCacheKey, episodesObj);
         }
 
         const seasonEps = episodesObj[String(season)];
@@ -718,12 +812,20 @@ async function handleStream(token, type, id) {
         }
 
         // Get online hosts for multi-host failover
-        const { onlineHosts, fallbackHost } = await resolveProviderPlaybackHosts(
-          user.id,
-          provider_id,
-          null,
-          { recheckOnMiss: false }
-        );
+        const { onlineHosts, fallbackHost } = vodItem.access_source === 'free_access'
+          ? {
+            onlineHosts: (vodItem.playback_hosts || []).map(host => ({
+              host_url: host.host,
+              response_time_ms: host.responseTimeMs,
+            })),
+            fallbackHost: vodItem.playback_hosts?.[0]?.host || null,
+          }
+          : await resolveProviderPlaybackHosts(
+            user.id,
+            provider_id,
+            null,
+            { recheckOnMiss: false }
+          );
 
         const epId = ep.id;
         const epExt = ep.container_extension || 'mkv';
@@ -752,6 +854,9 @@ async function handleStream(token, type, id) {
           }];
         }
 
+        if (vodItem.access_source === 'free_access') {
+          await freeAccessService.recordResolvedStream(vodItem.assignment_id);
+        }
         return { streams };
       } catch (err) {
         logger.warn(`Failed to resolve series stream for ${id}: ${err.message}`);

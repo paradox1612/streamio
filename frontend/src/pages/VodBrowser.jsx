@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
 
 // ── Animation variants (Sera UI Video Gallery pattern) ───────────────────────
 const containerAnim = {
@@ -365,6 +366,7 @@ function VodCard({ item, onOpenModal, animVariants }) {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function VodBrowser() {
+  const { user } = useAuth();
   const [providers, setProviders]           = useState([]);
   const [selectedProvider, setSelectedProvider] = useState('');
   const [items, setItems]                   = useState([]);
@@ -469,6 +471,25 @@ export default function VodBrowser() {
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8">
           {Array.from({ length: 16 }).map((_, i) => <div key={i} className="skeleton aspect-[2/3]" />)}
         </div>
+      </div>
+    );
+  }
+
+  if (!user?.has_byo_providers) {
+    return (
+      <div className="mx-auto max-w-7xl space-y-8">
+        <section className="panel p-8">
+          <div className="kicker mb-5">Browse VOD</div>
+          <h1 className="hero-title">Web catalog browsing unlocks only after you add a BYO provider.</h1>
+          <p className="hero-copy mt-4">Managed free access stays hidden and fallback-only. Connect your own source to browse movies and series here.</p>
+        </section>
+        <EmptyState
+          icon={SparklesIcon}
+          heading="BYO required for web browsing"
+          description="Free access can still help inside addon fallback, but it is not exposed in the dashboard catalog."
+          action={() => window.location.href = '/providers'}
+          actionLabel="Add BYO Provider"
+        />
       </div>
     );
   }

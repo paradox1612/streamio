@@ -53,7 +53,7 @@ describe('vodQueries provider catalog ordering', () => {
 
     expect(pool.query).toHaveBeenCalledWith(
       expect.stringContaining('ORDER BY\n      v.canonical_normalized_title ASC NULLS LAST,\n      v.normalized_title ASC NULLS LAST,\n      v.raw_title ASC,\n      v.stream_id ASC'),
-      ['provider-1', 'movie', 50, 0]
+      ['provider-1', null, 'movie', 50, 0]
     );
   });
 });

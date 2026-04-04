@@ -65,30 +65,31 @@ const authService = {
 
     await userQueries.updateLastSeen(user.id);
     const jwtToken = signJwt({ userId: user.id, email: user.email });
+    const publicUser = await userQueries.findById(user.id) || {
+      id: user.id,
+      email: user.email,
+      addon_token: user.addon_token,
+      is_active: user.is_active,
+      created_at: user.created_at,
+      last_seen: user.last_seen,
+    };
     logger.info(`User logged in: ${user.email}`);
     return {
-      user: {
-        id: user.id,
-        email: user.email,
-        addon_token: user.addon_token,
-        is_active: user.is_active,
-        created_at: user.created_at,
-        last_seen: user.last_seen,
-      },
+      user: publicUser,
       token: jwtToken,
     };
   },
 
   async forgotPassword(email) {
     const user = await userQueries.findByEmail(email.toLowerCase());
-    if (!user) return { sent: true }; // Silent — don't reveal whether email exists
+    if (!user) return undefined; // Silent — don't reveal whether email exists
 
     const resetToken = uuidv4();
     const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
     await userQueries.setResetToken(user.id, resetToken, expires);
     // TODO: Send reset link via email to user
     logger.info(`[DEV] Reset token for ${email}: ${resetToken}`);
-    return { sent: true };
+    return resetToken;
   },
 
   async resetPassword(resetToken, newPassword) {

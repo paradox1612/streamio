@@ -312,6 +312,53 @@ const providerService = {
     return { movies: vodMovies.length, series: vodSeries.length, live: liveStreams.length, total: all.length };
   },
 
+  async fetchManagedCatalog(host, username, password, providerGroupId) {
+    const [vodCategoryMap, seriesCategoryMap] = await Promise.all([
+      fetchCategoryMap(host, username, password, 'get_vod_categories'),
+      fetchCategoryMap(host, username, password, 'get_series_categories'),
+    ]);
+
+    const [vodMoviesResult, vodSeriesResult] = await Promise.allSettled([
+      xtreamRequest(host, username, password, 'get_vod_streams'),
+      xtreamRequest(host, username, password, 'get_series'),
+    ]);
+
+    let vodMovies = [];
+    if (vodMoviesResult.status === 'fulfilled' && Array.isArray(vodMoviesResult.value)) {
+      vodMovies = vodMoviesResult.value.map(m => ({
+        ...parseMovieTitle(m.name || String(m.stream_id)),
+        providerGroupId,
+        streamId: String(m.stream_id),
+        rawTitle: m.name || String(m.stream_id),
+        normalizedTitle: normalizeTitle(m.name || String(m.stream_id)),
+        posterUrl: m.stream_icon || null,
+        category: normalizeCategory(vodCategoryMap[String(m.category_id)] || m.category_name),
+        vodType: 'movie',
+        containerExtension: m.container_extension || 'mp4',
+      }));
+    }
+
+    let vodSeries = [];
+    if (vodSeriesResult.status === 'fulfilled' && Array.isArray(vodSeriesResult.value)) {
+      vodSeries = vodSeriesResult.value.map(s => ({
+        ...parseSeriesTitle(s.name || String(s.series_id)),
+        providerGroupId,
+        streamId: String(s.series_id),
+        rawTitle: s.name || String(s.series_id),
+        normalizedTitle: normalizeTitle(s.name || String(s.series_id)),
+        posterUrl: s.cover || null,
+        category: normalizeCategory(seriesCategoryMap[String(s.category_id)] || s.genre?.split(',')[0]),
+        vodType: 'series',
+        containerExtension: null,
+      }));
+    }
+
+    return {
+      movies: vodMovies,
+      series: vodSeries,
+    };
+  },
+
   // Resolve individual episode stream URL at playback time
   async getSeriesEpisodes(host, username, password, seriesId) {
     try {

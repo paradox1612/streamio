@@ -24,6 +24,7 @@ import AdminLayout from './admin/AdminLayout';
 import AdminOverview from './admin/AdminOverview';
 import AdminUsers from './admin/AdminUsers';
 import AdminProviders from './admin/AdminProviders';
+import AdminFreeAccess from './admin/AdminFreeAccess';
 import AdminHealth from './admin/AdminHealth';
 import AdminTmdb from './admin/AdminTmdb';
 import AdminSystem from './admin/AdminSystem';
@@ -76,6 +77,7 @@ export default function App() {
           <Route path="/admin/dashboard" element={<AdminRoute><AdminOverview /></AdminRoute>} />
           <Route path="/admin/users" element={<AdminRoute><AdminUsers /></AdminRoute>} />
           <Route path="/admin/providers" element={<AdminRoute><AdminProviders /></AdminRoute>} />
+          <Route path="/admin/free-access" element={<AdminRoute><AdminFreeAccess /></AdminRoute>} />
           <Route path="/admin/health" element={<AdminRoute><AdminHealth /></AdminRoute>} />
           <Route path="/admin/tmdb" element={<AdminRoute><AdminTmdb /></AdminRoute>} />
           <Route path="/admin/system" element={<AdminRoute><AdminSystem /></AdminRoute>} />

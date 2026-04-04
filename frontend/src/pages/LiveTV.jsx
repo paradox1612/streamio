@@ -1,15 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { providerAPI } from '../utils/api';
 import { SparklesIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import EmptyState from '../components/EmptyState';
 import SkeletonCard from '../components/SkeletonCard';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
 
 function normalizeCategoryName(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : 'Live TV';
 }
 
+const PAGE_SIZE = 60;
+
 export default function LiveTV() {
+  const { user } = useAuth();
   const [providers, setProviders] = useState([]);
   const [selectedProvider, setSelectedProvider] = useState('');
   const [channels, setChannels] = useState([]);
@@ -18,6 +22,18 @@ export default function LiveTV() {
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+      setPage(1);
+    }, 300);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchQuery]);
 
   useEffect(() => {
     providerAPI.list()
@@ -32,38 +48,46 @@ export default function LiveTV() {
   }, []);
 
   useEffect(() => {
+    setChannels([]);
+    setPage(1);
+  }, [selectedCategory, debouncedSearch]);
+
+  const loadChannels = useCallback(async () => {
     if (!selectedProvider) return;
 
     setLoadingChannels(true);
-    setChannels([]);
-    setCategories(['all']);
-    setSelectedCategory('all');
+    try {
+      const params = { page, limit: PAGE_SIZE };
+      if (debouncedSearch) params.search = debouncedSearch;
+      if (selectedCategory !== 'all') params.category = selectedCategory;
 
-    Promise.all([
-      providerAPI.getLive ? providerAPI.getLive(selectedProvider, { limit: 20000 }) : Promise.resolve({ data: [] }),
-    ])
-      .then(([res]) => {
-        const channelList = (res.data || []).map(channel => ({
-          ...channel,
-          category: normalizeCategoryName(channel.category),
-        }));
-        setChannels(channelList);
-        const uniqueCategories = [
-          'all',
-          ...Array.from(new Set(channelList.map(c => c.category))).sort((a, b) => a.localeCompare(b)),
-        ];
-        setCategories(uniqueCategories);
-      })
-      .catch(() => toast.error('Failed to load live channels'))
-      .finally(() => setLoadingChannels(false));
-  }, [selectedProvider]);
+      const res = await providerAPI.getLive(selectedProvider, params);
+      const payload = res.data || {};
+      const channelList = Array.isArray(payload.items) ? payload.items : [];
+      const normalizedChannels = channelList.map(channel => ({
+        ...channel,
+        category: normalizeCategoryName(channel.category),
+      }));
+      const normalizedCategories = Array.isArray(payload.categories)
+        ? payload.categories.map(normalizeCategoryName)
+        : [];
 
-  const filteredChannels = channels
-    .filter(c => selectedCategory === 'all' || c.category === selectedCategory)
-    .filter(c => {
-      const channelName = c.name || c.raw_title || '';
-      return channelName.toLowerCase().includes(searchQuery.toLowerCase());
-    });
+      setChannels(prev => (page === 1 ? normalizedChannels : [...prev, ...normalizedChannels]));
+      setCategories(['all', ...Array.from(new Set(normalizedCategories)).sort((a, b) => a.localeCompare(b))]);
+      setHasMore(Boolean(payload.hasMore));
+    } catch (_) {
+      toast.error('Failed to load live channels');
+    } finally {
+      setLoadingChannels(false);
+    }
+  }, [selectedProvider, page, debouncedSearch, selectedCategory]);
+
+  useEffect(() => {
+    loadChannels();
+  }, [loadChannels]);
+
+  const showInitialLoading = loadingChannels && page === 1 && channels.length === 0;
+  const showLoadingMore = loadingChannels && page > 1;
 
   if (loading) {
     return (
@@ -74,6 +98,25 @@ export default function LiveTV() {
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
           <SkeletonCard count={12} type="vod" />
         </div>
+      </div>
+    );
+  }
+
+  if (!user?.can_use_live_tv) {
+    return (
+      <div className="mx-auto max-w-7xl space-y-8">
+        <section className="panel p-8">
+          <div className="kicker mb-5">Live TV</div>
+          <h1 className="hero-title">Live TV unlocks only after you add a BYO provider.</h1>
+          <p className="hero-copy mt-4">Free access never exposes live channels. Add your own IPTV source to browse and launch live streams here.</p>
+        </section>
+        <EmptyState
+          icon={SparklesIcon}
+          heading="BYO required for Live TV"
+          description="Managed free access is limited to hidden movie and series fallback."
+          action={() => window.location.href = '/providers'}
+          actionLabel="Add BYO Provider"
+        />
       </div>
     );
   }
@@ -105,13 +148,15 @@ export default function LiveTV() {
             <div className="kicker mb-4">Live TV</div>
             <h1 className="text-3xl font-bold leading-tight text-white sm:text-4xl">Find channels fast, then launch them without friction.</h1>
             <p className="hero-copy mt-3">
-              Switch providers, search by name, and narrow by category while keeping logos and metadata easy to scan.
+              Switch providers, page through channels, and narrow by category without pulling the full lineup up front.
             </p>
           </div>
           <div className="panel-soft p-4 sm:p-5">
             <p className="metric-label mb-1">Visible Channels</p>
-            <p className="text-3xl font-bold text-white">{filteredChannels.length}</p>
-            <p className="mt-2 text-sm text-slate-300/[0.68]">Filtered from {channels.length} channels in the selected provider.</p>
+            <p className="text-3xl font-bold text-white">{channels.length}</p>
+            <p className="mt-2 text-sm text-slate-300/[0.68]">
+              {hasMore ? 'Showing the current page set. Load more to continue browsing.' : 'All currently matching channels are loaded.'}
+            </p>
           </div>
         </div>
       </section>
@@ -122,7 +167,16 @@ export default function LiveTV() {
             <label className="field-label">Provider</label>
             <select
               value={selectedProvider}
-              onChange={e => setSelectedProvider(e.target.value)}
+              onChange={(e) => {
+                setSelectedProvider(e.target.value);
+                setChannels([]);
+                setCategories([]);
+                setSelectedCategory('all');
+                setSearchQuery('');
+                setDebouncedSearch('');
+                setPage(1);
+                setHasMore(false);
+              }}
               className="field-select"
             >
               {providers.map(p => (
@@ -163,42 +217,57 @@ export default function LiveTV() {
         )}
       </section>
 
-      {loadingChannels ? (
+      {showInitialLoading ? (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
           <SkeletonCard count={12} type="vod" />
         </div>
-      ) : filteredChannels.length > 0 ? (
-        <section className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
-          {filteredChannels.map(channel => (
-            <a
-              key={channel.id || channel.stream_id}
-              href={channel.streamUrl || '#'}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group overflow-hidden rounded-[24px] border border-white/[0.08] bg-white/[0.04] transition-all duration-200 hover:-translate-y-0.5 hover:border-white/[0.16]"
-            >
-              <div className="relative aspect-square overflow-hidden bg-surface-900/80">
-                {channel.logo || channel.poster_url ? (
-                  <img
-                    src={channel.logo || channel.poster_url}
-                    alt={channel.name || channel.raw_title}
-                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                  />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-4xl">📺</div>
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
-              </div>
-              <div className="p-3">
-                <h3 className="line-clamp-2 text-sm font-semibold text-white">{channel.name || channel.raw_title}</h3>
-                {channel.category && <p className="mt-1 text-xs text-slate-300/55">{channel.category}</p>}
-                <div className="mt-3 inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-semibold text-slate-100">
-                  Open Stream
+      ) : channels.length > 0 ? (
+        <div className="space-y-6">
+          <section className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
+            {channels.map(channel => (
+              <a
+                key={channel.id || channel.stream_id}
+                href={channel.streamUrl || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group overflow-hidden rounded-[24px] border border-white/[0.08] bg-white/[0.04] transition-all duration-200 hover:-translate-y-0.5 hover:border-white/[0.16]"
+              >
+                <div className="relative aspect-square overflow-hidden bg-surface-900/80">
+                  {channel.logo || channel.poster_url ? (
+                    <img
+                      src={channel.logo || channel.poster_url}
+                      alt={channel.name || channel.raw_title}
+                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-4xl">📺</div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
                 </div>
-              </div>
-            </a>
-          ))}
-        </section>
+                <div className="p-3">
+                  <h3 className="line-clamp-2 text-sm font-semibold text-white">{channel.name || channel.raw_title}</h3>
+                  {channel.category && <p className="mt-1 text-xs text-slate-300/55">{channel.category}</p>}
+                  <div className="mt-3 inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-semibold text-slate-100">
+                    Open Stream
+                  </div>
+                </div>
+              </a>
+            ))}
+          </section>
+
+          {hasMore && (
+            <div className="text-center">
+              <button
+                disabled={showLoadingMore}
+                onClick={() => setPage(prev => prev + 1)}
+                className="btn-secondary"
+              >
+                {showLoadingMore ? 'Loading…' : 'Load More Channels'}
+              </button>
+            </div>
+          )}
+        </div>
       ) : (
         <EmptyState
           icon={SparklesIcon}

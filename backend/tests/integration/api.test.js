@@ -23,6 +23,10 @@ const mockUser = {
   email: 'test@example.com',
   addon_token: 'abc123token',
   is_active: true,
+  has_byo_providers: false,
+  has_active_free_access: false,
+  free_access_status: 'inactive',
+  can_use_live_tv: false,
   created_at: new Date().toISOString(),
   last_seen: null,
 };
@@ -83,6 +87,18 @@ jest.mock('../../src/db/queries', () => {
     tmdbQueries: { movieCount: jest.fn().mockResolvedValue(0), seriesCount: jest.fn().mockResolvedValue(0) },
     matchQueries: { globalStats: jest.fn().mockResolvedValue({ total: 0, matched: 0, unmatched: 0 }), listUnmatched: jest.fn().mockResolvedValue([]) },
     hostHealthQueries: { getByProvider: jest.fn().mockResolvedValue([]), getAll: jest.fn().mockResolvedValue([]) },
+    freeAccessQueries: {
+      findLatestAssignmentForUser: jest.fn().mockResolvedValue(null),
+      listProviderGroups: jest.fn().mockResolvedValue([]),
+      findProviderGroupById: jest.fn().mockResolvedValue(null),
+      createProviderGroup: jest.fn().mockResolvedValue({ id: 'free-group-1', name: 'Free Group' }),
+      updateProviderGroup: jest.fn().mockResolvedValue({ id: 'free-group-1', name: 'Free Group' }),
+      listHostsByGroup: jest.fn().mockResolvedValue([]),
+      listAccountsByGroup: jest.fn().mockResolvedValue([]),
+      addHost: jest.fn().mockResolvedValue({ id: 'host-1', host: 'http://host.example.com' }),
+      addAccount: jest.fn().mockResolvedValue({ id: 'acct-1', username: 'demo' }),
+      listAssignments: jest.fn().mockResolvedValue([]),
+    },
     jobQueries: {
       start: jest.fn().mockResolvedValue('job-id'),
       finish: jest.fn().mockResolvedValue(),
@@ -102,6 +118,17 @@ jest.mock('../../src/services/providerService', () => ({
   getStats: jest.fn().mockResolvedValue({}),
 }));
 
+jest.mock('../../src/services/freeAccessService', () => ({
+  getStatusForUser: jest.fn().mockResolvedValue({ status: 'inactive', canStart: true, canExtend: false }),
+  startOrExtend: jest.fn().mockResolvedValue({ id: 'assignment-1', status: 'active' }),
+  expireDueAssignments: jest.fn().mockResolvedValue({ expired: 0 }),
+  refreshProviderGroupCatalog: jest.fn().mockResolvedValue({ refreshed: true, providerGroupId: 'free-group-1' }),
+  buildCapabilityState: jest.fn(),
+  resolveFallbackVodItem: jest.fn().mockResolvedValue(null),
+  resolveFallbackOnDemandCandidate: jest.fn().mockResolvedValue([]),
+  recordResolvedStream: jest.fn().mockResolvedValue(),
+}));
+
 jest.mock('../../src/jobs/scheduler', () => ({
   startScheduler: jest.fn(),
   jobs: {
@@ -109,6 +136,9 @@ jest.mock('../../src/jobs/scheduler', () => ({
     tmdbSyncJob: jest.fn().mockResolvedValue(),
     catalogRefreshJob: jest.fn().mockResolvedValue(),
     matchingJob: jest.fn().mockResolvedValue(),
+    epgRefreshJob: jest.fn().mockResolvedValue(),
+    freeAccessExpiryJob: jest.fn().mockResolvedValue(),
+    freeAccessCatalogRefreshJob: jest.fn().mockResolvedValue(),
   },
 }));
 
@@ -232,6 +262,31 @@ describe('GET /api/user/addon-url', () => {
     expect(res.status).toBe(200);
     expect(res.body.addonUrl).toContain('manifest.json');
     expect(res.body.addonUrl).toContain('abc123token');
+  });
+});
+
+describe('Free access routes', () => {
+  it('returns free access status for authenticated user', async () => {
+    const token = makeUserToken();
+    const freeAccessService = require('../../src/services/freeAccessService');
+
+    const res = await request(app)
+      .get('/api/free-access/status')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('inactive');
+    expect(freeAccessService.getStatusForUser).toHaveBeenCalledWith('user-123');
+  });
+
+  it('starts free access for authenticated user', async () => {
+    const token = makeUserToken();
+    const res = await request(app)
+      .post('/api/free-access/start')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(201);
+    expect(res.body.assignment.id).toBe('assignment-1');
   });
 });
 

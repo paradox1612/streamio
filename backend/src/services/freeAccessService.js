@@ -1,0 +1,362 @@
+const { freeAccessQueries } = require('../db/queries');
+const providerService = require('./providerService');
+const logger = require('../utils/logger');
+const cache = require('../utils/cache');
+const {
+  normalizeTitle,
+  parseMovieTitle,
+  parseSeriesTitle,
+} = require('../utils/titleNormalization');
+
+function toIsoDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function isAccountUsable(accountInfo) {
+  if (!accountInfo) return false;
+  if (accountInfo.status && ['banned', 'disabled'].includes(String(accountInfo.status).toLowerCase())) {
+    return false;
+  }
+  if (accountInfo.expiresAt && new Date(accountInfo.expiresAt).getTime() <= Date.now()) {
+    return false;
+  }
+  if (
+    Number.isFinite(accountInfo.maxConnections) &&
+    Number.isFinite(accountInfo.activeConnections) &&
+    accountInfo.maxConnections > 0 &&
+    accountInfo.activeConnections >= accountInfo.maxConnections
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function buildCapabilityState(user) {
+  return {
+    hasByoProviders: Boolean(user?.has_byo_providers),
+    hasActiveFreeAccess: Boolean(user?.has_active_free_access),
+    freeAccessStatus: user?.free_access_status || 'inactive',
+    freeAccessExpiresAt: user?.free_access_expires_at || null,
+    canUseLiveTv: Boolean(user?.can_use_live_tv),
+    canBrowseWebCatalog: Boolean(user?.has_byo_providers),
+  };
+}
+
+async function findUsableAccountForGroup(group, account) {
+  const hosts = await freeAccessQueries.getHostsForGroup(group.id);
+  if (!hosts.length) return null;
+
+  for (const host of hosts) {
+    const startedAt = Date.now();
+    const result = await providerService.testConnection(host.host, account.username, account.password);
+    const responseTimeMs = Date.now() - startedAt;
+
+    await freeAccessQueries.updateHostStatus(host.id, {
+      lastCheckedAt: new Date().toISOString(),
+      lastStatus: result.ok ? 'online' : 'offline',
+      lastResponseMs: responseTimeMs,
+    });
+
+    if (!result.ok || !isAccountUsable(result.accountInfo)) continue;
+
+    await freeAccessQueries.updateAccountStatus(account.id, {
+      status: 'available',
+      maxConnections: result.accountInfo.maxConnections,
+      lastActiveConnections: result.accountInfo.activeConnections,
+      lastExpirationAt: toIsoDate(result.accountInfo.expiresAt),
+      lastCheckedAt: new Date().toISOString(),
+    });
+
+    return {
+      host: host.host,
+      account,
+      accountInfo: result.accountInfo,
+    };
+  }
+
+  await freeAccessQueries.updateAccountStatus(account.id, {
+    status: 'invalid',
+    lastCheckedAt: new Date().toISOString(),
+  });
+
+  return null;
+}
+
+async function ensureCatalogFresh(providerGroupId, account) {
+  const group = await freeAccessQueries.findProviderGroupById(providerGroupId);
+  if (!group) return;
+
+  const existingCount = await freeAccessQueries.getCatalogCountByGroup(providerGroupId);
+  const refreshedAt = group.catalog_last_refreshed_at ? new Date(group.catalog_last_refreshed_at).getTime() : 0;
+  const isFresh = refreshedAt > Date.now() - (12 * 60 * 60 * 1000);
+
+  if (existingCount > 0 && isFresh) return;
+
+  const hosts = await freeAccessQueries.getHostsForGroup(providerGroupId);
+  let selectedHost = null;
+  for (const host of hosts) {
+    const result = await providerService.testConnection(host.host, account.username, account.password);
+    if (result.ok && isAccountUsable(result.accountInfo)) {
+      selectedHost = host.host;
+      break;
+    }
+  }
+
+  if (!selectedHost) {
+    throw new Error(`No healthy free-access hosts available for provider group ${providerGroupId}`);
+  }
+
+  logger.info(`[FreeAccess] Refreshing catalog for group ${providerGroupId}`);
+  const result = await providerService.fetchManagedCatalog(selectedHost, account.username, account.password, providerGroupId);
+  await freeAccessQueries.deleteCatalogByGroup(providerGroupId);
+  const entries = [...result.movies, ...result.series];
+  const chunkSize = 500;
+  for (let i = 0; i < entries.length; i += chunkSize) {
+    await freeAccessQueries.upsertCatalogBatch(entries.slice(i, i + chunkSize));
+  }
+  await freeAccessQueries.setCatalogRefreshed(providerGroupId);
+}
+
+const freeAccessService = {
+  buildCapabilityState,
+
+  async getStatusForUser(userId) {
+    const assignment = await freeAccessQueries.findLatestAssignmentForUser(userId);
+    if (!assignment) {
+      return {
+        status: 'inactive',
+        expiresAt: null,
+        canStart: true,
+        canExtend: false,
+      };
+    }
+
+    const isExpired = assignment.status !== 'active' || new Date(assignment.expires_at).getTime() <= Date.now();
+    return {
+      status: isExpired ? 'expired' : 'active',
+      expiresAt: assignment.expires_at,
+      canStart: !assignment,
+      canExtend: isExpired,
+      startedAt: assignment.started_at,
+      renewalNumber: assignment.renewal_number,
+    };
+  },
+
+  async startOrExtend(userId) {
+    const activeAssignment = await freeAccessQueries.findActiveAssignmentForUser(userId);
+    if (activeAssignment) {
+      const err = new Error('Free access is already active');
+      err.status = 409;
+      throw err;
+    }
+
+    const latestAssignment = await freeAccessQueries.findLatestAssignmentForUser(userId);
+    if (latestAssignment && latestAssignment.status === 'active' && new Date(latestAssignment.expires_at).getTime() > Date.now()) {
+      const err = new Error('Free access is already active');
+      err.status = 409;
+      throw err;
+    }
+
+    const eligibleAccounts = await freeAccessQueries.getEligibleAccounts();
+    for (const account of eligibleAccounts) {
+      const group = await freeAccessQueries.findProviderGroupById(account.provider_group_id);
+      if (!group || !group.is_active) continue;
+
+      const usable = await findUsableAccountForGroup(group, account);
+      if (!usable) continue;
+
+      const trialDays = parseInt(group.trial_days || 7, 10);
+      const expiresAt = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000);
+      const renewalNumber = latestAssignment ? (latestAssignment.renewal_number || 0) + 1 : 0;
+
+      await freeAccessQueries.updateAccountStatus(account.id, {
+        status: 'assigned',
+        lastAssignedAt: new Date().toISOString(),
+      });
+
+      const assignment = await freeAccessQueries.createAssignment({
+        userId,
+        providerGroupId: group.id,
+        accountId: account.id,
+        expiresAt,
+        renewalNumber,
+      });
+
+      await ensureCatalogFresh(group.id, account);
+      return assignment;
+    }
+
+    const err = new Error('No free access inventory is currently available');
+    err.status = 503;
+    throw err;
+  },
+
+  async getActiveSourceForUser(userId) {
+    const assignment = await freeAccessQueries.findActiveAssignmentForUser(userId);
+    if (!assignment) return null;
+
+    const group = await freeAccessQueries.findProviderGroupById(assignment.provider_group_id);
+    const hosts = await freeAccessQueries.getHostsForGroup(assignment.provider_group_id);
+    if (!group || !hosts.length) return null;
+
+    const workingHosts = [];
+    for (const host of hosts) {
+      const startedAt = Date.now();
+      const result = await providerService.testConnection(host.host, assignment.username, assignment.password);
+      const responseTimeMs = Date.now() - startedAt;
+
+      await freeAccessQueries.updateHostStatus(host.id, {
+        lastCheckedAt: new Date().toISOString(),
+        lastStatus: result.ok ? 'online' : 'offline',
+        lastResponseMs: responseTimeMs,
+      });
+
+      if (!result.ok || !isAccountUsable(result.accountInfo)) continue;
+
+      await freeAccessQueries.updateAccountStatus(assignment.account_id, {
+        status: 'assigned',
+        maxConnections: result.accountInfo.maxConnections,
+        lastActiveConnections: result.accountInfo.activeConnections,
+        lastExpirationAt: toIsoDate(result.accountInfo.expiresAt),
+        lastCheckedAt: new Date().toISOString(),
+      });
+
+      workingHosts.push({
+        host: host.host,
+        responseTimeMs,
+      });
+    }
+
+    if (!workingHosts.length) return null;
+
+    return {
+      assignment,
+      providerGroup: group,
+      username: assignment.username,
+      password: assignment.password,
+      hosts: workingHosts,
+    };
+  },
+
+  async resolveFallbackVodItem(userId, baseId, type) {
+    const source = await this.getActiveSourceForUser(userId);
+    if (!source) return null;
+
+    let item = null;
+    if (baseId.startsWith('tt')) {
+      item = await freeAccessQueries.findCatalogByImdbId(source.providerGroup.id, baseId);
+    } else if (baseId.startsWith('tmdb:')) {
+      item = await freeAccessQueries.findCatalogByTmdbId(source.providerGroup.id, parseInt(baseId.slice(5), 10));
+    }
+
+    if (!item) return null;
+
+    return {
+      ...item,
+      provider_group_id: source.providerGroup.id,
+      access_source: 'free_access',
+      username: source.username,
+      password: source.password,
+      playback_hosts: source.hosts,
+      assignment_id: source.assignment.id,
+    };
+  },
+
+  async resolveFallbackOnDemandCandidate(userId, matcherInput) {
+    const source = await this.getActiveSourceForUser(userId);
+    if (!source) return null;
+
+    const candidates = await freeAccessQueries.findOnDemandCandidateForGroup(source.providerGroup.id, matcherInput);
+    return candidates.map(candidate => ({
+      ...candidate,
+      provider_group_id: source.providerGroup.id,
+      access_source: 'free_access',
+      username: source.username,
+      password: source.password,
+      playback_hosts: source.hosts,
+      assignment_id: source.assignment.id,
+    }));
+  },
+
+  async recordResolvedStream(assignmentId) {
+    if (!assignmentId) return;
+    await freeAccessQueries.touchAssignmentStream(assignmentId);
+  },
+
+  async expireDueAssignments() {
+    const assignments = await freeAccessQueries.listExpiredActiveAssignments();
+    let expired = 0;
+
+    for (const assignment of assignments) {
+      await freeAccessQueries.markAssignmentExpired(assignment.id);
+      await freeAccessQueries.updateAccountStatus(assignment.account_id, {
+        status: 'available',
+        lastCheckedAt: new Date().toISOString(),
+      });
+      expired += 1;
+    }
+
+    if (expired > 0) {
+      cache.flush('userByToken');
+      cache.flush('manifestByToken');
+    }
+
+    return { expired };
+  },
+
+  async refreshProviderGroupCatalog(providerGroupId) {
+    const group = await freeAccessQueries.findProviderGroupById(providerGroupId);
+    if (!group) {
+      const err = new Error('Free access provider group not found');
+      err.status = 404;
+      throw err;
+    }
+
+    const accounts = await freeAccessQueries.listAccountsByGroup(providerGroupId);
+    for (const account of accounts) {
+      const usable = await findUsableAccountForGroup(group, account);
+      if (!usable) continue;
+      await ensureCatalogFresh(providerGroupId, account);
+      return {
+        refreshed: true,
+        providerGroupId,
+      };
+    }
+
+    const err = new Error('No usable account available to refresh this free catalog');
+    err.status = 503;
+    throw err;
+  },
+
+  normalizeManagedCatalogMovie(providerGroupId, item) {
+    return {
+      ...parseMovieTitle(item.name || String(item.stream_id)),
+      providerGroupId,
+      streamId: String(item.stream_id),
+      rawTitle: item.name || String(item.stream_id),
+      normalizedTitle: normalizeTitle(item.name || String(item.stream_id)),
+      posterUrl: item.stream_icon || null,
+      category: item.category_name || 'Movies',
+      vodType: 'movie',
+      containerExtension: item.container_extension || 'mp4',
+    };
+  },
+
+  normalizeManagedCatalogSeries(providerGroupId, item) {
+    return {
+      ...parseSeriesTitle(item.name || String(item.series_id)),
+      providerGroupId,
+      streamId: String(item.series_id),
+      rawTitle: item.name || String(item.series_id),
+      normalizedTitle: normalizeTitle(item.name || String(item.series_id)),
+      posterUrl: item.cover || null,
+      category: item.genre?.split(',')[0] || 'Series',
+      vodType: 'series',
+      containerExtension: null,
+    };
+  },
+};
+
+module.exports = freeAccessService;

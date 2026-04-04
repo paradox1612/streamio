@@ -10,7 +10,7 @@ import BrandMark from './BrandMark';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
 
-const navItems = [
+const baseNavItems = [
   { path: '/dashboard', label: 'Dashboard', mobileLabel: 'Home', icon: LayoutDashboard },
   { path: '/providers', label: 'Providers', mobileLabel: 'Sources', icon: Server },
   { path: '/vod', label: 'Browse VOD', mobileLabel: 'VOD', icon: Film },
@@ -77,6 +77,12 @@ export default function Layout({ children }) {
     toast.success('Logged out');
     navigate('/login');
   };
+
+  const navItems = baseNavItems.filter((item) => {
+    if (item.path === '/live') return Boolean(user?.can_use_live_tv);
+    if (item.path === '/vod') return Boolean(user?.canBrowseWebCatalog ?? user?.can_browse_web_catalog ?? user?.has_byo_providers);
+    return true;
+  });
 
   return (
     <div className="app-shell">

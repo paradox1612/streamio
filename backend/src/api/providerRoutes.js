@@ -157,26 +157,45 @@ router.get('/:id/unmatched', requireAuth, async (req, res) => {
 // GET /api/providers/:id/live
 router.get('/:id/live', requireAuth, async (req, res) => {
   try {
+    if (!req.user.can_use_live_tv) {
+      return res.status(403).json({ error: 'Live TV is only available for BYO providers' });
+    }
+
     const provider = await providerQueries.findByIdAndUser(req.params.id, req.user.id);
     if (!provider) return res.status(404).json({ error: 'Provider not found' });
 
-    const { page, limit, search } = req.query;
+    const { page, limit, search, category } = req.query;
+    const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
     const requestedLimit = parseInt(limit, 10);
     const liveLimit = Number.isFinite(requestedLimit)
-      ? Math.min(requestedLimit, 20000)
-      : 20000;
-    const items = await vodQueries.getByProvider(req.params.id, {
-      type: 'live',
-      page: parseInt(page) || 1,
-      limit: liveLimit,
-      search,
-    });
+      ? Math.min(Math.max(requestedLimit, 1), 120)
+      : 60;
+    const liveCategory = typeof category === 'string' && category.trim() && category !== 'all'
+      ? category.trim()
+      : undefined;
+
+    const [items, total, categories] = await Promise.all([
+      vodQueries.getByProvider(req.params.id, {
+        userId: req.user.id,
+        type: 'live',
+        page: pageNumber,
+        limit: liveLimit,
+        search,
+        category: liveCategory,
+      }),
+      vodQueries.countByProvider(req.params.id, {
+        type: 'live',
+        search,
+        category: liveCategory,
+      }),
+      vodQueries.getCategoriesByProvider(req.params.id, { type: 'live' }),
+    ]);
 
     const host = provider.active_host || provider.hosts?.[0] || null;
     const username = encodeURIComponent(provider.username);
     const password = encodeURIComponent(provider.password);
 
-    res.json(items.map(item => {
+    const mappedItems = items.map(item => {
       const ext = item.container_extension || 'ts';
       const streamUrl = host
         ? `${host}/live/${username}/${password}/${item.stream_id}.${ext}`
@@ -188,7 +207,16 @@ router.get('/:id/live', requireAuth, async (req, res) => {
         logo: item.poster_url,
         streamUrl,
       };
-    }));
+    });
+
+    res.json({
+      items: mappedItems,
+      categories,
+      page: pageNumber,
+      limit: liveLimit,
+      total,
+      hasMore: pageNumber * liveLimit < total,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

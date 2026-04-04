@@ -4,6 +4,7 @@ const hostHealthService = require('../services/hostHealthService');
 const tmdbService = require('../services/tmdbService');
 const providerService = require('../services/providerService');
 const epgService = require('../services/epgService');
+const freeAccessService = require('../services/freeAccessService');
 const { jobQueries } = require('../db/queries');
 const logger = require('../utils/logger');
 
@@ -96,6 +97,41 @@ async function epgRefreshJob() {
   }
 }
 
+async function freeAccessExpiryJob() {
+  logger.info('[Job] Free access expiry starting...');
+  const jobId = await jobQueries.start('freeAccessExpiryJob');
+  try {
+    const result = await freeAccessService.expireDueAssignments();
+    await jobQueries.finish(jobId, { status: 'success', metadata: result });
+    logger.info(`[Job] Free access expiry complete: ${result.expired} expired`);
+  } catch (err) {
+    await jobQueries.finish(jobId, { status: 'failed', errorMessage: err.message });
+    logger.error('[Job] Free access expiry failed:', err.message);
+  }
+}
+
+async function freeAccessCatalogRefreshJob() {
+  logger.info('[Job] Free access catalog refresh starting...');
+  const jobId = await jobQueries.start('freeAccessCatalogRefreshJob');
+  try {
+    const groups = await require('../db/queries').freeAccessQueries.listProviderGroups();
+    let refreshed = 0;
+    for (const group of groups) {
+      try {
+        await freeAccessService.refreshProviderGroupCatalog(group.id);
+        refreshed += 1;
+      } catch (err) {
+        logger.warn(`[Job] Failed to refresh free access group ${group.id}: ${err.message}`);
+      }
+    }
+    await jobQueries.finish(jobId, { status: 'success', metadata: { refreshed } });
+    logger.info(`[Job] Free access catalog refresh complete: ${refreshed} groups refreshed`);
+  } catch (err) {
+    await jobQueries.finish(jobId, { status: 'failed', errorMessage: err.message });
+    logger.error('[Job] Free access catalog refresh failed:', err.message);
+  }
+}
+
 // ─── Scheduler ────────────────────────────────────────────────────────────────
 
 function startScheduler() {
@@ -116,7 +152,13 @@ function startScheduler() {
   // Every 4 hours (*/4) for EPG refresh
   cron.schedule('0 */4 * * *', epgRefreshJob);
 
-  logger.info('Scheduler started: health=*/5min, tmdb=2am, catalog=4am, matching=5am, epg=every4h');
+  // Every hour for expiry
+  cron.schedule('0 * * * *', freeAccessExpiryJob);
+
+  // Every day at 3 AM for managed free catalog refresh
+  cron.schedule('0 3 * * *', freeAccessCatalogRefreshJob);
+
+  logger.info('Scheduler started: health=*/5min, tmdb=2am, freeCatalog=3am, catalog=4am, matching=5am, epg=every4h, freeExpiry=hourly');
 
   // Run health check immediately on startup
   setTimeout(healthCheckJob, 5000);
@@ -128,6 +170,8 @@ const jobs = {
   catalogRefreshJob,
   matchingJob,
   epgRefreshJob,
+  freeAccessExpiryJob,
+  freeAccessCatalogRefreshJob,
 };
 
 module.exports = { startScheduler, jobs };

@@ -22,6 +22,9 @@ const mockVodQueries = {
 const mockMatchQueries = {
   upsert: jest.fn(),
 };
+const mockWatchHistoryQueries = {
+  upsertFromVod: jest.fn().mockResolvedValue(),
+};
 const mockCache = {
   get: jest.fn(),
   set: jest.fn(),
@@ -38,6 +41,7 @@ jest.mock('../../src/db/queries', () => ({
   userQueries: mockUserQueries,
   providerQueries: mockProviderQueries,
   vodQueries: mockVodQueries,
+  watchHistoryQueries: mockWatchHistoryQueries,
   tmdbQueries: mockTmdbQueries,
   matchQueries: mockMatchQueries,
   pool: {
@@ -46,6 +50,11 @@ jest.mock('../../src/db/queries', () => ({
 }));
 
 jest.mock('../../src/services/providerService', () => ({}));
+jest.mock('../../src/services/freeAccessService', () => ({
+  resolveFallbackVodItem: jest.fn().mockResolvedValue(null),
+  resolveFallbackOnDemandCandidate: jest.fn().mockResolvedValue([]),
+  recordResolvedStream: jest.fn().mockResolvedValue(),
+}));
 jest.mock('../../src/services/epgService', () => ({}));
 jest.mock('../../src/services/hostHealthService', () => mockHostHealthService);
 jest.mock('../../src/utils/userActivity', () => mockUserActivity);

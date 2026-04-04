@@ -5,7 +5,7 @@ import {
   ArrowRight, Check, Clock, Film, Server, Sparkles, Copy, ExternalLink, Activity,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { providerAPI, userAPI } from '../utils/api';
+import { freeAccessAPI, providerAPI, userAPI } from '../utils/api';
 import EmptyState from '../components/EmptyState';
 import ProgressBar from '../components/ProgressBar';
 import SkeletonCard from '../components/SkeletonCard';
@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 // ── Sera UI ─────────────────────────────────────────────────────────────────
 import NumberTicker  from '../components/sera/NumberTicker';
 import ShimmerButton from '../components/sera/ShimmerButton';
+import { useAuth } from '../context/AuthContext';
 
 function formatExpiry(expiresAt) {
   if (!expiresAt) return 'No expiry';
@@ -124,17 +125,25 @@ function ProviderRow({ provider }) {
 }
 
 export default function Dashboard() {
+  const { user, setUser } = useAuth();
   const [addonUrl, setAddonUrl] = useState('');
   const [providers, setProviders] = useState([]);
   const [watchHistory, setWatchHistory] = useState([]);
+  const [freeAccess, setFreeAccess] = useState({ status: 'inactive', canStart: true, canExtend: false });
   const [loading, setLoading] = useState(true);
   const [copying, setCopying] = useState(false);
 
   useEffect(() => {
-    Promise.all([userAPI.getAddonUrl(), providerAPI.list(), userAPI.getWatchHistory({ limit: 6 })])
-      .then(async ([urlRes, provsRes, watchRes]) => {
+    Promise.all([
+      userAPI.getAddonUrl(),
+      providerAPI.list(),
+      userAPI.getWatchHistory({ limit: 6 }),
+      freeAccessAPI.getStatus(),
+    ])
+      .then(async ([urlRes, provsRes, watchRes, freeRes]) => {
         setAddonUrl(urlRes.data.addonUrl);
         setWatchHistory(Array.isArray(watchRes.data) ? watchRes.data : []);
+        setFreeAccess(freeRes.data || { status: 'inactive', canStart: true, canExtend: false });
         const providerStats = await Promise.all(
           provsRes.data.map(async (provider) => {
             try {
@@ -175,6 +184,27 @@ export default function Dashboard() {
       .finally(() => setLoading(false));
   }, []);
 
+  const refreshProfile = async () => {
+    const { data } = await userAPI.getProfile();
+    setUser(data.user);
+    return data.user;
+  };
+
+  const handleStartFreeAccess = async () => {
+    try {
+      const action = freeAccess.status === 'expired' ? freeAccessAPI.extend : freeAccessAPI.start;
+      await action();
+      toast.success(freeAccess.status === 'expired' ? 'Free access extended' : 'Free access started');
+      const [{ data: freeStatus }] = await Promise.all([
+        freeAccessAPI.getStatus(),
+        refreshProfile(),
+      ]);
+      setFreeAccess(freeStatus);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Unable to update free access');
+    }
+  };
+
   const copyUrl = async () => {
     setCopying(true);
     try {
@@ -195,13 +225,24 @@ export default function Dashboard() {
     const diffDays = Math.ceil((new Date(p.accountInfo.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
     return diffDays >= 0 && diffDays <= 7;
   });
+  const hasByoProviders = Boolean(user?.has_byo_providers);
+  const freeAccessLabel = freeAccess.status === 'active'
+    ? formatExpiry(freeAccess.expiresAt)
+    : freeAccess.status === 'expired'
+      ? 'Expired'
+      : 'Inactive';
+  const freeAccessActionLabel = freeAccess.status === 'expired'
+    ? 'Extend Free Access'
+    : freeAccess.status === 'active'
+      ? 'Free Access Active'
+      : 'Start Free Access';
 
   // Raw numeric values – rendered via Sera UI NumberTicker
   const stats = [
     { label: 'Providers',     numVal: providers.length,  sub: `${onlineCount} online`,        icon: Server,   tone: 'text-blue-300' },
     { label: 'Total titles',  numVal: totalTitles,        sub: 'Movies & series',               icon: Film,     tone: 'text-cyan-300' },
     { label: 'Matched titles',numVal: totalMatched,       sub: `${matchRate}% of catalog`,      icon: Sparkles, tone: 'text-sky-300'  },
-    { label: 'Expiring soon', numVal: expiringSoon.length,sub: 'Within 7 days',                 icon: Clock,    tone: expiringSoon.length > 0 ? 'text-amber-300' : 'text-slate-300/60' },
+    { label: 'Expiring soon', numVal: expiringSoon.length,sub: hasByoProviders ? 'Within 7 days' : `Free access: ${freeAccessLabel}`, icon: Clock, tone: expiringSoon.length > 0 || freeAccess.status === 'expired' ? 'text-amber-300' : 'text-slate-300/60' },
   ];
 
   return (
@@ -244,18 +285,24 @@ export default function Dashboard() {
                 <Button asChild variant="outline" size="lg">
                   <Link to="/providers">
                     <Server className="h-4 w-4" />
-                    Manage Providers
+                    {hasByoProviders ? 'Manage Providers' : 'Add BYO Provider'}
                   </Link>
                 </Button>
+                {!hasByoProviders && (
+                  <Button onClick={handleStartFreeAccess} variant="outline" size="lg" disabled={freeAccess.status === 'active'}>
+                    <Clock className="h-4 w-4" />
+                    {freeAccessActionLabel}
+                  </Button>
+                )}
               </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               {[
-                { label: 'Providers online',  numVal: onlineCount,        desc: providers.length ? `${providers.length - onlineCount} need attention.` : 'No providers added yet.' },
-                { label: 'Catalog confidence',numVal: matchRate, suffix:'%', desc: `${totalMatched.toLocaleString()} matched titles.` },
+                { label: 'Providers online',  numVal: onlineCount,        desc: providers.length ? `${providers.length - onlineCount} need attention.` : 'No BYO providers added yet.' },
+                { label: 'Catalog confidence',numVal: matchRate, suffix:'%', desc: hasByoProviders ? `${totalMatched.toLocaleString()} matched titles.` : 'Web catalog stays locked until you add BYO.' },
                 { label: 'Addon status',      display: addonUrl ? 'Ready' : 'Pending', desc: 'Private install path available.' },
-                { label: 'Expiring soon',     numVal: expiringSoon.length, desc: 'Providers due within 7 days.' },
+                { label: 'Free access',       display: freeAccess.status === 'active' ? freeAccessLabel : freeAccess.status === 'expired' ? 'Expired' : 'Not started', desc: hasByoProviders ? 'Used only as hidden fallback for missing movies/series.' : 'Start it manually; live TV still requires BYO.' },
               ].map(({ label, numVal, suffix, display, desc }) => (
                 <div key={label} className="rounded-[22px] border border-white/[0.07] bg-white/[0.025] p-5">
                   <p className="metric-label mb-2">{label}</p>
@@ -349,8 +396,12 @@ export default function Dashboard() {
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="eyebrow mb-2">Providers</p>
-              <h2 className="section-title">Source activity</h2>
-              <p className="section-copy mt-2">Provider health, catalog coverage, and account timing at a glance.</p>
+              <h2 className="section-title">{hasByoProviders ? 'Source activity' : 'BYO-first workspace'}</h2>
+              <p className="section-copy mt-2">
+                {hasByoProviders
+                  ? 'Provider health, catalog coverage, and account timing at a glance.'
+                  : 'Free access stays hidden and fallback-only. Add your own provider to unlock web browsing and Live TV.'}
+              </p>
             </div>
             {!loading && providers.length > 0 && (
               <Button asChild variant="outline" size="sm">
@@ -371,15 +422,35 @@ export default function Dashboard() {
           ) : (
             <EmptyState
               icon={Server}
-              heading="No providers connected"
-              description="Add your first IPTV provider to populate routing, VOD, and Live TV views."
+              heading={freeAccess.status === 'active' ? 'Free access is active' : 'No BYO providers connected'}
+              description={freeAccess.status === 'active'
+                ? 'Managed free access is available as a hidden addon fallback, but the web dashboard and Live TV stay BYO-only.'
+                : 'Add your first IPTV provider to unlock dashboard browsing and Live TV. Free access can still be started manually for fallback use.'}
               action={() => window.location.href = '/providers'}
-              actionLabel="Add Your First Provider"
+              actionLabel="Add BYO Provider"
             />
           )}
         </div>
 
         <div className="space-y-5">
+          {!hasByoProviders && (
+            <Card className="p-5 sm:p-6">
+              <p className="eyebrow mb-2">Free access</p>
+              <h2 className="section-title">Managed fallback status</h2>
+              <div className="mt-4 rounded-[18px] border border-white/[0.07] bg-white/[0.025] p-4">
+                <p className="text-sm font-semibold text-white">
+                  {freeAccess.status === 'active' ? `Active · ${formatExpiry(freeAccess.expiresAt)}` : freeAccess.status === 'expired' ? 'Expired' : 'Not started'}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-slate-300/65">
+                  Movies and series can be resolved through the addon, but web browsing and Live TV remain unavailable until you add your own provider.
+                </p>
+                <Button onClick={handleStartFreeAccess} variant="outline" className="mt-4" disabled={freeAccess.status === 'active'}>
+                  {freeAccessActionLabel}
+                </Button>
+              </div>
+            </Card>
+          )}
+
           <Card className="p-5 sm:p-6">
             <p className="eyebrow mb-2">Watch history</p>
             <h2 className="section-title">Recent Stremio activity</h2>
@@ -415,9 +486,9 @@ export default function Dashboard() {
             <h2 className="section-title">What to watch next</h2>
             <div className="mt-5 grid gap-3">
               {[
-                { title: 'Expiring providers', desc: expiringSoon.length ? `${expiringSoon.length} provider${expiringSoon.length !== 1 ? 's are' : ' is'} approaching renewal.` : 'No renewals due inside the next week.' },
-                { title: 'Metadata backlog', desc: totalTitles ? `${(totalTitles - totalMatched).toLocaleString()} titles still need matching or review.` : 'Catalog metrics will appear after providers finish syncing.' },
-                { title: 'Next step', desc: 'Review provider details first, then open addon settings once source health is stable.' },
+                { title: 'Expiring providers', desc: hasByoProviders ? (expiringSoon.length ? `${expiringSoon.length} provider${expiringSoon.length !== 1 ? 's are' : ' is'} approaching renewal.` : 'No renewals due inside the next week.') : `Free access is ${freeAccess.status}.` },
+                { title: 'Metadata backlog', desc: totalTitles ? `${(totalTitles - totalMatched).toLocaleString()} titles still need matching or review.` : 'Managed free libraries refresh in the background; BYO metrics appear after sync.' },
+                { title: 'Next step', desc: hasByoProviders ? 'Review provider details first, then open addon settings once source health is stable.' : 'Start free access for hidden fallback, then add a BYO provider when you want dashboard browsing and Live TV.' },
               ].map(({ title, desc }) => (
                 <div key={title} className="rounded-[18px] border border-white/[0.07] bg-white/[0.025] p-4">
                   <p className="text-sm font-semibold text-white">{title}</p>
@@ -434,7 +505,9 @@ export default function Dashboard() {
               <ProgressBar value={matchRate} max={100} color="bg-brand-500" showLabel label="Matched catalog" />
             </div>
             <div className="surface-divider mt-5 pt-5 text-sm leading-6 text-slate-300/65">
-              Higher match rates mean posters, titles, and discovery stay usable across the app.
+              {hasByoProviders
+                ? 'Higher match rates mean posters, titles, and discovery stay usable across the app.'
+                : 'Coverage becomes visible in the dashboard once you connect your own provider.'}
             </div>
           </Card>
         </div>

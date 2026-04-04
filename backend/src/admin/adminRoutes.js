@@ -1,10 +1,11 @@
 const router = require('express').Router();
 const jwt = require('jsonwebtoken');
 const { requireAdmin } = require('../middleware/auth');
-const { userQueries, providerQueries, vodQueries, tmdbQueries, matchQueries, hostHealthQueries, jobQueries, pool } = require('../db/queries');
+const { userQueries, providerQueries, vodQueries, tmdbQueries, matchQueries, hostHealthQueries, jobQueries, freeAccessQueries, pool } = require('../db/queries');
 const tmdbService = require('../services/tmdbService');
 const providerService = require('../services/providerService');
 const hostHealthService = require('../services/hostHealthService');
+const freeAccessService = require('../services/freeAccessService');
 const { jobs } = require('../jobs/scheduler');
 const logger = require('../utils/logger');
 
@@ -50,7 +51,8 @@ router.get('/users/:id', requireAdmin, async (req, res) => {
   const user = await userQueries.findById(req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   const providers = await providerQueries.findByUser(req.params.id);
-  res.json({ user, providers });
+  const freeAccess = await freeAccessQueries.findLatestAssignmentForUser(req.params.id);
+  res.json({ user, providers, freeAccess });
 });
 
 // DELETE /admin/users/:id
@@ -190,9 +192,125 @@ router.post('/system/run-job/:jobName', requireAdmin, async (req, res) => {
 router.get('/system/jobs', requireAdmin, async (req, res) => {
   const lastRuns = await jobQueries.getLastRuns();
   res.json({
-    jobs: ['healthCheckJob', 'tmdbSyncJob', 'catalogRefreshJob', 'matchingJob'],
+    jobs: ['healthCheckJob', 'tmdbSyncJob', 'catalogRefreshJob', 'matchingJob', 'epgRefreshJob', 'freeAccessExpiryJob', 'freeAccessCatalogRefreshJob'],
     lastRuns,
   });
+});
+
+// ─── Free Access ─────────────────────────────────────────────────────────────
+
+router.get('/free-access/groups', requireAdmin, async (req, res) => {
+  const groups = await freeAccessQueries.listProviderGroups();
+  res.json(groups);
+});
+
+router.post('/free-access/groups', requireAdmin, async (req, res) => {
+  try {
+    const group = await freeAccessQueries.createProviderGroup({
+      name: req.body.name,
+      trialDays: req.body.trialDays || 7,
+      notes: req.body.notes || null,
+      isActive: req.body.isActive !== false,
+    });
+    res.status(201).json(group);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/free-access/groups/:id', requireAdmin, async (req, res) => {
+  try {
+    const group = await freeAccessQueries.updateProviderGroup(req.params.id, req.body);
+    if (!group) return res.status(404).json({ error: 'Free access group not found' });
+    res.json(group);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/free-access/groups/:id', requireAdmin, async (req, res) => {
+  try {
+    const deleted = await freeAccessQueries.deleteProviderGroup(req.params.id);
+    if (!deleted) return res.status(404).json({ error: 'Free access group not found' });
+    res.json({ message: 'Free access group deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/free-access/groups/:id', requireAdmin, async (req, res) => {
+  const group = await freeAccessQueries.findProviderGroupById(req.params.id);
+  if (!group) return res.status(404).json({ error: 'Free access group not found' });
+  const [hosts, accounts] = await Promise.all([
+    freeAccessQueries.listHostsByGroup(req.params.id),
+    freeAccessQueries.listAccountsByGroup(req.params.id),
+  ]);
+  res.json({ group, hosts, accounts });
+});
+
+router.post('/free-access/groups/:id/hosts', requireAdmin, async (req, res) => {
+  try {
+    const host = await freeAccessQueries.addHost({
+      providerGroupId: req.params.id,
+      host: String(req.body.host || '').replace(/\/+$/, ''),
+      priority: req.body.priority || 100,
+      isActive: req.body.isActive !== false,
+    });
+    res.status(201).json(host);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/free-access/groups/:id/hosts/:hostId', requireAdmin, async (req, res) => {
+  try {
+    const deleted = await freeAccessQueries.deleteHost(req.params.hostId, req.params.id);
+    if (!deleted) return res.status(404).json({ error: 'Free access host not found' });
+    res.json({ message: 'Free access host deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/free-access/groups/:id/accounts', requireAdmin, async (req, res) => {
+  try {
+    const account = await freeAccessQueries.addAccount({
+      providerGroupId: req.params.id,
+      username: req.body.username,
+      password: req.body.password,
+      status: req.body.status || 'available',
+    });
+    res.status(201).json(account);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/free-access/groups/:id/accounts/:accountId', requireAdmin, async (req, res) => {
+  try {
+    const deleted = await freeAccessQueries.deleteAccount(req.params.accountId, req.params.id);
+    if (!deleted) return res.status(404).json({ error: 'Free access account not found' });
+    res.json({ message: 'Free access account deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/free-access/groups/:id/refresh', requireAdmin, async (req, res) => {
+  try {
+    const result = await freeAccessService.refreshProviderGroupCatalog(req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+router.get('/free-access/assignments', requireAdmin, async (req, res) => {
+  const assignments = await freeAccessQueries.listAssignments({
+    limit: parseInt(req.query.limit || '100', 10),
+    offset: parseInt(req.query.offset || '0', 10),
+  });
+  res.json(assignments);
 });
 
 // GET /admin/system/db

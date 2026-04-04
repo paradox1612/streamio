@@ -50,6 +50,12 @@ export const userAPI = {
   deleteAccount: () => api.delete('/api/user/account'),
 };
 
+export const freeAccessAPI = {
+  getStatus: () => api.get('/api/free-access/status'),
+  start: () => api.post('/api/free-access/start'),
+  extend: () => api.post('/api/free-access/extend'),
+};
+
 // ─── Providers ────────────────────────────────────────────────────────────────
 export const providerAPI = {
   create: (data) => api.post('/api/providers', data),
@@ -104,6 +110,19 @@ export const adminAPI = {
   runJob: (jobName) => api.post(`/admin/system/run-job/${jobName}`),
   getJobs: () => api.get('/admin/system/jobs'),
   getDbStats: () => api.get('/admin/system/db'),
+
+  // Free access admin
+  listFreeAccessGroups: () => api.get('/admin/free-access/groups'),
+  getFreeAccessGroup: (id) => api.get(`/admin/free-access/groups/${id}`),
+  createFreeAccessGroup: (data) => api.post('/admin/free-access/groups', data),
+  updateFreeAccessGroup: (id, data) => api.patch(`/admin/free-access/groups/${id}`, data),
+  deleteFreeAccessGroup: (id) => api.delete(`/admin/free-access/groups/${id}`),
+  addFreeAccessHost: (id, data) => api.post(`/admin/free-access/groups/${id}/hosts`, data),
+  deleteFreeAccessHost: (groupId, hostId) => api.delete(`/admin/free-access/groups/${groupId}/hosts/${hostId}`),
+  addFreeAccessAccount: (id, data) => api.post(`/admin/free-access/groups/${id}/accounts`, data),
+  deleteFreeAccessAccount: (groupId, accountId) => api.delete(`/admin/free-access/groups/${groupId}/accounts/${accountId}`),
+  refreshFreeAccessGroup: (id) => api.post(`/admin/free-access/groups/${id}/refresh`),
+  listFreeAccessAssignments: (params) => api.get('/admin/free-access/assignments', { params }),
 };
 
 // ─── Public Preview (no auth) ─────────────────────────────────────────────────

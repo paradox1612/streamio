@@ -5,8 +5,11 @@ import toast from 'react-hot-toast';
 const JOB_LABELS = {
   healthCheckJob: { label: 'Host Health Check', schedule: 'Every 5 minutes', icon: '🩺' },
   tmdbSyncJob: { label: 'TMDB Export Sync', schedule: 'Daily at 2:00 AM', icon: '⬇️' },
+  freeAccessCatalogRefreshJob: { label: 'Free Catalog Refresh', schedule: 'Daily at 3:00 AM', icon: '🎁' },
   catalogRefreshJob: { label: 'Catalog Refresh', schedule: 'Daily at 4:00 AM', icon: '🔄' },
   matchingJob: { label: 'TMDB Matching', schedule: 'Daily at 5:00 AM', icon: '🎯' },
+  epgRefreshJob: { label: 'EPG Refresh', schedule: 'Every 4 hours', icon: '📺' },
+  freeAccessExpiryJob: { label: 'Free Access Expiry', schedule: 'Every hour', icon: '⏳' },
 };
 
 export default function AdminSystem() {

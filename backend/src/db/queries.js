@@ -1,5 +1,50 @@
 const pool = require('./pool');
 
+const USER_PUBLIC_SELECT = `
+  SELECT
+    u.id,
+    u.email,
+    u.addon_token,
+    u.preferred_languages,
+    u.excluded_languages,
+    u.is_active,
+    u.created_at,
+    u.last_seen,
+    EXISTS(
+      SELECT 1
+      FROM user_providers p
+      WHERE p.user_id = u.id
+    ) AS has_byo_providers,
+    CASE
+      WHEN fa.status = 'active' AND fa.expires_at <= NOW() THEN 'expired'
+      ELSE COALESCE(fa.status, 'inactive')
+    END AS free_access_status,
+    fa.expires_at AS free_access_expires_at,
+    (fa.status = 'active' AND fa.expires_at > NOW()) AS has_active_free_access,
+    EXISTS(
+      SELECT 1
+      FROM user_free_access_assignments ufa
+      WHERE ufa.user_id = u.id
+        AND ufa.status = 'expired'
+    ) AS has_expired_free_access,
+    EXISTS(
+      SELECT 1
+      FROM user_providers p
+      WHERE p.user_id = u.id
+    ) AS can_use_live_tv
+  FROM users u
+  LEFT JOIN LATERAL (
+    SELECT status, expires_at
+    FROM user_free_access_assignments ufa
+    WHERE ufa.user_id = u.id
+    ORDER BY
+      CASE ufa.status WHEN 'active' THEN 0 WHEN 'expired' THEN 1 ELSE 2 END,
+      ufa.expires_at DESC NULLS LAST,
+      ufa.started_at DESC
+    LIMIT 1
+  ) fa ON true
+`;
+
 // ─── Users ───────────────────────────────────────────────────────────────────
 
 const userQueries = {
@@ -13,7 +58,8 @@ const userQueries = {
 
   async findById(id) {
     const { rows } = await pool.query(
-      'SELECT id, email, addon_token, preferred_languages, excluded_languages, is_active, created_at, last_seen FROM users WHERE id = $1',
+      `${USER_PUBLIC_SELECT}
+       WHERE u.id = $1`,
       [id]
     );
     return rows[0];
@@ -21,7 +67,8 @@ const userQueries = {
 
   async findByToken(token) {
     const { rows } = await pool.query(
-      'SELECT * FROM users WHERE addon_token = $1 AND is_active = true',
+      `${USER_PUBLIC_SELECT}
+       WHERE u.addon_token = $1 AND u.is_active = true`,
       [token]
     );
     return rows[0];
@@ -38,21 +85,20 @@ const userQueries = {
   async create({ email, passwordHash, addonToken }) {
     const { rows } = await pool.query(
       `INSERT INTO users (email, password_hash, addon_token)
-       VALUES ($1, $2, $3) RETURNING id, email, addon_token, preferred_languages, excluded_languages, is_active, created_at`,
+       VALUES ($1, $2, $3) RETURNING id`,
       [email, passwordHash, addonToken]
     );
-    return rows[0];
+    return this.findById(rows[0].id);
   },
 
   async updateLanguagePreferences(id, { preferredLanguages, excludedLanguages }) {
-    const { rows } = await pool.query(
+    await pool.query(
       `UPDATE users
        SET preferred_languages = $1, excluded_languages = $2
-       WHERE id = $3
-       RETURNING id, email, addon_token, preferred_languages, excluded_languages, is_active, created_at, last_seen`,
+       WHERE id = $3`,
       [preferredLanguages, excludedLanguages, id]
     );
-    return rows[0];
+    return this.findById(id);
   },
 
   async updateLastSeen(id) {
@@ -99,11 +145,25 @@ const userQueries = {
   async listAll({ limit = 50, offset = 0, search = '' } = {}) {
     const { rows } = await pool.query(
       `SELECT u.id, u.email, u.is_active, u.created_at, u.last_seen,
-              COUNT(DISTINCT p.id) as provider_count
+              COUNT(DISTINCT p.id) as provider_count,
+              CASE
+                WHEN fa.status = 'active' AND fa.expires_at <= NOW() THEN 'expired'
+                ELSE COALESCE(fa.status, 'inactive')
+              END AS free_access_status,
+              fa.expires_at AS free_access_expires_at
        FROM users u
        LEFT JOIN user_providers p ON p.user_id = u.id
+       LEFT JOIN LATERAL (
+         SELECT status, expires_at
+         FROM user_free_access_assignments ufa
+         WHERE ufa.user_id = u.id
+         ORDER BY
+           CASE ufa.status WHEN 'active' THEN 0 WHEN 'expired' THEN 1 ELSE 2 END,
+           ufa.expires_at DESC NULLS LAST
+         LIMIT 1
+       ) fa ON true
        WHERE u.email ILIKE $1
-       GROUP BY u.id
+       GROUP BY u.id, fa.status, fa.expires_at
        ORDER BY u.created_at DESC
        LIMIT $2 OFFSET $3`,
       [`%${search}%`, limit, offset]
@@ -278,7 +338,7 @@ const vodQueries = {
     await pool.query('DELETE FROM user_provider_vod WHERE provider_id = $1', [providerId]);
   },
 
-  async getByProvider(providerId, { userId, type, page = 1, limit = 100, search = '', matched } = {}) {
+  async getByProvider(providerId, { userId, type, page = 1, limit = 100, search = '', matched, category } = {}) {
     let query = `
       SELECT
         v.*,
@@ -302,6 +362,7 @@ const vodQueries = {
     if (search) { query += ` AND v.raw_title ILIKE $${idx++}`; params.push(`%${search}%`); }
     if (matched === true) { query += ` AND m.tmdb_id IS NOT NULL`; }
     if (matched === false) { query += ` AND (m.tmdb_id IS NULL AND m.id IS NOT NULL)`; }
+    if (category) { query += ` AND v.category = $${idx++}`; params.push(category); }
     query += ` ORDER BY
       v.canonical_normalized_title ASC NULLS LAST,
       v.normalized_title ASC NULLS LAST,
@@ -311,6 +372,47 @@ const vodQueries = {
     params.push(limit, (page - 1) * limit);
     const { rows } = await pool.query(query, params);
     return rows;
+  },
+
+  async countByProvider(providerId, { type, search = '', matched, category } = {}) {
+    let query = `
+      SELECT COUNT(*) AS total
+      FROM user_provider_vod v
+      LEFT JOIN matched_content m ON m.raw_title = v.raw_title
+      WHERE v.provider_id = $1
+    `;
+    const params = [providerId];
+    let idx = 2;
+
+    if (type) { query += ` AND v.vod_type = $${idx++}`; params.push(type); }
+    if (search) { query += ` AND v.raw_title ILIKE $${idx++}`; params.push(`%${search}%`); }
+    if (matched === true) { query += ' AND m.tmdb_id IS NOT NULL'; }
+    if (matched === false) { query += ' AND (m.tmdb_id IS NULL AND m.id IS NOT NULL)'; }
+    if (category) { query += ` AND v.category = $${idx++}`; params.push(category); }
+
+    const { rows } = await pool.query(query, params);
+    return parseInt(rows[0]?.total || 0, 10);
+  },
+
+  async getCategoriesByProvider(providerId, { type } = {}) {
+    let query = `
+      SELECT DISTINCT category
+      FROM user_provider_vod
+      WHERE provider_id = $1
+    `;
+    const params = [providerId];
+
+    if (type) {
+      query += ' AND vod_type = $2';
+      params.push(type);
+    }
+
+    query += ' ORDER BY category ASC';
+
+    const { rows } = await pool.query(query, params);
+    return rows
+      .map((row) => row.category)
+      .filter((value) => typeof value === 'string' && value.trim());
   },
 
   async getStats(providerId) {
@@ -807,6 +909,454 @@ const jobQueries = {
   },
 };
 
+// ─── Free Access ─────────────────────────────────────────────────────────────
+
+const freeAccessQueries = {
+  async listProviderGroups() {
+    const { rows } = await pool.query(
+      `SELECT g.*,
+              COUNT(DISTINCT h.id) AS host_count,
+              COUNT(DISTINCT a.id) AS account_count,
+              COUNT(DISTINCT c.id) AS catalog_count
+       FROM free_access_provider_groups g
+       LEFT JOIN free_access_provider_hosts h ON h.provider_group_id = g.id
+       LEFT JOIN free_access_provider_accounts a ON a.provider_group_id = g.id
+       LEFT JOIN free_access_catalog c ON c.provider_group_id = g.id
+       GROUP BY g.id
+       ORDER BY g.created_at DESC`
+    );
+    return rows;
+  },
+
+  async findProviderGroupById(id) {
+    const { rows } = await pool.query(
+      'SELECT * FROM free_access_provider_groups WHERE id = $1',
+      [id]
+    );
+    return rows[0];
+  },
+
+  async createProviderGroup({ name, trialDays = 7, notes = null, isActive = true }) {
+    const { rows } = await pool.query(
+      `INSERT INTO free_access_provider_groups (name, trial_days, notes, is_active)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [name, trialDays, notes, isActive]
+    );
+    return rows[0];
+  },
+
+  async updateProviderGroup(id, fields) {
+    const allowed = { name: 'name', trialDays: 'trial_days', notes: 'notes', isActive: 'is_active' };
+    const updates = [];
+    const values = [];
+    let idx = 1;
+    for (const [key, column] of Object.entries(allowed)) {
+      if (Object.prototype.hasOwnProperty.call(fields, key)) {
+        updates.push(`${column} = $${idx++}`);
+        values.push(fields[key]);
+      }
+    }
+    if (!updates.length) return this.findProviderGroupById(id);
+    values.push(id);
+    const { rows } = await pool.query(
+      `UPDATE free_access_provider_groups
+       SET ${updates.join(', ')}
+       WHERE id = $${idx}
+       RETURNING *`,
+      values
+    );
+    return rows[0];
+  },
+
+  async deleteProviderGroup(id) {
+    const { rows } = await pool.query(
+      `DELETE FROM free_access_provider_groups
+       WHERE id = $1
+       RETURNING id`,
+      [id]
+    );
+    return rows[0];
+  },
+
+  async listHostsByGroup(providerGroupId) {
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM free_access_provider_hosts
+       WHERE provider_group_id = $1
+       ORDER BY priority ASC, host ASC`,
+      [providerGroupId]
+    );
+    return rows;
+  },
+
+  async addHost({ providerGroupId, host, priority = 100, isActive = true }) {
+    const { rows } = await pool.query(
+      `INSERT INTO free_access_provider_hosts (provider_group_id, host, priority, is_active)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (provider_group_id, host) DO UPDATE SET
+         priority = EXCLUDED.priority,
+         is_active = EXCLUDED.is_active
+       RETURNING *`,
+      [providerGroupId, host, priority, isActive]
+    );
+    return rows[0];
+  },
+
+  async updateHostStatus(id, fields) {
+    const { rows } = await pool.query(
+      `UPDATE free_access_provider_hosts
+       SET is_active = COALESCE($2, is_active),
+           last_checked_at = COALESCE($3, last_checked_at),
+           last_status = COALESCE($4, last_status),
+           last_response_ms = COALESCE($5, last_response_ms),
+           priority = COALESCE($6, priority)
+       WHERE id = $1
+       RETURNING *`,
+      [
+        id,
+        Object.prototype.hasOwnProperty.call(fields, 'isActive') ? fields.isActive : null,
+        fields.lastCheckedAt || null,
+        fields.lastStatus || null,
+        Object.prototype.hasOwnProperty.call(fields, 'lastResponseMs') ? fields.lastResponseMs : null,
+        Object.prototype.hasOwnProperty.call(fields, 'priority') ? fields.priority : null,
+      ]
+    );
+    return rows[0];
+  },
+
+  async deleteHost(id, providerGroupId) {
+    const { rows } = await pool.query(
+      `DELETE FROM free_access_provider_hosts
+       WHERE id = $1 AND provider_group_id = $2
+       RETURNING id`,
+      [id, providerGroupId]
+    );
+    return rows[0];
+  },
+
+  async listAccountsByGroup(providerGroupId) {
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM free_access_provider_accounts
+       WHERE provider_group_id = $1
+       ORDER BY created_at DESC`,
+      [providerGroupId]
+    );
+    return rows;
+  },
+
+  async addAccount({ providerGroupId, username, password, status = 'available' }) {
+    const { rows } = await pool.query(
+      `INSERT INTO free_access_provider_accounts (provider_group_id, username, password, status)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (provider_group_id, username) DO UPDATE SET
+         password = EXCLUDED.password,
+         status = EXCLUDED.status
+       RETURNING *`,
+      [providerGroupId, username, password, status]
+    );
+    return rows[0];
+  },
+
+  async updateAccountStatus(id, fields) {
+    const { rows } = await pool.query(
+      `UPDATE free_access_provider_accounts
+       SET status = COALESCE($2, status),
+           max_connections = COALESCE($3, max_connections),
+           last_active_connections = COALESCE($4, last_active_connections),
+           last_expiration_at = COALESCE($5, last_expiration_at),
+           last_checked_at = COALESCE($6, last_checked_at),
+           last_assigned_at = COALESCE($7, last_assigned_at)
+       WHERE id = $1
+       RETURNING *`,
+      [
+        id,
+        fields.status || null,
+        Object.prototype.hasOwnProperty.call(fields, 'maxConnections') ? fields.maxConnections : null,
+        Object.prototype.hasOwnProperty.call(fields, 'lastActiveConnections') ? fields.lastActiveConnections : null,
+        fields.lastExpirationAt || null,
+        fields.lastCheckedAt || null,
+        fields.lastAssignedAt || null,
+      ]
+    );
+    return rows[0];
+  },
+
+  async deleteAccount(id, providerGroupId) {
+    const { rows } = await pool.query(
+      `DELETE FROM free_access_provider_accounts
+       WHERE id = $1 AND provider_group_id = $2
+       RETURNING id`,
+      [id, providerGroupId]
+    );
+    return rows[0];
+  },
+
+  async findReusableAssignmentForUser(userId) {
+    const { rows } = await pool.query(
+      `SELECT ufa.*, g.name AS provider_group_name, g.trial_days
+       FROM user_free_access_assignments ufa
+       JOIN free_access_provider_groups g ON g.id = ufa.provider_group_id
+       WHERE ufa.user_id = $1
+       ORDER BY ufa.started_at DESC
+       LIMIT 1`,
+      [userId]
+    );
+    return rows[0];
+  },
+
+  async findActiveAssignmentForUser(userId) {
+    const { rows } = await pool.query(
+      `SELECT ufa.*,
+              g.name AS provider_group_name,
+              g.trial_days,
+              g.catalog_last_refreshed_at,
+              a.username,
+              a.password
+       FROM user_free_access_assignments ufa
+       JOIN free_access_provider_groups g ON g.id = ufa.provider_group_id
+       JOIN free_access_provider_accounts a ON a.id = ufa.account_id
+       WHERE ufa.user_id = $1
+         AND ufa.status = 'active'
+         AND ufa.expires_at > NOW()
+       ORDER BY ufa.started_at DESC
+       LIMIT 1`,
+      [userId]
+    );
+    return rows[0];
+  },
+
+  async findLatestAssignmentForUser(userId) {
+    const { rows } = await pool.query(
+      `SELECT ufa.*,
+              g.name AS provider_group_name,
+              g.trial_days,
+              a.username,
+              a.password
+       FROM user_free_access_assignments ufa
+       JOIN free_access_provider_groups g ON g.id = ufa.provider_group_id
+       JOIN free_access_provider_accounts a ON a.id = ufa.account_id
+       WHERE ufa.user_id = $1
+       ORDER BY
+         CASE ufa.status WHEN 'active' THEN 0 WHEN 'expired' THEN 1 ELSE 2 END,
+         ufa.expires_at DESC NULLS LAST,
+         ufa.started_at DESC
+       LIMIT 1`,
+      [userId]
+    );
+    return rows[0];
+  },
+
+  async createAssignment({ userId, providerGroupId, accountId, expiresAt, renewalNumber = 0 }) {
+    const { rows } = await pool.query(
+      `INSERT INTO user_free_access_assignments (user_id, provider_group_id, account_id, status, expires_at, renewal_number)
+       VALUES ($1, $2, $3, 'active', $4, $5)
+       RETURNING *`,
+      [userId, providerGroupId, accountId, expiresAt, renewalNumber]
+    );
+    return rows[0];
+  },
+
+  async markAssignmentExpired(id) {
+    const { rows } = await pool.query(
+      `UPDATE user_free_access_assignments
+       SET status = 'expired',
+           expired_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [id]
+    );
+    return rows[0];
+  },
+
+  async touchAssignmentStream(id) {
+    await pool.query(
+      `UPDATE user_free_access_assignments
+       SET last_stream_at = NOW()
+       WHERE id = $1`,
+      [id]
+    );
+  },
+
+  async listAssignments({ limit = 100, offset = 0 } = {}) {
+    const { rows } = await pool.query(
+      `SELECT ufa.*, u.email, g.name AS provider_group_name, a.username
+       FROM user_free_access_assignments ufa
+       JOIN users u ON u.id = ufa.user_id
+       JOIN free_access_provider_groups g ON g.id = ufa.provider_group_id
+       JOIN free_access_provider_accounts a ON a.id = ufa.account_id
+       ORDER BY ufa.started_at DESC
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+    return rows;
+  },
+
+  async listExpiredActiveAssignments() {
+    const { rows } = await pool.query(
+      `SELECT ufa.*, a.id AS account_id
+       FROM user_free_access_assignments ufa
+       JOIN free_access_provider_accounts a ON a.id = ufa.account_id
+       WHERE ufa.status = 'active'
+         AND ufa.expires_at <= NOW()`
+    );
+    return rows;
+  },
+
+  async getEligibleAccounts() {
+    const { rows } = await pool.query(
+      `SELECT a.*, g.name AS provider_group_name, g.trial_days
+       FROM free_access_provider_accounts a
+       JOIN free_access_provider_groups g ON g.id = a.provider_group_id
+       WHERE g.is_active = true
+         AND a.status IN ('available', 'expired')
+       ORDER BY a.last_assigned_at ASC NULLS FIRST, a.created_at ASC`
+    );
+    return rows;
+  },
+
+  async getHostsForGroup(providerGroupId) {
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM free_access_provider_hosts
+       WHERE provider_group_id = $1
+         AND is_active = true
+       ORDER BY priority ASC, host ASC`,
+      [providerGroupId]
+    );
+    return rows;
+  },
+
+  async setCatalogRefreshed(providerGroupId) {
+    await pool.query(
+      `UPDATE free_access_provider_groups
+       SET catalog_last_refreshed_at = NOW()
+       WHERE id = $1`,
+      [providerGroupId]
+    );
+  },
+
+  async getCatalogCountByGroup(providerGroupId) {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*) AS total
+       FROM free_access_catalog
+       WHERE provider_group_id = $1`,
+      [providerGroupId]
+    );
+    return parseInt(rows[0]?.total || 0, 10);
+  },
+
+  async deleteCatalogByGroup(providerGroupId) {
+    await pool.query(
+      'DELETE FROM free_access_catalog WHERE provider_group_id = $1',
+      [providerGroupId]
+    );
+  },
+
+  async upsertCatalogBatch(entries) {
+    if (!entries.length) return;
+    const values = [];
+    const placeholders = entries.map((e, i) => {
+      const base = i * 13;
+      values.push(
+        e.providerGroupId,
+        e.streamId,
+        e.rawTitle,
+        e.normalizedTitle || null,
+        e.canonicalTitle || null,
+        e.canonicalNormalizedTitle || null,
+        e.titleYear || null,
+        e.contentLanguages || [],
+        e.qualityTags || [],
+        e.posterUrl || null,
+        e.category || null,
+        e.vodType,
+        e.containerExtension || null
+      );
+      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}, $${base + 12}, $${base + 13})`;
+    });
+
+    await pool.query(
+      `INSERT INTO free_access_catalog (provider_group_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension)
+       VALUES ${placeholders.join(', ')}
+       ON CONFLICT (provider_group_id, stream_id, vod_type) DO UPDATE SET
+         raw_title = EXCLUDED.raw_title,
+         normalized_title = EXCLUDED.normalized_title,
+         canonical_title = EXCLUDED.canonical_title,
+         canonical_normalized_title = EXCLUDED.canonical_normalized_title,
+         title_year = EXCLUDED.title_year,
+         content_languages = EXCLUDED.content_languages,
+         quality_tags = EXCLUDED.quality_tags,
+         poster_url = EXCLUDED.poster_url,
+         category = EXCLUDED.category,
+         container_extension = EXCLUDED.container_extension`,
+      values
+    );
+  },
+
+  async findCatalogByTmdbId(providerGroupId, tmdbId) {
+    const { rows } = await pool.query(
+      `SELECT c.*, m.tmdb_id, m.imdb_id, m.confidence_score
+       FROM free_access_catalog c
+       JOIN matched_content m ON m.raw_title = c.raw_title AND m.tmdb_id = $2
+       WHERE c.provider_group_id = $1
+       LIMIT 1`,
+      [providerGroupId, tmdbId]
+    );
+    return rows[0];
+  },
+
+  async findCatalogByImdbId(providerGroupId, imdbId) {
+    const { rows } = await pool.query(
+      `SELECT c.*, m.tmdb_id, m.imdb_id, m.confidence_score
+       FROM free_access_catalog c
+       JOIN matched_content m ON m.raw_title = c.raw_title AND m.imdb_id = $2
+       WHERE c.provider_group_id = $1
+       LIMIT 1`,
+      [providerGroupId, imdbId]
+    );
+    return rows[0];
+  },
+
+  async findOnDemandCandidateForGroup(providerGroupId, { vodType, normalizedTitle, year, tmdbId, imdbId }) {
+    let query = `
+      SELECT c.*, m.tmdb_id, m.imdb_id, m.confidence_score
+      FROM free_access_catalog c
+      LEFT JOIN matched_content m ON m.raw_title = c.raw_title
+      WHERE c.provider_group_id = $1
+        AND c.vod_type = $2
+        AND (
+          m.id IS NULL
+          OR m.tmdb_id IS NULL
+          OR m.imdb_id = $3
+          OR m.tmdb_id = $4
+          OR (m.tmdb_id IS NOT NULL AND m.imdb_id IS NULL)
+        )
+    `;
+    const params = [providerGroupId, vodType, imdbId || null, tmdbId || null];
+    let idx = 5;
+
+    if (normalizedTitle) {
+      query += ` AND COALESCE(c.canonical_normalized_title, c.normalized_title) IS NOT NULL`;
+      query += ` ORDER BY
+        CASE WHEN COALESCE(c.canonical_normalized_title, c.normalized_title) = $${idx} THEN 0 ELSE 1 END,
+        CASE WHEN COALESCE(c.canonical_normalized_title, c.normalized_title) % $${idx} THEN 0 ELSE 1 END,
+        CASE WHEN c.title_year = $${idx + 1} THEN 0 ELSE 1 END,
+        COALESCE(c.canonical_normalized_title, c.normalized_title) <-> $${idx} ASC,
+        ABS(COALESCE(c.title_year, $${idx + 1}) - $${idx + 1}) ASC
+        LIMIT 25`;
+      params.push(normalizedTitle);
+      params.push(year || null);
+    } else {
+      query += ' ORDER BY c.created_at DESC LIMIT 25';
+    }
+
+    const { rows } = await pool.query(query, params);
+    return rows;
+  },
+};
+
 module.exports = {
   userQueries,
   providerQueries,
@@ -816,5 +1366,6 @@ module.exports = {
   matchQueries,
   hostHealthQueries,
   jobQueries,
+  freeAccessQueries,
   pool,
 };
