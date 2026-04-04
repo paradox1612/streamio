@@ -17,7 +17,7 @@ jest.mock('../../src/db/queries', () => ({
 
 jest.mock('../../src/services/providerService', () => mockProviderService);
 jest.mock('../../src/utils/logger', () => ({ info: jest.fn(), warn: jest.fn() }));
-jest.mock('../../src/utils/cache', () => ({ flush: jest.fn() }));
+jest.mock('../../src/utils/cache', () => ({ get: jest.fn(), set: jest.fn(), del: jest.fn(), flush: jest.fn() }));
 
 const freeAccessService = require('../../src/services/freeAccessService');
 

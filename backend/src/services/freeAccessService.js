@@ -44,14 +44,39 @@ function buildCapabilityState(user) {
   };
 }
 
-async function findUsableAccountForGroup(group, account) {
+function buildRuntimeSourceCacheKey(accountId) {
+  return String(accountId);
+}
+
+function buildSourceFromCacheEntry(cacheEntry, assignment) {
+  if (!cacheEntry || cacheEntry.missing) return null;
+
+  return {
+    assignment,
+    providerGroup: cacheEntry.providerGroup,
+    username: cacheEntry.username,
+    password: cacheEntry.password,
+    hosts: cacheEntry.hosts,
+  };
+}
+
+async function findUsableAccountForGroup(group, account, assignment = null) {
+  const cacheKey = buildRuntimeSourceCacheKey(account.id);
+  const cached = cache.get('freeAccessRuntimeSource', cacheKey);
+  if (cached) {
+    return buildSourceFromCacheEntry(cached, assignment);
+  }
+  if (cache.get('freeAccessRuntimeSourceMiss', cacheKey)) {
+    return null;
+  }
+
   const hosts = await freeAccessQueries.getHostsForGroup(group.id);
-  if (!hosts.length) return null;
+  if (!hosts.length) {
+    cache.set('freeAccessRuntimeSourceMiss', cacheKey, { missing: true });
+    return null;
+  }
 
-  let sawCredentialFailure = false;
-  let latestAccountInfo = null;
-
-  for (const host of hosts) {
+  const hostChecks = hosts.map(async (host) => {
     const startedAt = Date.now();
     const result = await providerService.testConnection(host.host, account.username, account.password);
     const responseTimeMs = Date.now() - startedAt;
@@ -63,39 +88,116 @@ async function findUsableAccountForGroup(group, account) {
     });
 
     if (!result.ok) {
-      if (/invalid credentials/i.test(String(result.error || ''))) {
-        sawCredentialFailure = true;
-      }
-      continue;
+      throw {
+        kind: /invalid credentials/i.test(String(result.error || '')) ? 'invalid_credentials' : 'host_unavailable',
+        accountInfo: null,
+      };
     }
 
-    latestAccountInfo = result.accountInfo;
-    if (!isAccountUsable(result.accountInfo)) continue;
-
-    await freeAccessQueries.updateAccountStatus(account.id, {
-      status: 'available',
-      maxConnections: result.accountInfo.maxConnections,
-      lastActiveConnections: result.accountInfo.activeConnections,
-      lastExpirationAt: toIsoDate(result.accountInfo.expiresAt),
-      lastCheckedAt: new Date().toISOString(),
-    });
+    if (!isAccountUsable(result.accountInfo)) {
+      throw {
+        kind: 'capacity_exhausted',
+        accountInfo: result.accountInfo,
+      };
+    }
 
     return {
-      host: host.host,
-      account,
+      host: {
+        host: host.host,
+        responseTimeMs,
+      },
       accountInfo: result.accountInfo,
     };
-  }
-
-  await freeAccessQueries.updateAccountStatus(account.id, {
-    status: sawCredentialFailure ? 'invalid' : account.status || 'available',
-    maxConnections: latestAccountInfo?.maxConnections,
-    lastActiveConnections: latestAccountInfo?.activeConnections,
-    lastExpirationAt: toIsoDate(latestAccountInfo?.expiresAt),
-    lastCheckedAt: new Date().toISOString(),
   });
 
-  return null;
+  try {
+    const fastest = await Promise.any(hostChecks);
+    const source = {
+      assignment,
+      providerGroup: group,
+      username: account.username,
+      password: account.password,
+      hosts: [fastest.host],
+    };
+
+    await freeAccessQueries.updateAccountStatus(account.id, {
+      status: assignment ? 'assigned' : 'available',
+      maxConnections: fastest.accountInfo.maxConnections,
+      lastActiveConnections: fastest.accountInfo.activeConnections,
+      lastExpirationAt: toIsoDate(fastest.accountInfo.expiresAt),
+      lastCheckedAt: new Date().toISOString(),
+    });
+    cache.set('freeAccessRuntimeSource', cacheKey, {
+      providerGroup: group,
+      username: account.username,
+      password: account.password,
+      hosts: [fastest.host],
+    });
+    cache.del('freeAccessRuntimeSourceMiss', cacheKey);
+    return source;
+  } catch (_) {
+    const settled = await Promise.allSettled(hostChecks);
+    let sawCredentialFailure = false;
+    let latestAccountInfo = null;
+
+    settled.forEach((result) => {
+      if (result.status !== 'rejected') return;
+      if (result.reason?.kind === 'invalid_credentials') {
+        sawCredentialFailure = true;
+      }
+      if (result.reason?.accountInfo) {
+        latestAccountInfo = result.reason.accountInfo;
+      }
+    });
+
+    await freeAccessQueries.updateAccountStatus(account.id, {
+      status: sawCredentialFailure ? 'invalid' : account.status || 'available',
+      maxConnections: latestAccountInfo?.maxConnections,
+      lastActiveConnections: latestAccountInfo?.activeConnections,
+      lastExpirationAt: toIsoDate(latestAccountInfo?.expiresAt),
+      lastCheckedAt: new Date().toISOString(),
+    });
+    cache.set('freeAccessRuntimeSourceMiss', cacheKey, { missing: true });
+    cache.del('freeAccessRuntimeSource', cacheKey);
+    return null;
+  }
+}
+
+async function findMatchingSourceForUser(userId, matchSource) {
+  const assignment = await freeAccessQueries.findActiveAssignmentForUser(userId);
+  if (!assignment) return null;
+
+  const runtimeAccounts = prioritizeRuntimeAccounts(
+    await freeAccessQueries.listRuntimeEligibleAccounts(),
+    assignment
+  );
+
+  if (!runtimeAccounts.length) return null;
+
+  const attempts = runtimeAccounts.map(async (account) => {
+    const group = await freeAccessQueries.findProviderGroupById(account.provider_group_id);
+    if (!group || !group.is_active) {
+      throw new Error('inactive_group');
+    }
+
+    const source = await findUsableAccountForGroup(group, account, assignment);
+    if (!source) {
+      throw new Error('no_usable_source');
+    }
+
+    const result = await matchSource(source);
+    if (!result) {
+      throw new Error('no_match');
+    }
+
+    return result;
+  });
+
+  try {
+    return await Promise.any(attempts);
+  } catch (_) {
+    return null;
+  }
 }
 
 function prioritizeRuntimeAccounts(accounts, assignment) {
@@ -224,83 +326,16 @@ const freeAccessService = {
   },
 
   async getActiveSourcesForUser(userId) {
-    const assignment = await freeAccessQueries.findActiveAssignmentForUser(userId);
-    if (!assignment) return [];
-
-    const runtimeAccounts = prioritizeRuntimeAccounts(
-      await freeAccessQueries.listRuntimeEligibleAccounts(),
-      assignment
-    );
-
-    const sources = [];
-    for (const account of runtimeAccounts) {
-      const group = await freeAccessQueries.findProviderGroupById(account.provider_group_id);
-      if (!group || !group.is_active) continue;
-
-      const hosts = await freeAccessQueries.getHostsForGroup(group.id);
-      if (!hosts.length) continue;
-
-      const workingHosts = [];
-      let latestAccountInfo = null;
-      let sawCredentialFailure = false;
-
-      for (const host of hosts) {
-        const startedAt = Date.now();
-        const result = await providerService.testConnection(host.host, account.username, account.password);
-        const responseTimeMs = Date.now() - startedAt;
-
-        await freeAccessQueries.updateHostStatus(host.id, {
-          lastCheckedAt: new Date().toISOString(),
-          lastStatus: result.ok ? 'online' : 'offline',
-          lastResponseMs: responseTimeMs,
-        });
-
-        if (!result.ok) {
-          if (/invalid credentials/i.test(String(result.error || ''))) {
-            sawCredentialFailure = true;
-          }
-          continue;
-        }
-
-        latestAccountInfo = result.accountInfo;
-        if (!isAccountUsable(result.accountInfo)) continue;
-
-        workingHosts.push({
-          host: host.host,
-          responseTimeMs,
-        });
-      }
-
-      await freeAccessQueries.updateAccountStatus(account.id, {
-        status: workingHosts.length ? 'assigned' : (sawCredentialFailure ? 'invalid' : account.status || 'available'),
-        maxConnections: latestAccountInfo?.maxConnections,
-        lastActiveConnections: latestAccountInfo?.activeConnections,
-        lastExpirationAt: toIsoDate(latestAccountInfo?.expiresAt),
-        lastCheckedAt: new Date().toISOString(),
-      });
-
-      if (!workingHosts.length) continue;
-
-      sources.push({
-        assignment,
-        providerGroup: group,
-        username: account.username,
-        password: account.password,
-        hosts: workingHosts,
-      });
-    }
-
-    return sources;
+    const source = await this.getActiveSourceForUser(userId);
+    return source ? [source] : [];
   },
 
   async getActiveSourceForUser(userId) {
-    const sources = await this.getActiveSourcesForUser(userId);
-    return sources[0] || null;
+    return findMatchingSourceForUser(userId, async (source) => source);
   },
 
   async resolveFallbackVodItem(userId, baseId, type) {
-    const sources = await this.getActiveSourcesForUser(userId);
-    for (const source of sources) {
+    return findMatchingSourceForUser(userId, async (source) => {
       let item = null;
       if (baseId.startsWith('tt')) {
         item = await freeAccessQueries.findCatalogByImdbId(source.providerGroup.id, baseId);
@@ -308,7 +343,7 @@ const freeAccessService = {
         item = await freeAccessQueries.findCatalogByTmdbId(source.providerGroup.id, parseInt(baseId.slice(5), 10));
       }
 
-      if (!item) continue;
+      if (!item) return null;
 
       return {
         ...item,
@@ -319,20 +354,15 @@ const freeAccessService = {
         playback_hosts: source.hosts,
         assignment_id: source.assignment.id,
       };
-    }
-
-    return null;
+    });
   },
 
   async resolveFallbackOnDemandCandidate(userId, matcherInput) {
-    const sources = await this.getActiveSourcesForUser(userId);
-    const candidates = [];
-
-    for (const source of sources) {
+    const candidates = await findMatchingSourceForUser(userId, async (source) => {
       const sourceCandidates = await freeAccessQueries.findOnDemandCandidateForGroup(source.providerGroup.id, matcherInput);
-      if (!Array.isArray(sourceCandidates) || sourceCandidates.length === 0) continue;
+      if (!Array.isArray(sourceCandidates) || sourceCandidates.length === 0) return null;
 
-      candidates.push(...sourceCandidates.map(candidate => ({
+      return sourceCandidates.map(candidate => ({
         ...candidate,
         provider_group_id: source.providerGroup.id,
         access_source: 'free_access',
@@ -340,10 +370,10 @@ const freeAccessService = {
         password: source.password,
         playback_hosts: source.hosts,
         assignment_id: source.assignment.id,
-      })));
-    }
+      }));
+    });
 
-    return candidates;
+    return candidates || [];
   },
 
   async recordResolvedStream(assignmentId) {

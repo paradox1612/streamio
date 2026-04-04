@@ -25,6 +25,8 @@ const NAMESPACE_TTLS = {
   resolvedStreams: 20, // 20 sec
   resolvedStreamsMiss: 10, // 10 sec
   providerHostRecheck: 90, // 90 sec
+  freeAccessRuntimeSource: 20, // 20 sec
+  freeAccessRuntimeSourceMiss: 10, // 10 sec
 };
 
 /**
