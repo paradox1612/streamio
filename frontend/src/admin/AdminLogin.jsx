@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { adminAPI } from '../utils/api';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 import { Shield } from 'lucide-react';
 import { ModernStunningSignIn } from '../components/ui/modern-stunning-sign-in';
 
@@ -23,7 +24,7 @@ export default function AdminLogin() {
     } catch (err) {
       const nextError = err.response?.data?.error || 'Invalid admin credentials';
       setError(nextError);
-      toast.error(nextError);
+      reportableError(nextError);
     } finally {
       setLoading(false);
     }

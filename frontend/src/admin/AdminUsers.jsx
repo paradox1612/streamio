@@ -9,6 +9,7 @@ import {
   Users,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 import { adminAPI } from '../utils/api';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -56,7 +57,7 @@ export default function AdminUsers() {
       const response = await adminAPI.listUsers({ search: term, limit: 100 });
       setUsers(Array.isArray(response.data) ? response.data : []);
     } catch (_) {
-      toast.error('Failed to load users');
+      reportableError('Failed to load users');
     } finally {
       if (isInitialLoad) setLoading(false);
     }
@@ -93,7 +94,7 @@ export default function AdminUsers() {
       toast.success(user.is_active ? 'User suspended' : 'User activated');
       load(search);
     } catch (_) {
-      toast.error('Action failed');
+      reportableError('Action failed');
     }
   };
 
@@ -105,7 +106,7 @@ export default function AdminUsers() {
       toast.success('User deleted');
       setUsers((current) => current.filter((entry) => entry.id !== user.id));
     } catch (_) {
-      toast.error('Delete failed');
+      reportableError('Delete failed');
     }
   };
 

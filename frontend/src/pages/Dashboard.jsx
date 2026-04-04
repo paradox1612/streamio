@@ -5,6 +5,7 @@ import {
   ArrowRight, Check, Clock, Film, Server, Sparkles, Copy, ExternalLink, Activity,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 import { freeAccessAPI, providerAPI, userAPI } from '../utils/api';
 import EmptyState from '../components/EmptyState';
 import ProgressBar from '../components/ProgressBar';
@@ -175,12 +176,12 @@ export default function Dashboard() {
         providerStats.forEach((provider) => {
           if (!provider.accountInfo?.expiresAt) return;
           const diffDays = Math.ceil((new Date(provider.accountInfo.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-          if (diffDays < 0) toast.error(`⚠️ "${provider.name}" subscription has expired!`, { duration: 8000 });
-          else if (diffDays <= 3) toast.error(`🔴 "${provider.name}" expires in ${diffDays} day${diffDays !== 1 ? 's' : ''}!`, { duration: 8000 });
+          if (diffDays < 0) reportableError(`⚠️ "${provider.name}" subscription has expired!`, { duration: 8000 });
+          else if (diffDays <= 3) reportableError(`🔴 "${provider.name}" expires in ${diffDays} day${diffDays !== 1 ? 's' : ''}!`, { duration: 8000 });
           else if (diffDays <= 7) toast(`⏰ "${provider.name}" expires in ${diffDays} days`, { icon: '⚠️', duration: 6000, style: { background: '#451a03', color: '#fef3c7', border: '1px solid #92400e' } });
         });
       })
-      .catch(() => toast.error('Failed to load dashboard'))
+      .catch(() => reportableError('Failed to load dashboard'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -201,7 +202,7 @@ export default function Dashboard() {
       ]);
       setFreeAccess(freeStatus);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Unable to update free access');
+      reportableError(err.response?.data?.error || 'Unable to update free access');
     }
   };
 
@@ -210,7 +211,7 @@ export default function Dashboard() {
     try {
       await navigator.clipboard.writeText(addonUrl);
       toast.success('Addon URL copied!');
-    } catch (_) { toast.error('Copy failed'); }
+    } catch (_) { reportableError('Copy failed'); }
     setTimeout(() => setCopying(false), 1500);
   };
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { adminAPI } from '../utils/api';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 
 export default function AdminTmdb() {
   const [status, setStatus] = useState(null);
@@ -17,7 +18,7 @@ export default function AdminTmdb() {
       ]);
       setStatus(statusRes.data);
       setMatching(matchRes.data);
-    } catch (_) { toast.error('Failed to load TMDB data'); }
+    } catch (_) { reportableError('Failed to load TMDB data'); }
     finally { setLoading(false); }
   };
 
@@ -28,7 +29,7 @@ export default function AdminTmdb() {
     try {
       await adminAPI.syncTmdb();
       toast.success('TMDB sync started in background');
-    } catch (_) { toast.error('Sync failed'); }
+    } catch (_) { reportableError('Sync failed'); }
     finally { setSyncing(false); }
   };
 
@@ -37,7 +38,7 @@ export default function AdminTmdb() {
     try {
       await adminAPI.rematch();
       toast.success('Re-matching started in background');
-    } catch (_) { toast.error('Rematch failed'); }
+    } catch (_) { reportableError('Rematch failed'); }
     finally { setRematching(false); }
   };
 

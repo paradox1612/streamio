@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { reportApplicationError } from '../context/ErrorReportingContext';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -24,6 +25,17 @@ api.interceptors.response.use(
       const isAdmin = window.location.pathname.startsWith('/admin');
       localStorage.removeItem(isAdmin ? 'sb_admin_token' : 'sb_token');
       window.location.href = isAdmin ? '/admin/login' : '/login';
+    } else if (!err.config?.skipErrorReport && (!err.response || err.response.status >= 500)) {
+      reportApplicationError(err, {
+        source: window.location.pathname.startsWith('/admin') ? 'admin' : 'frontend',
+        errorType: 'ApiError',
+        message: err.response?.data?.error || err.message || 'Request failed',
+        context: {
+          httpStatus: err.response?.status || null,
+          method: err.config?.method || null,
+          url: err.config?.url || null,
+        },
+      });
     }
     return Promise.reject(err);
   }

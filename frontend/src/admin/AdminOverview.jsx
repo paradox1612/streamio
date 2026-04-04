@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Activity, ArrowRight, Database, Server, Shield, Users } from 'lucide-react';
 import { adminAPI } from '../utils/api';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import NumberTicker from '../components/sera/NumberTicker';
@@ -58,7 +59,7 @@ export default function AdminOverview() {
   useEffect(() => {
     adminAPI.getOverview()
       .then(res => setData(res.data))
-      .catch(() => toast.error('Failed to load overview'))
+      .catch(() => reportableError('Failed to load overview'))
       .finally(() => setLoading(false));
   }, []);
 

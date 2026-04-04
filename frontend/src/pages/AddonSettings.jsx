@@ -7,6 +7,7 @@ import {
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 const LANGUAGE_OPTIONS = [
@@ -67,7 +68,7 @@ export default function AddonSettings() {
       await navigator.clipboard.writeText(addonUrl);
       toast.success('Copied');
     } catch (_) {
-      toast.error('Copy failed');
+      reportableError('Copy failed');
     }
     setTimeout(() => setCopying(false), 1500);
   };
@@ -81,7 +82,7 @@ export default function AddonSettings() {
       toast.success('Addon URL regenerated');
       setConfirmRegenerate(false);
     } catch (_) {
-      toast.error('Failed to regenerate URL');
+      reportableError('Failed to regenerate URL');
     } finally {
       setRegenerating(false);
     }
@@ -108,7 +109,7 @@ export default function AddonSettings() {
       await userAPI.updateProfile(payload);
       toast.success('Language filter saved');
     } catch (_) {
-      toast.error('Failed to save language filter');
+      reportableError('Failed to save language filter');
     } finally {
       setSavingLanguages(false);
     }

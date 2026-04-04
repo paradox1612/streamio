@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 import { AlertTriangle, Bug, CheckCircle2, Clock3, RefreshCw, ShieldAlert } from 'lucide-react';
 import { adminAPI } from '../utils/api';
 import AdminDataTable from './AdminDataTable';
@@ -66,7 +67,7 @@ export default function AdminErrors() {
         setSelectedId(response.data[0]?.id || null);
       }
     } catch (_) {
-      toast.error('Failed to load error reports');
+      reportableError('Failed to load error reports');
     } finally {
       setLoading(false);
     }
@@ -85,7 +86,7 @@ export default function AdminErrors() {
     setDetailLoading(true);
     adminAPI.getErrorReport(selectedId)
       .then((response) => setSelectedReport(response.data))
-      .catch(() => toast.error('Failed to load error report details'))
+      .catch(() => reportableError('Failed to load error report details'))
       .finally(() => setDetailLoading(false));
   }, [selectedId]);
 
@@ -107,7 +108,7 @@ export default function AdminErrors() {
       )));
       toast.success(`Report marked ${nextStatus}`);
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Failed to update report');
+      reportableError(error.response?.data?.error || 'Failed to update report');
     } finally {
       setSavingStatus('');
     }

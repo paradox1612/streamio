@@ -255,11 +255,12 @@ const providerNetworkQueries = {
 
 const providerQueries = {
   async create({ userId, name, hosts, username, password, networkId = null, catalogVariant = false }) {
+    const networkAttachedAt = networkId ? new Date() : null;
     const { rows } = await pool.query(
       `INSERT INTO user_providers (user_id, name, hosts, username, password, network_id, catalog_variant, network_attached_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $6 IS NULL THEN NULL ELSE NOW() END)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
-      [userId, name, hosts, username, password, networkId, catalogVariant]
+      [userId, name, hosts, username, password, networkId, catalogVariant, networkAttachedAt]
     );
     return rows[0];
   },

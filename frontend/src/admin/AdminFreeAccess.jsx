@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { adminAPI } from '../utils/api';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 
 const panelStyle = {
   background: '#1e293b',
@@ -91,7 +92,7 @@ export default function AdminFreeAccess() {
         : nextGroups[0]?.id || '';
       setSelectedGroupId(nextSelected || '');
     } catch (_) {
-      toast.error('Failed to load free access data');
+      reportableError('Failed to load free access data');
     } finally {
       setLoading(false);
     }
@@ -109,7 +110,7 @@ export default function AdminFreeAccess() {
 
     adminAPI.getFreeAccessGroup(selectedGroupId)
       .then((res) => setGroupDetail(res.data))
-      .catch(() => toast.error('Failed to load free access group details'));
+      .catch(() => reportableError('Failed to load free access group details'));
   }, [selectedGroupId]);
 
   const reloadGroupDetail = async (groupId = selectedGroupId) => {
@@ -132,7 +133,7 @@ export default function AdminFreeAccess() {
       await load({ preserveSelection: false });
       setSelectedGroupId(res.data.id);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to create group');
+      reportableError(err.response?.data?.error || 'Failed to create group');
     } finally {
       setSaving('');
     }
@@ -151,7 +152,7 @@ export default function AdminFreeAccess() {
       setHostForm({ host: '', priority: 100 });
       await Promise.all([load(), reloadGroupDetail()]);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to add host');
+      reportableError(err.response?.data?.error || 'Failed to add host');
     } finally {
       setSaving('');
     }
@@ -167,7 +168,7 @@ export default function AdminFreeAccess() {
       setAccountForm({ username: '', password: '' });
       await Promise.all([load(), reloadGroupDetail()]);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to add account');
+      reportableError(err.response?.data?.error || 'Failed to add account');
     } finally {
       setSaving('');
     }
@@ -181,7 +182,7 @@ export default function AdminFreeAccess() {
       toast.success('Managed catalog refresh started');
       await Promise.all([load(), reloadGroupDetail()]);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to refresh managed catalog');
+      reportableError(err.response?.data?.error || 'Failed to refresh managed catalog');
     } finally {
       setSaving('');
     }
@@ -199,7 +200,7 @@ export default function AdminFreeAccess() {
       setSelectedGroupId('');
       await load({ preserveSelection: false });
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to delete group');
+      reportableError(err.response?.data?.error || 'Failed to delete group');
     } finally {
       setSaving('');
     }
@@ -215,7 +216,7 @@ export default function AdminFreeAccess() {
       toast.success('Host deleted');
       await Promise.all([load(), reloadGroupDetail()]);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to delete host');
+      reportableError(err.response?.data?.error || 'Failed to delete host');
     } finally {
       setSaving('');
     }
@@ -231,7 +232,7 @@ export default function AdminFreeAccess() {
       toast.success('Account deleted');
       await Promise.all([load(), reloadGroupDetail()]);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to delete account');
+      reportableError(err.response?.data?.error || 'Failed to delete account');
     } finally {
       setSaving('');
     }

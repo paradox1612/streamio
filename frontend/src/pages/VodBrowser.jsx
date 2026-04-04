@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 import { useAuth } from '../context/AuthContext';
 
 // ── Animation variants (Sera UI Video Gallery pattern) ───────────────────────
@@ -68,7 +69,7 @@ function FixMatchModal({ item, providerId, allItems, currentIndex, onClose, onSu
       const res = await providerAPI.tmdbSearch(providerId, q, item.vod_type === 'series' ? 'series' : 'movie');
       setResults(res.data.results || []);
     } catch (_) {
-      toast.error('Search failed');
+      reportableError('Search failed');
     } finally {
       setSearching(false);
     }
@@ -100,7 +101,7 @@ function FixMatchModal({ item, providerId, allItems, currentIndex, onClose, onSu
       onSuccess();
       onClose();
     } catch (_) {
-      toast.error('Failed to save match');
+      reportableError('Failed to save match');
     } finally {
       setSaving(null);
     }
@@ -411,7 +412,7 @@ export default function VodBrowser() {
         setProviders(res.data);
         if (res.data.length > 0) setSelectedProvider(res.data[0].id);
       })
-      .catch(() => toast.error('Failed to load providers'))
+      .catch(() => reportableError('Failed to load providers'))
       .finally(() => setLoadingProviders(false));
   }, []);
 
@@ -433,7 +434,7 @@ export default function VodBrowser() {
       const res = await providerAPI.getVod(selectedProvider, params);
       setItems((prev) => filter.page === 1 ? res.data : [...prev, ...res.data]);
     } catch (_) {
-      toast.error('Failed to load catalog');
+      reportableError('Failed to load catalog');
     } finally {
       setLoading(false);
     }

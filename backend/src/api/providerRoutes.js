@@ -21,13 +21,13 @@ router.post('/',
   body('username').notEmpty(),
   body('password').notEmpty(),
   validate,
-  async (req, res) => {
+  async (req, res, next) => {
     try {
       const { name, hosts, username, password } = req.body;
       const provider = await providerService.create(req.user.id, { name, hosts, username, password });
       res.status(201).json(provider);
     } catch (err) {
-      res.status(err.status || 500).json({ error: err.message });
+      next(err);
     }
   }
 );

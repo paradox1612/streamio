@@ -5,6 +5,7 @@ import { ArrowLeftIcon, ArrowPathIcon, PencilSquareIcon, SignalIcon } from '@her
 import StatusBadge from '../components/StatusBadge';
 import ProgressBar from '../components/ProgressBar';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 
 export default function ProviderDetail() {
   const { id } = useParams();
@@ -37,7 +38,7 @@ export default function ProviderDetail() {
       setHealth(healthRes.data);
       setCategories(statsRes.data.categories || []);
     } catch (_) {
-      toast.error('Failed to load provider details');
+      reportableError('Failed to load provider details');
     } finally {
       setLoading(false);
     }
@@ -48,9 +49,9 @@ export default function ProviderDetail() {
   const handleSave = async (e) => {
     e.preventDefault();
     const hosts = form.hostsInput.split('\n').map(host => host.trim().replace(/\/+$/, '')).filter(Boolean);
-    if (!form.name.trim()) return toast.error('Provider name is required');
-    if (!hosts.length) return toast.error('Enter at least one host URL');
-    if (!form.username.trim()) return toast.error('Username is required');
+    if (!form.name.trim()) return reportableError('Provider name is required');
+    if (!hosts.length) return reportableError('Enter at least one host URL');
+    if (!form.username.trim()) return reportableError('Username is required');
 
     const payload = {
       name: form.name.trim(),
@@ -66,7 +67,7 @@ export default function ProviderDetail() {
       setEditing(false);
       toast.success('Provider updated');
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Save failed');
+      reportableError(err.response?.data?.error || 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -89,7 +90,7 @@ export default function ProviderDetail() {
       toast.success(`Refreshed ${res.data.total} titles`);
       await load();
     } catch (_) {
-      toast.error('Refresh failed');
+      reportableError('Refresh failed');
     } finally {
       setRefreshing(false);
     }
@@ -102,7 +103,7 @@ export default function ProviderDetail() {
       setHealth(res.data);
       toast.success('Health recheck complete');
     } catch (_) {
-      toast.error('Recheck failed');
+      reportableError('Recheck failed');
     } finally {
       setRechecking(false);
     }

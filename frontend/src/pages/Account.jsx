@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { authAPI, userAPI } from '../utils/api';
 import { CheckIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function Account() {
@@ -17,15 +18,15 @@ export default function Account() {
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
-    if (passwords.new !== passwords.confirm) return toast.error('Passwords do not match');
-    if (passwords.new.length < 8) return toast.error('Password must be at least 8 characters');
+    if (passwords.new !== passwords.confirm) return reportableError('Passwords do not match');
+    if (passwords.new.length < 8) return reportableError('Password must be at least 8 characters');
     setChangingPw(true);
     try {
       await authAPI.changePassword(passwords.current, passwords.new);
       toast.success('Password changed successfully');
       setPasswords({ current: '', new: '', confirm: '' });
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to change password');
+      reportableError(err.response?.data?.error || 'Failed to change password');
     } finally {
       setChangingPw(false);
     }
@@ -33,7 +34,7 @@ export default function Account() {
 
   const handleDeleteAccount = async () => {
     if (deleteInput !== 'delete') {
-      toast.error('Type "delete" to confirm');
+      reportableError('Type "delete" to confirm');
       return;
     }
     setDeleting(true);
@@ -43,7 +44,7 @@ export default function Account() {
       navigate('/login');
       toast.success('Account deleted');
     } catch (_) {
-      toast.error('Failed to delete account');
+      reportableError('Failed to delete account');
       setDeleting(false);
     } finally {
       setConfirmStep(false);

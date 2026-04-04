@@ -12,6 +12,7 @@ import ErrorReportDialog from '../components/ErrorReportDialog';
 
 const ErrorReportingContext = createContext(null);
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+let globalCapture = () => {};
 
 function clip(value, max = 4000) {
   if (value == null) return null;
@@ -96,6 +97,10 @@ function ReportToast({ onOpen, onDismiss }) {
   );
 }
 
+export function reportApplicationError(error, extra = {}) {
+  globalCapture(error, extra);
+}
+
 export function ErrorReportingProvider({ children }) {
   const recentFingerprintsRef = useRef(new Map());
   const [draftReport, setDraftReport] = useState(null);
@@ -120,6 +125,13 @@ export function ErrorReportingProvider({ children }) {
       />
     ), { duration: 12000, position: 'top-right' });
   }, []);
+
+  useEffect(() => {
+    globalCapture = captureError;
+    return () => {
+      globalCapture = () => {};
+    };
+  }, [captureError]);
 
   useEffect(() => {
     const handleWindowError = (event) => {

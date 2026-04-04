@@ -4,6 +4,7 @@ import { SparklesIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import EmptyState from '../components/EmptyState';
 import SkeletonCard from '../components/SkeletonCard';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 import { useAuth } from '../context/AuthContext';
 
 function normalizeCategoryName(value) {
@@ -43,7 +44,7 @@ export default function LiveTV() {
           setSelectedProvider(res.data[0].id);
         }
       })
-      .catch(() => toast.error('Failed to load providers'))
+      .catch(() => reportableError('Failed to load providers'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -76,7 +77,7 @@ export default function LiveTV() {
       setCategories(['all', ...Array.from(new Set(normalizedCategories)).sort((a, b) => a.localeCompare(b))]);
       setHasMore(Boolean(payload.hasMore));
     } catch (_) {
-      toast.error('Failed to load live channels');
+      reportableError('Failed to load live channels');
     } finally {
       setLoadingChannels(false);
     }

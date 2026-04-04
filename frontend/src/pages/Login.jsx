@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 import { useAuth } from '../context/AuthContext';
 import { ModernStunningSignIn } from '../components/ui/modern-stunning-sign-in';
 
@@ -32,7 +33,7 @@ export default function Login() {
     } catch (err) {
       const nextError = err.response?.data?.error || 'Login failed';
       setError(nextError);
-      toast.error(nextError);
+      reportableError(nextError);
     } finally {
       setLoading(false);
     }

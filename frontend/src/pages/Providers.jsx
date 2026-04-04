@@ -9,6 +9,7 @@ import StatusBadge from '../components/StatusBadge';
 import EmptyState from '../components/EmptyState';
 import ConfirmDialog from '../components/ConfirmDialog';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -25,7 +26,7 @@ function AddProviderModal({ open, onClose, onAdded }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const hosts = form.hostsInput.split('\n').map(h => h.trim()).filter(Boolean);
-    if (!hosts.length) return toast.error('Enter at least one host URL');
+    if (!hosts.length) return reportableError('Enter at least one host URL');
     setLoading(true);
     try {
       const res = await providerAPI.create({ name: form.name, hosts, username: form.username, password: form.password });
@@ -33,7 +34,7 @@ function AddProviderModal({ open, onClose, onAdded }) {
       onAdded(res.data);
       setForm({ name: '', hostsInput: '', username: '', password: '' });
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to add provider');
+      reportableError(err.response?.data?.error || 'Failed to add provider');
     } finally {
       setLoading(false);
     }
@@ -135,7 +136,7 @@ function ProviderRow({ provider, onRefresh, onDelete }) {
       await providerAPI.test(provider.id);
       toast.success('Connection tested');
       onRefresh();
-    } catch (_) { toast.error('Test failed'); }
+    } catch (_) { reportableError('Test failed'); }
     finally { setLoading(''); }
   };
 
@@ -145,7 +146,7 @@ function ProviderRow({ provider, onRefresh, onDelete }) {
       const res = await providerAPI.refresh(provider.id);
       toast.success(`Refreshed ${res.data.total} titles`);
       onRefresh();
-    } catch (_) { toast.error('Refresh failed'); }
+    } catch (_) { reportableError('Refresh failed'); }
     finally { setLoading(''); }
   };
 
@@ -234,7 +235,7 @@ export default function Providers() {
   const load = () => {
     providerAPI.list()
       .then(res => setProviders(res.data))
-      .catch(() => toast.error('Failed to load providers'))
+      .catch(() => reportableError('Failed to load providers'))
       .finally(() => setLoading(false));
   };
 
@@ -248,7 +249,7 @@ export default function Providers() {
       toast.success('Provider deleted');
       setProviders(prev => prev.filter(x => x.id !== deleteTarget.id));
       setDeleteTarget(null);
-    } catch (_) { toast.error('Delete failed'); }
+    } catch (_) { reportableError('Delete failed'); }
     finally { setDeleting(false); }
   };
 

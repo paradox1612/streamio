@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { adminAPI } from '../utils/api';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 import { Badge } from '../components/ui/badge';
 
 const JOB_LABELS = {
@@ -27,7 +28,7 @@ export default function AdminSystem() {
       ]);
       setJobData(jobRes.data);
       setDbStats(dbRes.data);
-    } catch (_) { toast.error('Failed to load system info'); }
+    } catch (_) { reportableError('Failed to load system info'); }
     finally { setLoading(false); }
   };
 
@@ -39,7 +40,7 @@ export default function AdminSystem() {
       await adminAPI.runJob(jobName);
       toast.success(`${JOB_LABELS[jobName]?.label || jobName} started`);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to run job');
+      reportableError(err.response?.data?.error || 'Failed to run job');
     } finally {
       setTimeout(() => setRunning(''), 2000);
     }
@@ -50,7 +51,7 @@ export default function AdminSystem() {
     try {
       await adminAPI.refreshAll();
       toast.success('Catalog refresh for all providers started');
-    } catch (_) { toast.error('Failed'); }
+    } catch (_) { reportableError('Failed'); }
     finally { setTimeout(() => setRunning(''), 2000); }
   };
 

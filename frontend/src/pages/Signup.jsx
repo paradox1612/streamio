@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 import { useAuth } from '../context/AuthContext';
 import { providerAPI } from '../utils/api';
 import { PENDING_PROVIDER_KEY } from '../components/ProviderPreviewWidget';
@@ -28,14 +29,14 @@ export default function Signup() {
     if (!form.email || !form.password || !form.confirmPassword) {
       const nextError = 'Email, password, and confirmation are required';
       setError(nextError);
-      return toast.error(nextError);
+      return reportableError(nextError);
     }
     if (form.password !== form.confirmPassword) {
       const nextError = 'Passwords do not match';
       setError(nextError);
-      return toast.error(nextError);
+      return reportableError(nextError);
     }
-    if (form.password.length < 8) return toast.error('Password must be at least 8 characters');
+    if (form.password.length < 8) return reportableError('Password must be at least 8 characters');
     setError('');
     setLoading(true);
     try {
@@ -69,7 +70,7 @@ export default function Signup() {
     } catch (err) {
       const nextError = err.response?.data?.error || 'Signup failed';
       setError(nextError);
-      toast.error(nextError);
+      reportableError(nextError);
     } finally {
       setLoading(false);
     }

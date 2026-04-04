@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Mail, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 import { authAPI } from '../utils/api';
 import BrandMark from '../components/BrandMark';
 import { Button } from '../components/ui/button';
@@ -21,7 +22,7 @@ export default function ForgotPassword() {
       await authAPI.forgotPassword(email);
       setSent(true);
     } catch (_) {
-      toast.error('Something went wrong. Please try again.');
+      reportableError('Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { adminAPI } from '../utils/api';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 
 export default function AdminHealth() {
   const [hosts, setHosts] = useState([]);
@@ -9,7 +10,7 @@ export default function AdminHealth() {
   const load = () => {
     adminAPI.getHealthStats()
       .then(res => setHosts(res.data))
-      .catch(() => toast.error('Failed to load health data'))
+      .catch(() => reportableError('Failed to load health data'))
       .finally(() => setLoading(false));
   };
 

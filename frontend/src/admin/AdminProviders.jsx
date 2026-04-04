@@ -7,6 +7,7 @@ import {
   Server,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { reportableError } from '../utils/reportableToast';
 import { adminAPI } from '../utils/api';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -54,7 +55,7 @@ export default function AdminProviders() {
       const response = await adminAPI.listProviders({ limit: 200 });
       setProviders(Array.isArray(response.data) ? response.data : []);
     } catch (_) {
-      toast.error('Failed to load providers');
+      reportableError('Failed to load providers');
     } finally {
       if (isInitialLoad) setLoading(false);
     }
@@ -95,7 +96,7 @@ export default function AdminProviders() {
       toast.success(`Refreshed: ${response.data.total} titles`);
       load();
     } catch (_) {
-      toast.error('Refresh failed');
+      reportableError('Refresh failed');
     }
   };
 
@@ -107,7 +108,7 @@ export default function AdminProviders() {
       toast.success('Provider deleted');
       setProviders((current) => current.filter((provider) => provider.id !== id));
     } catch (_) {
-      toast.error('Delete failed');
+      reportableError('Delete failed');
     }
   };
 
