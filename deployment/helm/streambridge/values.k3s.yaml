@@ -1,0 +1,70 @@
+frontend:
+  replicaCount: 2
+  image:
+    repository: ghcr.io/your-org/streambridge-frontend
+    tag: latest
+
+backend:
+  replicaCount: 2
+  image:
+    repository: ghcr.io/your-org/streambridge-backend
+    tag: latest
+  env:
+    nodeEnv: production
+    logLevel: info
+    frontendUrl: "https://stream.example.com"
+    baseUrl: "https://stream.example.com"
+    healthCheckEnabled: "true"
+    healthCheckStartupEnabled: "false"
+  secrets:
+    databaseUrl: ""
+    tmdbApiKey: "set-me"
+    adminUsername: admin
+    adminPassword: "set-me"
+    jwtSecret: "set-me"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+scheduler:
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+postgres:
+  enabled: true
+  auth:
+    database: streambridge
+    username: postgres
+    password: "set-me-db-password"
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClassName: local-path
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  host: stream.example.com
+  tls:
+    enabled: true
+    secretName: streambridge-tls

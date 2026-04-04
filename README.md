@@ -53,7 +53,7 @@ App will be at:
 - Admin panel: http://localhost:3000/admin/login
 
 The Docker frontend runs as a production build served by Nginx. If you change
-`REACT_APP_API_URL`, rebuild the frontend image with `docker compose up -d --build`.
+`VITE_API_URL`, rebuild the frontend image with `docker compose up -d --build`.
 
 ### Without Docker
 
@@ -70,7 +70,7 @@ npm run dev            # Start backend on :3001
 # 3. Frontend (new terminal)
 cd frontend
 npm install
-REACT_APP_API_URL=http://localhost:3001 npm start  # Starts on :3000
+VITE_API_URL=http://localhost:3001 npm start  # Starts on :3000
 ```
 
 ## Environment Variables
@@ -94,6 +94,29 @@ REACT_APP_API_URL=http://localhost:3001 npm start  # Starts on :3000
 4. Deploy the frontend service with the `/frontend` root directory
 5. Set all environment variables in Railway dashboard
 6. Run `npm run migrate` in the backend service shell
+
+## Deploy to Kubernetes / K3s
+
+Kubernetes deployment assets now live under [deployment/README.md](./deployment/README.md).
+
+The included Helm chart covers:
+
+- frontend Deployment + Service
+- backend Deployment + Service
+- optional scheduler Deployment for cron jobs
+- optional in-cluster PostgreSQL
+- optional Ingress routing for `/`, `/api`, `/admin`, `/addon`, and `/health`
+
+Basic install:
+
+```bash
+helm upgrade --install streambridge ./deployment/helm/streambridge \
+  --namespace streambridge \
+  --create-namespace \
+  -f your-values.yaml
+```
+
+For K3s, there is also a starter profile at [deployment/helm/streambridge/values.k3s.yaml](/Users/kush-mac/Documents/Claude/Projects/streamio/deployment/helm/streambridge/values.k3s.yaml).
 
 ## Addon URL Format
 

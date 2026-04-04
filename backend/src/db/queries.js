@@ -1318,6 +1318,140 @@ const jobQueries = {
   },
 };
 
+// ─── Error Reports ───────────────────────────────────────────────────────────
+
+const errorReportQueries = {
+  async create({
+    source = 'frontend',
+    status = 'open',
+    severity = 'error',
+    message,
+    errorType = null,
+    stack = null,
+    componentStack = null,
+    fingerprint = null,
+    pageUrl = null,
+    routePath = null,
+    requestMethod = null,
+    requestPath = null,
+    userAgent = null,
+    reporterEmail = null,
+    userId = null,
+    adminContext = false,
+    context = {},
+  }) {
+    const { rows } = await pool.query(
+      `INSERT INTO error_reports (
+        source,
+        status,
+        severity,
+        message,
+        error_type,
+        stack,
+        component_stack,
+        fingerprint,
+        page_url,
+        route_path,
+        request_method,
+        request_path,
+        user_agent,
+        reporter_email,
+        user_id,
+        admin_context,
+        context
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+      )
+      RETURNING *`,
+      [
+        source,
+        status,
+        severity,
+        message,
+        errorType,
+        stack,
+        componentStack,
+        fingerprint,
+        pageUrl,
+        routePath,
+        requestMethod,
+        requestPath,
+        userAgent,
+        reporterEmail,
+        userId,
+        adminContext,
+        JSON.stringify(context || {}),
+      ]
+    );
+    return rows[0];
+  },
+
+  async list({ search = '', status = '', source = '', limit = 100, offset = 0 } = {}) {
+    const { rows } = await pool.query(
+      `SELECT
+         er.id,
+         er.source,
+         er.status,
+         er.severity,
+         er.message,
+         er.error_type,
+         er.route_path,
+         er.request_method,
+         er.request_path,
+         er.page_url,
+         er.reporter_email,
+         er.user_id,
+         er.admin_context,
+         er.reviewed_at,
+         er.resolved_at,
+         er.created_at,
+         u.email AS user_email
+       FROM error_reports er
+       LEFT JOIN users u ON u.id = er.user_id
+       WHERE (
+         $1 = ''
+         OR er.message ILIKE $1
+         OR COALESCE(er.route_path, '') ILIKE $1
+         OR COALESCE(er.request_path, '') ILIKE $1
+         OR COALESCE(er.reporter_email, '') ILIKE $1
+         OR COALESCE(u.email, '') ILIKE $1
+       )
+         AND ($2 = '' OR er.status = $2)
+         AND ($3 = '' OR er.source = $3)
+       ORDER BY er.created_at DESC
+       LIMIT $4 OFFSET $5`,
+      [`%${search}%`, status, source, limit, offset]
+    );
+    return rows;
+  },
+
+  async findById(id) {
+    const { rows } = await pool.query(
+      `SELECT er.*, u.email AS user_email
+       FROM error_reports er
+       LEFT JOIN users u ON u.id = er.user_id
+       WHERE er.id = $1`,
+      [id]
+    );
+    return rows[0];
+  },
+
+  async updateStatus(id, status) {
+    const resolvedAt = status === 'resolved' ? 'NOW()' : 'NULL';
+    const { rows } = await pool.query(
+      `UPDATE error_reports
+       SET status = $1,
+           reviewed_at = COALESCE(reviewed_at, NOW()),
+           resolved_at = ${resolvedAt}
+       WHERE id = $2
+       RETURNING *`,
+      [status, id]
+    );
+    if (!rows[0]) return null;
+    return this.findById(id);
+  },
+};
+
 // ─── Free Access ─────────────────────────────────────────────────────────────
 
 const freeAccessQueries = {
@@ -1803,6 +1937,7 @@ module.exports = {
   matchQueries,
   hostHealthQueries,
   jobQueries,
+  errorReportQueries,
   freeAccessQueries,
   pool,
 };

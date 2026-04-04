@@ -6,14 +6,17 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const { buildManifest, handleCatalog, handleMeta, handleStream } = require('./addon/addonHandler');
 const authRoutes = require('./api/authRoutes');
+const errorReportRoutes = require('./api/errorReportRoutes');
 const userRoutes = require('./api/userRoutes');
 const providerRoutes = require('./api/providerRoutes');
 const freeAccessRoutes = require('./api/freeAccessRoutes');
 const previewRoutes = require('./api/previewRoutes');
 const adminRoutes = require('./admin/adminRoutes');
+const errorHandler = require('./middleware/errorHandler');
 const { startScheduler } = require('./jobs/scheduler');
 const logger = require('./utils/logger');
 const cache = require('./utils/cache');
+const { getAppRole, shouldRunHttpServer, shouldRunScheduler } = require('./utils/runtimeRole');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -165,6 +168,7 @@ app.get('/addon/:token/stream/:type/:id.json', addonCors, async (req, res) => {
 // ─── API Routes ───────────────────────────────────────────────────────────────
 
 app.use('/api/auth', authRoutes);
+app.use('/api/error-reports', errorReportRoutes);
 app.use('/api/preview', previewLimiter, previewRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/providers', providerRoutes);
@@ -173,10 +177,7 @@ app.use('/admin', adminRoutes);
 
 // ─── Error Handler ────────────────────────────────────────────────────────────
 
-app.use((err, req, res, next) => {
-  logger.error('Unhandled error:', err);
-  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
-});
+app.use(errorHandler);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
@@ -185,9 +186,21 @@ app.use((req, res) => {
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 if (require.main === module) {
+  const role = getAppRole();
+
+  if (!shouldRunHttpServer()) {
+    logger.error(`APP_ROLE=${role} does not allow the HTTP server to start`);
+    process.exit(1);
+  }
+
   app.listen(PORT, () => {
     logger.info(`StreamBridge backend running on port ${PORT}`);
-    startScheduler();
+    if (shouldRunScheduler()) {
+      logger.info(`APP_ROLE=${role} enables the in-process scheduler`);
+      startScheduler();
+    } else {
+      logger.info(`APP_ROLE=${role} disables the in-process scheduler`);
+    }
   });
 }
 

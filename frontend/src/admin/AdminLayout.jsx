@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  OctagonAlert,
   PlugZap,
   Settings,
   Shield,
@@ -25,6 +26,7 @@ const navItems = [
   { path: '/admin/providers', label: 'Providers', icon: PlugZap, description: 'Catalog sources' },
   { path: '/admin/free-access', label: 'Free Access', icon: Gift, description: 'Promotions and trials' },
   { path: '/admin/health', label: 'Host Health', icon: HeartPulse, description: 'Routing confidence' },
+  { path: '/admin/errors', label: 'Errors', icon: OctagonAlert, description: 'Crash reports' },
   { path: '/admin/tmdb', label: 'TMDB Matching', icon: Crosshair, description: 'Catalog integrity' },
   { path: '/admin/system', label: 'System', icon: Settings, description: 'Infrastructure' },
 ];

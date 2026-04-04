@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { adminAPI } from '../utils/api';
 import toast from 'react-hot-toast';
+import { Badge } from '../components/ui/badge';
 
 const JOB_LABELS = {
   healthCheckJob: { label: 'Host Health Check', schedule: 'Every 5 minutes', icon: '🩺' },
@@ -62,6 +63,28 @@ export default function AdminSystem() {
     <div style={{ maxWidth: '900px' }}>
       <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#f1f5f9', marginBottom: '20px' }}>System</h1>
 
+      <div style={{ background: '#1e293b', borderRadius: '12px', padding: '20px', border: '1px solid #334155', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '6px' }}>Current Runtime</h2>
+            <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+              Host {jobData?.runtime?.hostname || 'unknown'} · PID {jobData?.runtime?.pid || 'n/a'} · Node env {jobData?.runtime?.nodeEnv || 'n/a'}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <Badge variant={jobData?.runtime?.appRole === 'web' ? 'brand' : 'warning'} className="uppercase">
+              {jobData?.runtime?.appRole || 'unknown'}
+            </Badge>
+            <Badge variant={jobData?.runtime?.httpServerEnabled ? 'success' : 'outline'}>
+              http {jobData?.runtime?.httpServerEnabled ? 'enabled' : 'disabled'}
+            </Badge>
+            <Badge variant={jobData?.runtime?.schedulerEnabled ? 'success' : 'outline'}>
+              scheduler {jobData?.runtime?.schedulerEnabled ? 'enabled' : 'disabled'}
+            </Badge>
+          </div>
+        </div>
+      </div>
+
       {/* Jobs */}
       <div style={{ background: '#1e293b', borderRadius: '12px', padding: '20px', border: '1px solid #334155', marginBottom: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -92,6 +115,11 @@ export default function AdminSystem() {
                     {info.schedule}
                     {lastRun?.started_at && ` · Last: ${new Date(lastRun.started_at).toLocaleString()}`}
                   </div>
+                  {lastRun?.metadata && (
+                    <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                      Runner: {lastRun.metadata.runnerRole || 'unknown'} on {lastRun.metadata.runnerHostname || 'unknown'}
+                    </div>
+                  )}
                 </div>
                 <button onClick={() => handleRunJob(jobName)} disabled={!!running}
                   style={{ padding: '7px 14px', borderRadius: '8px', background: '#334155', color: '#f1f5f9', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500, opacity: running === jobName ? 0.7 : 1 }}>

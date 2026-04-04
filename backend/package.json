@@ -5,6 +5,8 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
+    "start:web": "APP_ROLE=web node src/index.js",
+    "start:scheduler": "APP_ROLE=scheduler node src/scheduler.js",
     "dev": "nodemon src/index.js",
     "migrate": "node src/db/migrate.js",
     "test": "jest --passWithNoTests",

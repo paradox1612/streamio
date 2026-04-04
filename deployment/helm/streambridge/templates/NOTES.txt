@@ -1,0 +1,13 @@
+1. Get the application URL:
+{{- if .Values.ingress.enabled }}
+  https://{{ .Values.ingress.host }}
+{{- else }}
+  kubectl port-forward svc/{{ include "streambridge.frontendName" . }} 8080:{{ .Values.frontend.service.port }}
+{{- end }}
+
+2. Check backend health:
+  kubectl get pods -n {{ .Release.Namespace }}
+  kubectl logs deploy/{{ include "streambridge.backendName" . }} -n {{ .Release.Namespace }}
+
+3. If you use the bundled PostgreSQL:
+  kubectl exec -it sts/{{ include "streambridge.postgresName" . }} -n {{ .Release.Namespace }} -- psql -U {{ .Values.postgres.auth.username }} -d {{ .Values.postgres.auth.database }}

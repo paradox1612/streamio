@@ -5,6 +5,7 @@ const { tmdbQueries, matchQueries, vodQueries, jobQueries } = require('../db/que
 const logger = require('../utils/logger');
 const { cleanTitle, normalizeTitle, parseMovieTitle, parseSeriesTitle } = require('../utils/titleNormalization');
 const { waitForAddonCapacity, getActiveAddonRequests } = require('../utils/loadManager');
+const { getJobRunnerMetadata } = require('../utils/runtimeInfo');
 
 // parse-torrent-name may not be available — graceful fallback
 let ptn;
@@ -316,12 +317,16 @@ const tmdbService = {
 
       await jobQueries.finish(jobId, {
         status: 'success',
-        metadata: { movieCount, seriesCount },
+        metadata: getJobRunnerMetadata({ movieCount, seriesCount }),
       });
 
       return { movieCount, seriesCount };
     } catch (err) {
-      await jobQueries.finish(jobId, { status: 'failed', errorMessage: err.message });
+      await jobQueries.finish(jobId, {
+        status: 'failed',
+        errorMessage: err.message,
+        metadata: getJobRunnerMetadata(),
+      });
       throw err;
     }
   },
@@ -368,13 +373,13 @@ const tmdbService = {
       );
       await jobQueries.finish(jobId, {
         status: 'success',
-        metadata: {
+        metadata: getJobRunnerMetadata({
           matched: totalMatched,
           enriched: totalEnriched,
           failed: totalFailed,
           totalProcessed,
           batches: batchNumber,
-        },
+        }),
       });
       return {
         matched: totalMatched,
@@ -384,7 +389,11 @@ const tmdbService = {
         batches: batchNumber,
       };
     } catch (err) {
-      await jobQueries.finish(jobId, { status: 'failed', errorMessage: err.message });
+      await jobQueries.finish(jobId, {
+        status: 'failed',
+        errorMessage: err.message,
+        metadata: getJobRunnerMetadata(),
+      });
       throw err;
     }
   },

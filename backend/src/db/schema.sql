@@ -583,3 +583,34 @@ CREATE INDEX IF NOT EXISTS idx_watch_history_user ON watch_history(user_id, last
 
 -- manually_matched flag to prevent auto-job from overwriting user corrections
 ALTER TABLE matched_content ADD COLUMN IF NOT EXISTS manually_matched BOOLEAN DEFAULT FALSE;
+
+-- ─────────────────────────────────────────
+-- Error Reports
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS error_reports (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  source VARCHAR NOT NULL DEFAULT 'frontend',
+  status VARCHAR NOT NULL DEFAULT 'open',
+  severity VARCHAR NOT NULL DEFAULT 'error',
+  message TEXT NOT NULL,
+  error_type VARCHAR,
+  stack TEXT,
+  component_stack TEXT,
+  fingerprint VARCHAR,
+  page_url TEXT,
+  route_path TEXT,
+  request_method VARCHAR,
+  request_path TEXT,
+  user_agent TEXT,
+  reporter_email TEXT,
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  admin_context BOOLEAN DEFAULT FALSE,
+  context JSONB DEFAULT '{}'::jsonb,
+  reviewed_at TIMESTAMP,
+  resolved_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_error_reports_created_at ON error_reports(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_error_reports_status ON error_reports(status);
+CREATE INDEX IF NOT EXISTS idx_error_reports_source ON error_reports(source);

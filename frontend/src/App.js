@@ -4,6 +4,8 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
+import AppErrorBoundary from './components/AppErrorBoundary';
+import { ErrorReportingProvider, useErrorReporting } from './context/ErrorReportingContext';
 
 // User pages
 import Landing from './pages/Landing';
@@ -26,6 +28,7 @@ import AdminUsers from './admin/AdminUsers';
 import AdminProviders from './admin/AdminProviders';
 import AdminFreeAccess from './admin/AdminFreeAccess';
 import AdminHealth from './admin/AdminHealth';
+import AdminErrors from './admin/AdminErrors';
 import AdminTmdb from './admin/AdminTmdb';
 import AdminSystem from './admin/AdminSystem';
 
@@ -43,9 +46,16 @@ function AdminRoute({ children }) {
   return <AdminLayout>{children}</AdminLayout>;
 }
 
-export default function App() {
+function AppShell() {
+  const { captureError } = useErrorReporting();
+
   return (
-    <AuthProvider>
+    <AppErrorBoundary
+      onError={(error, extra) => captureError(error, {
+        ...extra,
+        source: window.location.pathname.startsWith('/admin') ? 'admin' : 'frontend',
+      })}
+    >
       <BrowserRouter>
         <Toaster
           position="top-right"
@@ -79,6 +89,7 @@ export default function App() {
           <Route path="/admin/providers" element={<AdminRoute><AdminProviders /></AdminRoute>} />
           <Route path="/admin/free-access" element={<AdminRoute><AdminFreeAccess /></AdminRoute>} />
           <Route path="/admin/health" element={<AdminRoute><AdminHealth /></AdminRoute>} />
+          <Route path="/admin/errors" element={<AdminRoute><AdminErrors /></AdminRoute>} />
           <Route path="/admin/tmdb" element={<AdminRoute><AdminTmdb /></AdminRoute>} />
           <Route path="/admin/system" element={<AdminRoute><AdminSystem /></AdminRoute>} />
 
@@ -86,6 +97,16 @@ export default function App() {
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
+    </AppErrorBoundary>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <ErrorReportingProvider>
+        <AppShell />
+      </ErrorReportingProvider>
     </AuthProvider>
   );
 }

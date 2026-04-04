@@ -9,7 +9,7 @@ import { AuthComponent } from '../components/ui/sign-up';
 export default function Signup() {
   const { signup } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ email: '', password: '', confirmPassword: '', fullName: '' });
+  const [form, setForm] = useState({ email: '', password: '', confirmPassword: '' });
   const [isChecked, setIsChecked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -79,12 +79,10 @@ export default function Signup() {
     <AuthComponent
       logo={logo}
       brandName="StreamBridge"
-      fullName={form.fullName}
       email={form.email}
       password={form.password}
       confirmPassword={form.confirmPassword}
       acceptTerms={isChecked}
-      onFullNameChange={(e) => setForm((current) => ({ ...current, fullName: e.target.value }))}
       onEmailChange={(e) => setForm((current) => ({ ...current, email: e.target.value }))}
       onPasswordChange={(e) => setForm((current) => ({ ...current, password: e.target.value }))}
       onConfirmPasswordChange={(e) => setForm((current) => ({ ...current, confirmPassword: e.target.value }))}
@@ -92,13 +90,15 @@ export default function Signup() {
       onSubmit={handleSubmit}
       loading={loading}
       error={error}
+      title="Create account"
+      subtitle=""
+      showFullName={false}
+      termsLabel="I agree to the terms."
       footer={(
-        <p className="text-sm text-slate-300/65">
-          Already have an account?{' '}
+        <p className="text-center text-sm text-slate-300/65">
           <Link to="/login" className="font-semibold text-white transition-colors hover:text-brand-100">
             Sign in
           </Link>
-          .
         </p>
       )}
     />

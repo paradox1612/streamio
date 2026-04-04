@@ -1,13 +1,14 @@
 const router = require('express').Router();
 const jwt = require('jsonwebtoken');
 const { requireAdmin } = require('../middleware/auth');
-const { userQueries, providerQueries, vodQueries, tmdbQueries, matchQueries, hostHealthQueries, jobQueries, freeAccessQueries, pool } = require('../db/queries');
+const { userQueries, providerQueries, vodQueries, tmdbQueries, matchQueries, hostHealthQueries, jobQueries, errorReportQueries, freeAccessQueries, pool } = require('../db/queries');
 const tmdbService = require('../services/tmdbService');
 const providerService = require('../services/providerService');
 const hostHealthService = require('../services/hostHealthService');
 const freeAccessService = require('../services/freeAccessService');
 const { jobs } = require('../jobs/scheduler');
 const logger = require('../utils/logger');
+const { getRuntimeInfo } = require('../utils/runtimeInfo');
 
 // ─── Admin Auth ───────────────────────────────────────────────────────────────
 
@@ -125,6 +126,7 @@ router.get('/stats/overview', requireAdmin, async (req, res) => {
     vodCount,
     matchStats,
     lastRuns,
+    runtime: getRuntimeInfo(),
   });
 });
 
@@ -143,6 +145,36 @@ router.get('/stats/matching', requireAdmin, async (req, res) => {
 router.get('/stats/health', requireAdmin, async (req, res) => {
   const health = await hostHealthQueries.getAll();
   res.json(health);
+});
+
+// GET /admin/error-reports
+router.get('/error-reports', requireAdmin, async (req, res) => {
+  const reports = await errorReportQueries.list({
+    search: String(req.query.search || ''),
+    status: String(req.query.status || ''),
+    source: String(req.query.source || ''),
+    limit: parseInt(req.query.limit || '100', 10),
+    offset: parseInt(req.query.offset || '0', 10),
+  });
+  res.json(reports);
+});
+
+// GET /admin/error-reports/:id
+router.get('/error-reports/:id', requireAdmin, async (req, res) => {
+  const report = await errorReportQueries.findById(req.params.id);
+  if (!report) return res.status(404).json({ error: 'Error report not found' });
+  res.json(report);
+});
+
+// PATCH /admin/error-reports/:id
+router.patch('/error-reports/:id', requireAdmin, async (req, res) => {
+  const status = String(req.body.status || '');
+  if (!['open', 'reviewed', 'resolved'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+  const report = await errorReportQueries.updateStatus(req.params.id, status);
+  if (!report) return res.status(404).json({ error: 'Error report not found' });
+  res.json(report);
 });
 
 // ─── TMDB ─────────────────────────────────────────────────────────────────────
@@ -194,6 +226,7 @@ router.get('/system/jobs', requireAdmin, async (req, res) => {
   res.json({
     jobs: ['healthCheckJob', 'tmdbSyncJob', 'catalogRefreshJob', 'matchingJob', 'epgRefreshJob', 'freeAccessExpiryJob', 'freeAccessCatalogRefreshJob'],
     lastRuns,
+    runtime: getRuntimeInfo(),
   });
 });
 

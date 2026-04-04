@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "streambridge.backendName" . }}
+  labels:
+    {{- include "streambridge.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "streambridge.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      annotations:
+        checksum/backend-secret: {{ include (print $.Template.BasePath "/backend-secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "streambridge.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: backend
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3001
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "3001"
+            - name: APP_ROLE
+              value: "web"
+            - name: NODE_ENV
+              value: {{ .Values.backend.env.nodeEnv | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.backend.env.logLevel | quote }}
+            - name: FRONTEND_URL
+              value: {{ .Values.backend.env.frontendUrl | quote }}
+            - name: BASE_URL
+              value: {{ .Values.backend.env.baseUrl | quote }}
+            - name: HEALTH_CHECK_ENABLED
+              value: {{ .Values.backend.env.healthCheckEnabled | quote }}
+            - name: HEALTH_CHECK_STARTUP_ENABLED
+              value: {{ .Values.backend.env.healthCheckStartupEnabled | quote }}
+            - name: HEALTH_CHECK_BATCH_SIZE
+              value: {{ .Values.backend.env.healthCheckBatchSize | quote }}
+            - name: HEALTH_CHECK_PROVIDER_MIN_INTERVAL_MS
+              value: {{ .Values.backend.env.healthCheckProviderMinIntervalMs | quote }}
+            - name: ACCOUNT_LOOKUP_SUCCESS_TTL_SECONDS
+              value: {{ .Values.backend.env.accountLookupSuccessTtlSeconds | quote }}
+            - name: ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS
+              value: {{ .Values.backend.env.accountLookupFailureTtlSeconds | quote }}
+          envFrom:
+            - secretRef:
+                name: {{ include "streambridge.backendName" . }}-env
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

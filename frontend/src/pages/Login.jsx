@@ -42,8 +42,8 @@ export default function Login() {
     <ModernStunningSignIn
       brandName="StreamBridge"
       logo={logo}
-      title="Welcome back"
-      subtitle="Sign in with your email and password. Google and other SSO options are not enabled yet."
+      title="Sign in"
+      subtitle=""
       identifierMode="email"
       identifierValue={form.email}
       passwordValue={form.password}
@@ -54,22 +54,13 @@ export default function Login() {
       loadingLabel="Signing in..."
       error={error}
       footer={(
-        <div className="space-y-3 text-sm text-slate-300/65">
-          <div className="flex items-center justify-between gap-3">
-            <Link to="/forgot-password" className="transition-colors hover:text-white">
-              Forgot your password?
-            </Link>
-            <Link to="/signup" className="font-semibold text-brand-200 transition-colors hover:text-white">
-              Create account
-            </Link>
-          </div>
-          <p>
-            New here?{' '}
-            <Link to="/signup" className="font-semibold text-white transition-colors hover:text-brand-100">
-              Start with email and password
-            </Link>
-            .
-          </p>
+        <div className="flex items-center justify-between gap-3 text-sm text-slate-300/65">
+          <Link to="/forgot-password" className="transition-colors hover:text-white">
+            Forgot password?
+          </Link>
+          <Link to="/signup" className="font-semibold text-white transition-colors hover:text-brand-100">
+            Create account
+          </Link>
         </div>
       )}
     />

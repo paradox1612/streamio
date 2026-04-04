@@ -30,6 +30,8 @@ function StatCard({ label, value, sub, icon: Icon, tone }) {
 
 function JobRow({ job }) {
   const variant = job.status === 'success' ? 'success' : job.status === 'failed' ? 'danger' : 'warning';
+  const runnerRole = job.metadata?.runnerRole || 'unknown';
+  const runnerHost = job.metadata?.runnerHostname || 'unknown';
 
   return (
     <div className="flex items-center justify-between gap-4 border-b border-white/[0.08] py-4 last:border-b-0 last:pb-0">
@@ -37,6 +39,9 @@ function JobRow({ job }) {
         <div className="text-sm font-semibold text-white">{job.job_name}</div>
         <div className="mt-1 text-xs text-slate-400/72">
           {job.started_at ? new Date(job.started_at).toLocaleString() : 'Never'}
+        </div>
+        <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-slate-500">
+          {runnerRole} on {runnerHost}
         </div>
       </div>
       <Badge variant={variant} className="capitalize">
@@ -129,6 +134,23 @@ export default function AdminOverview() {
                   <p className="metric-label mb-2">Catalog coverage</p>
                   <p className="text-4xl font-bold text-white">{metrics[3].value}%</p>
                   <p className="mt-2 text-sm text-slate-300/60">{metrics[3].sub}</p>
+                </div>
+                <div className="rounded-[22px] border border-white/[0.07] bg-white/[0.025] p-5 sm:col-span-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="metric-label">Current runtime</p>
+                    <Badge variant={data?.runtime?.appRole === 'web' ? 'brand' : 'warning'} className="uppercase">
+                      {data?.runtime?.appRole || 'unknown'}
+                    </Badge>
+                    <Badge variant={data?.runtime?.schedulerEnabled ? 'success' : 'outline'}>
+                      scheduler {data?.runtime?.schedulerEnabled ? 'enabled' : 'disabled'}
+                    </Badge>
+                    <Badge variant={data?.runtime?.httpServerEnabled ? 'success' : 'outline'}>
+                      http {data?.runtime?.httpServerEnabled ? 'enabled' : 'disabled'}
+                    </Badge>
+                  </div>
+                  <p className="mt-3 text-sm text-slate-300/60">
+                    Host {data?.runtime?.hostname || 'unknown'} · PID {data?.runtime?.pid || 'n/a'} · Node env {data?.runtime?.nodeEnv || 'n/a'}
+                  </p>
                 </div>
               </div>
             </div>

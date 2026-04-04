@@ -1,0 +1,81 @@
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+
+frontend:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/your-org/streambridge-frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+  resources: {}
+
+backend:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/your-org/streambridge-backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3001
+  env:
+    nodeEnv: production
+    logLevel: info
+    frontendUrl: "https://stream.example.com"
+    baseUrl: "https://stream.example.com"
+    healthCheckEnabled: "true"
+    healthCheckStartupEnabled: "false"
+    healthCheckBatchSize: "2"
+    healthCheckProviderMinIntervalMs: "3600000"
+    accountLookupSuccessTtlSeconds: "600"
+    accountLookupFailureTtlSeconds: "300"
+  secrets:
+    databaseUrl: ""
+    tmdbApiKey: ""
+    adminUsername: admin
+    adminPassword: change-me
+    jwtSecret: change-me-now
+  resources: {}
+
+scheduler:
+  enabled: true
+  replicaCount: 1
+  resources: {}
+
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    database: streambridge
+    username: postgres
+    password: change-me-db-password
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClassName: ""
+  resources: {}
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations: {}
+  host: stream.example.com
+  tls:
+    enabled: false
+    secretName: ""
+
+podAnnotations: {}
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

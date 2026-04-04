@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -99,6 +99,9 @@ export const adminAPI = {
   getOverview: () => api.get('/admin/stats/overview'),
   getMatchingStats: () => api.get('/admin/stats/matching'),
   getHealthStats: () => api.get('/admin/stats/health'),
+  listErrorReports: (params) => api.get('/admin/error-reports', { params }),
+  getErrorReport: (id) => api.get(`/admin/error-reports/${id}`),
+  updateErrorReport: (id, status) => api.patch(`/admin/error-reports/${id}`, { status }),
 
   // TMDB
   syncTmdb: () => api.post('/admin/tmdb/sync'),
@@ -129,6 +132,10 @@ export const adminAPI = {
 export const previewAPI = {
   check: (host, username, password) =>
     api.post('/api/preview', { host, username, password }),
+};
+
+export const errorReportAPI = {
+  create: (data) => api.post('/api/error-reports', data),
 };
 
 export default api;
