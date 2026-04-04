@@ -4,8 +4,9 @@ const { requireAuth } = require('../middleware/auth');
 const providerService = require('../services/providerService');
 const hostHealthService = require('../services/hostHealthService');
 const epgService = require('../services/epgService');
-const { providerQueries, vodQueries } = require('../db/queries');
+const { providerQueries, vodQueries, jobQueries } = require('../db/queries');
 const cache = require('../utils/cache');
+const logger = require('../utils/logger');
 
 const validate = (req, res, next) => {
   const errors = validationResult(req);
@@ -78,10 +79,152 @@ router.post('/:id/test', requireAuth, async (req, res) => {
 // POST /api/providers/:id/refresh
 router.post('/:id/refresh', requireAuth, async (req, res) => {
   try {
-    const result = await providerService.refreshCatalog(req.params.id, req.user.id);
-    res.json(result);
+    const provider = await providerQueries.findByIdAndUser(req.params.id, req.user.id);
+    if (!provider) return res.status(404).json({ error: 'Provider not found' });
+
+    const existingJob = await jobQueries.findRunningProviderRefresh(req.params.id, req.user.id);
+    if (existingJob) {
+      return res.json({
+        started: false,
+        message: 'Catalog refresh already running',
+        jobId: existingJob.id,
+        status: existingJob.status,
+        metadata: existingJob.metadata || {},
+      });
+    }
+
+    const jobId = await jobQueries.start('providerCatalogRefresh', {
+      providerId: req.params.id,
+      providerName: provider.name,
+      userId: req.user.id,
+      stage: 'queued',
+      progressPct: 0,
+      message: 'Refresh queued',
+      counts: { movies: 0, series: 0, live: 0, total: 0, persisted: 0 },
+    });
+
+    res.status(202).json({
+      started: true,
+      message: 'Catalog refresh started in background',
+      jobId,
+    });
+
+    Promise.resolve()
+      .then(async () => {
+        const startedAt = new Date().toISOString();
+        await jobQueries.update(jobId, {
+          metadata: {
+            providerId: req.params.id,
+            providerName: provider.name,
+            userId: req.user.id,
+            stage: 'starting',
+            progressPct: 2,
+            startedAt,
+            message: 'Catalog refresh started',
+            counts: { movies: 0, series: 0, live: 0, total: 0, persisted: 0 },
+          },
+        });
+
+        const result = await providerService.refreshCatalog(req.params.id, req.user.id, {
+          onProgress: async (patch) => {
+            const current = await jobQueries.getProviderRefreshStatus(req.params.id, req.user.id);
+            const metadata = {
+              ...(current?.metadata || {}),
+              ...patch,
+              startedAt: current?.metadata?.startedAt || startedAt,
+              updatedAt: new Date().toISOString(),
+            };
+            await jobQueries.update(jobId, { metadata });
+          },
+        });
+
+        const current = await jobQueries.getProviderRefreshStatus(req.params.id, req.user.id);
+        await jobQueries.finish(jobId, {
+          status: 'success',
+          metadata: {
+            ...(current?.metadata || {}),
+            providerId: req.params.id,
+            providerName: provider.name,
+            userId: req.user.id,
+            stage: 'completed',
+            progressPct: 100,
+            message: 'Catalog refresh complete',
+            result,
+            updatedAt: new Date().toISOString(),
+          },
+        });
+      })
+      .catch(async (err) => {
+        logger.error(`Provider refresh failed for ${req.params.id}: ${err.stack || err.message}`);
+        const current = await jobQueries.getProviderRefreshStatus(req.params.id, req.user.id);
+        await jobQueries.finish(jobId, {
+          status: 'failed',
+          errorMessage: err.message,
+          metadata: {
+            ...(current?.metadata || {}),
+            providerId: req.params.id,
+            providerName: provider.name,
+            userId: req.user.id,
+            stage: 'failed',
+            message: err.message,
+            updatedAt: new Date().toISOString(),
+          },
+        });
+      });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// GET /api/providers/:id/refresh-status
+router.get('/:id/refresh-status', requireAuth, async (req, res) => {
+  try {
+    const provider = await providerQueries.findByIdAndUser(req.params.id, req.user.id);
+    if (!provider) return res.status(404).json({ error: 'Provider not found' });
+
+    const job = await jobQueries.getProviderRefreshStatus(req.params.id, req.user.id);
+    if (!job) {
+      return res.json({
+        status: 'idle',
+        active: false,
+        providerId: req.params.id,
+        providerName: provider.name,
+      });
+    }
+
+    res.json({
+      id: job.id,
+      status: job.status,
+      active: job.status === 'running',
+      startedAt: job.started_at,
+      finishedAt: job.finished_at,
+      errorMessage: job.error_message,
+      metadata: job.metadata || {},
+      providerId: req.params.id,
+      providerName: provider.name,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/providers/refresh-status
+router.get('/refresh-status/all', requireAuth, async (req, res) => {
+  try {
+    const jobs = await jobQueries.listActiveProviderRefreshes(req.user.id);
+    res.json(jobs.map((job) => ({
+      id: job.id,
+      status: job.status,
+      active: job.status === 'running',
+      startedAt: job.started_at,
+      finishedAt: job.finished_at,
+      errorMessage: job.error_message,
+      metadata: job.metadata || {},
+      providerId: job.metadata?.providerId || null,
+      providerName: job.metadata?.providerName || null,
+    })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

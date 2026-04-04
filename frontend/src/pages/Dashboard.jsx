@@ -20,6 +20,21 @@ import NumberTicker  from '../components/sera/NumberTicker';
 import ShimmerButton from '../components/sera/ShimmerButton';
 import { useAuth } from '../context/AuthContext';
 
+function formatDuration(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return '0s';
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
+function estimateRemainingMs(progressPct, elapsedMs) {
+  if (!Number.isFinite(progressPct) || progressPct <= 0 || progressPct >= 100) return null;
+  const totalEstimate = elapsedMs / (progressPct / 100);
+  const remaining = totalEstimate - elapsedMs;
+  return Number.isFinite(remaining) && remaining > 0 ? remaining : null;
+}
+
 function formatExpiry(expiresAt) {
   if (!expiresAt) return 'No expiry';
   const end = new Date(expiresAt);
@@ -71,6 +86,9 @@ const fadeUp = {
 function ProviderRow({ provider }) {
   const online = provider.status === 'online';
   const matchRate = provider.totalTitles ? Math.round((provider.matchedTitles / provider.totalTitles) * 100) : 0;
+  const ingest = provider.refreshJob;
+  const ingestMeta = ingest?.metadata || {};
+  const ingestProgress = Math.max(0, Math.min(100, ingestMeta.progressPct || 0));
 
   return (
     <Link
@@ -107,6 +125,18 @@ function ProviderRow({ provider }) {
       </div>
 
       <div className="rounded-[22px] border border-white/[0.07] bg-surface-950/60 p-4">
+        {ingest?.active && (
+          <div className="mb-4 rounded-[18px] border border-brand-400/20 bg-brand-500/10 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="metric-label text-brand-100">Catalog ingest</p>
+              <span className="text-sm font-semibold text-brand-200">{ingestProgress}%</span>
+            </div>
+            <div className="mt-2">
+              <ProgressBar value={ingestProgress} max={100} color="bg-brand-500" />
+            </div>
+            <p className="mt-2 text-xs text-slate-200/70">{ingestMeta.message || 'Refreshing catalog'}</p>
+          </div>
+        )}
         <div className="flex items-center justify-between gap-3">
           <p className="metric-label">Match progress</p>
           <span className="text-sm font-semibold text-brand-200">{matchRate}%</span>
@@ -133,6 +163,8 @@ export default function Dashboard() {
   const [freeAccess, setFreeAccess] = useState({ status: 'inactive', canStart: true, canExtend: false });
   const [loading, setLoading] = useState(true);
   const [copying, setCopying] = useState(false);
+  const [activeRefreshes, setActiveRefreshes] = useState([]);
+  const [refreshNow, setRefreshNow] = useState(Date.now());
 
   useEffect(() => {
     Promise.all([
@@ -145,6 +177,8 @@ export default function Dashboard() {
         setAddonUrl(urlRes.data.addonUrl);
         setWatchHistory(Array.isArray(watchRes.data) ? watchRes.data : []);
         setFreeAccess(freeRes.data || { status: 'inactive', canStart: true, canExtend: false });
+        const { data: activeJobs } = await providerAPI.listActiveRefreshes();
+        setActiveRefreshes(Array.isArray(activeJobs) ? activeJobs : []);
         const providerStats = await Promise.all(
           provsRes.data.map(async (provider) => {
             try {
@@ -172,7 +206,11 @@ export default function Dashboard() {
             }
           })
         );
-        setProviders(providerStats);
+        const activeMap = new Map((activeJobs || []).map((job) => [job.providerId, job]));
+        setProviders(providerStats.map((provider) => ({
+          ...provider,
+          refreshJob: activeMap.get(provider.id) || null,
+        })));
         providerStats.forEach((provider) => {
           if (!provider.accountInfo?.expiresAt) return;
           const diffDays = Math.ceil((new Date(provider.accountInfo.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
@@ -184,6 +222,44 @@ export default function Dashboard() {
       .catch(() => reportableError('Failed to load dashboard'))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer = null;
+
+    const poll = async () => {
+      try {
+        const { data } = await providerAPI.listActiveRefreshes();
+        if (cancelled) return;
+        const jobs = Array.isArray(data) ? data : [];
+        setActiveRefreshes(jobs);
+        setRefreshNow(Date.now());
+        setProviders((prev) => {
+          const activeMap = new Map(jobs.map((job) => [job.providerId, job]));
+          return prev.map((provider) => ({
+            ...provider,
+            refreshJob: activeMap.get(provider.id) || null,
+          }));
+        });
+      } catch (_) {
+        if (!cancelled) setActiveRefreshes([]);
+      } finally {
+        if (!cancelled) timer = setTimeout(poll, 3000);
+      }
+    };
+
+    poll();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeRefreshes.length) return undefined;
+    const interval = setInterval(() => setRefreshNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [activeRefreshes.length]);
 
   const refreshProfile = async () => {
     const { data } = await userAPI.getProfile();
@@ -227,6 +303,7 @@ export default function Dashboard() {
     return diffDays >= 0 && diffDays <= 7;
   });
   const hasByoProviders = Boolean(user?.has_byo_providers);
+  const activeRefreshCount = activeRefreshes.length;
   const freeAccessLabel = freeAccess.status === 'active'
     ? formatExpiry(freeAccess.expiresAt)
     : freeAccess.status === 'expired'
@@ -318,6 +395,50 @@ export default function Dashboard() {
               ))}
             </div>
           </div>
+
+          {activeRefreshCount > 0 && (
+            <div className="mt-8 rounded-[24px] border border-brand-400/20 bg-brand-500/10 p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="eyebrow mb-2 text-brand-100">Ingest Activity</p>
+                  <h2 className="text-xl font-bold text-white">
+                    {activeRefreshCount} provider {activeRefreshCount === 1 ? 'is' : 'are'} refreshing in the background
+                  </h2>
+                </div>
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/providers">Open providers</Link>
+                </Button>
+              </div>
+              <div className="mt-5 grid gap-4">
+                {activeRefreshes.map((job) => {
+                  const meta = job.metadata || {};
+                  const progress = Math.max(0, Math.min(100, meta.progressPct || 0));
+                  const startedAt = job.startedAt || meta.startedAt;
+                  const elapsedMs = startedAt ? Math.max(refreshNow - new Date(startedAt).getTime(), 0) : 0;
+                  const remainingMs = estimateRemainingMs(progress, elapsedMs);
+                  return (
+                    <div key={job.id} className="rounded-[18px] border border-white/[0.08] bg-surface-950/60 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-white">{job.providerName || meta.providerName || 'Provider refresh'}</p>
+                        <span className="text-sm font-semibold text-brand-200">{progress}%</span>
+                      </div>
+                      <div className="mt-3">
+                        <ProgressBar value={progress} max={100} color="bg-brand-500" />
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-300/65">
+                        <span>{meta.message || 'Refreshing catalog'}</span>
+                        <span>Elapsed: {formatDuration(elapsedMs)}</span>
+                        {remainingMs !== null && <span>Est. remaining: {formatDuration(remainingMs)}</span>}
+                        {meta.counts?.persisted > 0 && meta.counts?.total > 0 && (
+                          <span>Saved: {meta.counts.persisted.toLocaleString()} / {meta.counts.total.toLocaleString()}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </Card>
       </motion.section>
 

@@ -144,9 +144,9 @@ function ProviderRow({ provider, onRefresh, onDelete }) {
     setLoading('refresh');
     try {
       const res = await providerAPI.refresh(provider.id);
-      toast.success(`Refreshed ${res.data.total} titles`);
+      toast.success(res.data.started ? 'Catalog refresh started in background' : 'Catalog refresh is already running');
       onRefresh();
-    } catch (_) { reportableError('Refresh failed'); }
+    } catch (err) { reportableError(err.response?.data?.error || 'Refresh failed'); }
     finally { setLoading(''); }
   };
 

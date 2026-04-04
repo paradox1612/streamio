@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { providerAPI } from '../utils/api';
 import { ArrowLeftIcon, ArrowPathIcon, PencilSquareIcon, SignalIcon } from '@heroicons/react/24/outline';
@@ -6,6 +6,21 @@ import StatusBadge from '../components/StatusBadge';
 import ProgressBar from '../components/ProgressBar';
 import toast from 'react-hot-toast';
 import { reportableError } from '../utils/reportableToast';
+
+function formatDuration(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return '0s';
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
+function estimateRemainingMs(progressPct, elapsedMs) {
+  if (!Number.isFinite(progressPct) || progressPct <= 0 || progressPct >= 100) return null;
+  const totalEstimate = elapsedMs / (progressPct / 100);
+  const remaining = totalEstimate - elapsedMs;
+  return Number.isFinite(remaining) && remaining > 0 ? remaining : null;
+}
 
 export default function ProviderDetail() {
   const { id } = useParams();
@@ -19,6 +34,9 @@ export default function ProviderDetail() {
   const [rechecking, setRechecking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [refreshJob, setRefreshJob] = useState(null);
+  const [refreshNow, setRefreshNow] = useState(Date.now());
+  const lastRefreshStatusRef = useRef(null);
 
   const load = async () => {
     try {
@@ -45,6 +63,52 @@ export default function ProviderDetail() {
   };
 
   useEffect(() => { load(); }, [id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer = null;
+
+    const poll = async () => {
+      try {
+        const { data } = await providerAPI.getRefreshStatus(id);
+        if (!cancelled) {
+          setRefreshJob(data);
+          if (data.active) setRefreshNow(Date.now());
+        }
+      } catch (_) {
+        if (!cancelled) setRefreshJob(null);
+      } finally {
+        if (!cancelled) {
+          timer = setTimeout(poll, 3000);
+        }
+      }
+    };
+
+    poll();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [id]);
+
+  useEffect(() => {
+    if (!refreshJob?.active) return undefined;
+    const interval = setInterval(() => setRefreshNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [refreshJob?.active]);
+
+  useEffect(() => {
+    const previousStatus = lastRefreshStatusRef.current;
+    const currentStatus = refreshJob?.status || null;
+    if (previousStatus === 'running' && currentStatus === 'success') {
+      load();
+      toast.success('Catalog refresh complete');
+    }
+    if (previousStatus === 'running' && currentStatus === 'failed' && refreshJob?.errorMessage) {
+      reportableError(refreshJob.errorMessage);
+    }
+    lastRefreshStatusRef.current = currentStatus;
+  }, [refreshJob]);
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -87,10 +151,15 @@ export default function ProviderDetail() {
     setRefreshing(true);
     try {
       const res = await providerAPI.refresh(id);
-      toast.success(`Refreshed ${res.data.total} titles`);
-      await load();
-    } catch (_) {
-      reportableError('Refresh failed');
+      if (res.data.started) {
+        toast.success('Catalog refresh started in background');
+      } else {
+        toast('Catalog refresh is already running', { icon: '⏳' });
+      }
+      const statusRes = await providerAPI.getRefreshStatus(id);
+      setRefreshJob(statusRes.data);
+    } catch (err) {
+      reportableError(err.response?.data?.error || 'Refresh failed');
     } finally {
       setRefreshing(false);
     }
@@ -115,6 +184,11 @@ export default function ProviderDetail() {
   const vodStats = stats?.vodStats || {};
   const matchStats = stats?.matchStats || {};
   const matchRate = matchStats.total > 0 ? Math.round((matchStats.matched / matchStats.total) * 100) : 0;
+  const refreshMeta = refreshJob?.metadata || {};
+  const refreshProgress = Math.max(0, Math.min(100, refreshMeta.progressPct || 0));
+  const refreshStartedAt = refreshJob?.startedAt || refreshMeta.startedAt;
+  const refreshElapsedMs = refreshStartedAt ? Math.max(refreshNow - new Date(refreshStartedAt).getTime(), 0) : 0;
+  const refreshRemainingMs = refreshJob?.active ? estimateRemainingMs(refreshProgress, refreshElapsedMs) : null;
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -151,6 +225,32 @@ export default function ProviderDetail() {
           </div>
         </div>
       </section>
+
+      {(refreshJob?.active || refreshJob?.status === 'failed') && (
+        <section className="panel-soft p-5 sm:p-8">
+          <p className="eyebrow mb-2">Catalog Refresh</p>
+          <h2 className="section-title">
+            {refreshJob?.active ? 'Provider ingest is running in the background' : 'Latest catalog refresh failed'}
+          </h2>
+          <div className="mt-5">
+            <ProgressBar
+              value={refreshJob?.active ? refreshProgress : 100}
+              max={100}
+              color={refreshJob?.active ? 'bg-brand-500' : 'bg-red-500'}
+              showLabel
+              label={refreshJob?.active ? (refreshMeta.message || 'Refreshing catalog') : (refreshJob?.errorMessage || 'Refresh failed')}
+            />
+          </div>
+          <div className="mt-4 flex flex-wrap gap-4 text-sm text-slate-300/[0.68]">
+            {refreshJob?.active && <span>Elapsed: {formatDuration(refreshElapsedMs)}</span>}
+            {refreshJob?.active && refreshRemainingMs !== null && <span>Estimated remaining: {formatDuration(refreshRemainingMs)}</span>}
+            {refreshMeta.counts?.total > 0 && <span>Total titles: {refreshMeta.counts.total.toLocaleString()}</span>}
+            {Number.isFinite(refreshMeta.counts?.persisted) && refreshMeta.counts?.total > 0 && (
+              <span>Saved: {refreshMeta.counts.persisted.toLocaleString()} / {refreshMeta.counts.total.toLocaleString()}</span>
+            )}
+          </div>
+        </section>
+      )}
 
       {editing && (
         <section className="panel-soft p-5 sm:p-8">

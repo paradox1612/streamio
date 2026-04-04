@@ -414,8 +414,20 @@ const vodQueries = {
 
   async upsertBatch(entries) {
     if (!entries.length) return;
+    const dedupedEntries = Array.from(
+      new Map(
+        entries.map((entry) => [
+          [
+            entry.providerId,
+            entry.streamId,
+            entry.vodType,
+          ].join('::'),
+          entry,
+        ])
+      ).values()
+    );
     const values = [];
-    const placeholders = entries.map((e, i) => {
+    const placeholders = dedupedEntries.map((e, i) => {
       const base = i * 16;
       const titleYear = pickFirstDefined(e, 'titleYear', 'title_year', 'year');
       const contentLanguages = pickFirstDefined(e, 'contentLanguages', 'content_languages', 'languages');
@@ -462,8 +474,20 @@ const vodQueries = {
 
   async upsertNetworkBatch(entries) {
     if (!entries.length) return;
+    const dedupedEntries = Array.from(
+      new Map(
+        entries.map((entry) => [
+          [
+            entry.providerNetworkId,
+            entry.streamId,
+            entry.vodType,
+          ].join('::'),
+          entry,
+        ])
+      ).values()
+    );
     const values = [];
-    const placeholders = entries.map((e, i) => {
+    const placeholders = dedupedEntries.map((e, i) => {
       const base = i * 15;
       const titleYear = pickFirstDefined(e, 'titleYear', 'title_year', 'year');
       const contentLanguages = pickFirstDefined(e, 'contentLanguages', 'content_languages', 'languages');
@@ -1284,21 +1308,54 @@ const hostHealthQueries = {
 // ─── Job Runs ─────────────────────────────────────────────────────────────────
 
 const jobQueries = {
-  async start(jobName) {
+  async start(jobName, metadata = null) {
     const { rows } = await pool.query(
-      `INSERT INTO job_runs (job_name, status, started_at)
-       VALUES ($1, 'running', NOW()) RETURNING id`,
-      [jobName]
+      `INSERT INTO job_runs (job_name, status, started_at, metadata)
+       VALUES ($1, 'running', NOW(), $2) RETURNING id`,
+      [jobName, metadata ? JSON.stringify(metadata) : null]
     );
     return rows[0].id;
   },
 
-  async finish(id, { status, errorMessage, metadata } = {}) {
+  async update(id, { status, errorMessage, metadata, finished = false } = {}) {
+    const assignments = [];
+    const values = [];
+    let index = 1;
+
+    if (status !== undefined) {
+      assignments.push(`status = $${index++}`);
+      values.push(status);
+    }
+    if (errorMessage !== undefined) {
+      assignments.push(`error_message = $${index++}`);
+      values.push(errorMessage);
+    }
+    if (metadata !== undefined) {
+      assignments.push(`metadata = $${index++}`);
+      values.push(metadata ? JSON.stringify(metadata) : null);
+    }
+    if (finished) {
+      assignments.push('finished_at = NOW()');
+    }
+
+    if (!assignments.length) return;
+
+    values.push(id);
     await pool.query(
-      `UPDATE job_runs SET status = $1, finished_at = NOW(), error_message = $2, metadata = $3
-       WHERE id = $4`,
-      [status || 'success', errorMessage || null, metadata ? JSON.stringify(metadata) : null, id]
+      `UPDATE job_runs
+       SET ${assignments.join(', ')}
+       WHERE id = $${index}`,
+      values
     );
+  },
+
+  async finish(id, { status, errorMessage, metadata } = {}) {
+    await this.update(id, {
+      status: status || 'success',
+      errorMessage: errorMessage || null,
+      metadata: metadata !== undefined ? metadata : null,
+      finished: true,
+    });
   },
 
   async getLastRuns() {
@@ -1314,6 +1371,48 @@ const jobQueries = {
     const { rows } = await pool.query(
       `SELECT * FROM job_runs WHERE job_name = $1 ORDER BY started_at DESC LIMIT $2`,
       [jobName, limit]
+    );
+    return rows;
+  },
+
+  async findRunningProviderRefresh(providerId, userId) {
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM job_runs
+       WHERE job_name = 'providerCatalogRefresh'
+         AND status = 'running'
+         AND metadata->>'providerId' = $1
+         AND metadata->>'userId' = $2
+       ORDER BY started_at DESC
+       LIMIT 1`,
+      [providerId, userId]
+    );
+    return rows[0] || null;
+  },
+
+  async getProviderRefreshStatus(providerId, userId) {
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM job_runs
+       WHERE job_name = 'providerCatalogRefresh'
+         AND metadata->>'providerId' = $1
+         AND metadata->>'userId' = $2
+       ORDER BY started_at DESC
+       LIMIT 1`,
+      [providerId, userId]
+    );
+    return rows[0] || null;
+  },
+
+  async listActiveProviderRefreshes(userId) {
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM job_runs
+       WHERE job_name = 'providerCatalogRefresh'
+         AND status = 'running'
+         AND metadata->>'userId' = $1
+       ORDER BY started_at DESC`,
+      [userId]
     );
     return rows;
   },

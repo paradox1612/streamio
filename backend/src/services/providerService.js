@@ -301,14 +301,29 @@ const providerService = {
     }
   },
 
-  async refreshCatalog(providerId, userId) {
+  async refreshCatalog(providerId, userId, { onProgress } = {}) {
     const provider = await providerQueries.findByIdAndUser(providerId, userId);
     if (!provider) throw Object.assign(new Error('Provider not found'), { status: 404 });
 
     const host = provider.active_host || provider.hosts[0];
     if (!host) throw new Error('No host available');
 
+    const progress = async (patch) => {
+      if (!onProgress) return;
+      await onProgress({
+        providerId,
+        providerName: provider.name,
+        userId,
+        ...patch,
+      });
+    };
+
     logger.info(`Refreshing catalog for provider "${provider.name}" (${providerId})`);
+    await progress({
+      stage: 'fetching_categories',
+      progressPct: 5,
+      message: 'Loading provider categories',
+    });
 
     // ── 1. Fetch category maps upfront ───────────────────────────────────────
     const [vodCategoryMap, seriesCategoryMap] = await Promise.all([
@@ -316,6 +331,15 @@ const providerService = {
       fetchCategoryMap(host, provider.username, provider.password, 'get_series_categories'),
     ]);
     logger.info(`Categories loaded: ${Object.keys(vodCategoryMap).length} VOD, ${Object.keys(seriesCategoryMap).length} series`);
+    await progress({
+      stage: 'fetching_vod',
+      progressPct: 12,
+      message: 'Fetching movies and series',
+      categoryCounts: {
+        vod: Object.keys(vodCategoryMap).length,
+        series: Object.keys(seriesCategoryMap).length,
+      },
+    });
 
     // ── 2. Fetch VOD movies and series in parallel ─────────────────────────────
     const [vodMoviesResult, vodSeriesResult] = await Promise.allSettled([
@@ -338,6 +362,14 @@ const providerService = {
         containerExtension: m.container_extension || 'mp4',
       }));
       logger.info(`Fetched ${vodMovies.length} movies`);
+      await progress({
+        stage: 'fetching_series',
+        progressPct: 28,
+        message: 'Movies fetched, fetching series',
+        counts: {
+          movies: vodMovies.length,
+        },
+      });
     } else if (vodMoviesResult.status === 'rejected') {
       logger.warn(`Failed to fetch VOD movies: ${vodMoviesResult.reason?.message}`);
     }
@@ -357,6 +389,15 @@ const providerService = {
         containerExtension: null,
       }));
       logger.info(`Fetched ${vodSeries.length} series`);
+      await progress({
+        stage: 'fetching_live',
+        progressPct: 44,
+        message: 'Movies and series fetched, fetching live channels',
+        counts: {
+          movies: vodMovies.length,
+          series: vodSeries.length,
+        },
+      });
     } else if (vodSeriesResult.status === 'rejected') {
       logger.warn(`Failed to fetch series: ${vodSeriesResult.reason?.message}`);
     }
@@ -366,6 +407,17 @@ const providerService = {
     try {
       liveStreams = await providerService.getLiveStreams(providerId, userId);
       logger.info(`Fetched ${liveStreams.length} live channels`);
+      await progress({
+        stage: 'persisting_catalog',
+        progressPct: 58,
+        message: 'Fetched source data, saving catalog',
+        counts: {
+          movies: vodMovies.length,
+          series: vodSeries.length,
+          live: liveStreams.length,
+          total: vodMovies.length + vodSeries.length + liveStreams.length,
+        },
+      });
     } catch (err) {
       logger.warn(`Failed to fetch live streams: ${err.message}`);
     }
@@ -413,6 +465,20 @@ const providerService = {
             providerNetworkId: provider.network_id,
           })));
         }
+        const persisted = Math.min(i + chunk.length, resolvedEntries.length);
+        const persistRatio = resolvedEntries.length === 0 ? 1 : persisted / resolvedEntries.length;
+        await progress({
+          stage: 'persisting_catalog',
+          progressPct: Math.min(96, Math.round(58 + persistRatio * 36)),
+          message: `Saving catalog entries ${persisted.toLocaleString()} / ${resolvedEntries.length.toLocaleString()}`,
+          counts: {
+            movies: vodMovies.length,
+            series: vodSeries.length,
+            live: liveStreams.length,
+            total: all.length,
+            persisted,
+          },
+        });
       }
     }
 
@@ -421,6 +487,18 @@ const providerService = {
     }
 
     logger.info(`Catalog refreshed: ${vodMovies.length} movies, ${vodSeries.length} series, ${liveStreams.length} live channels`);
+    await progress({
+      stage: 'completed',
+      progressPct: 100,
+      message: 'Catalog refresh complete',
+      counts: {
+        movies: vodMovies.length,
+        series: vodSeries.length,
+        live: liveStreams.length,
+        total: all.length,
+        persisted: resolvedEntries.length,
+      },
+    });
     return {
       movies: vodMovies.length,
       series: vodSeries.length,

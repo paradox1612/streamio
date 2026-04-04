@@ -57,3 +57,52 @@ describe('vodQueries provider catalog ordering', () => {
     );
   });
 });
+
+describe('vodQueries batch upserts', () => {
+  it('deduplicates duplicate provider rows inside the same upsert batch', async () => {
+    await vodQueries.upsertBatch([
+      {
+        userId: 'user-1',
+        providerId: 'provider-1',
+        streamId: '42',
+        rawTitle: 'First Title',
+        normalizedTitle: 'first title',
+        posterUrl: null,
+        category: 'Movies',
+        vodType: 'movie',
+      },
+      {
+        userId: 'user-1',
+        providerId: 'provider-1',
+        streamId: '42',
+        rawTitle: 'Updated Title',
+        normalizedTitle: 'updated title',
+        posterUrl: null,
+        category: 'Movies',
+        vodType: 'movie',
+      },
+    ]);
+
+    const [sql, values] = pool.query.mock.calls[0];
+    expect(sql).toContain('VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)');
+    expect(sql).not.toContain('), ($17');
+    expect(values).toEqual([
+      'user-1',
+      'provider-1',
+      '42',
+      'Updated Title',
+      'updated title',
+      null,
+      null,
+      null,
+      [],
+      [],
+      null,
+      'Movies',
+      'movie',
+      null,
+      null,
+      null,
+    ]);
+  });
+});
