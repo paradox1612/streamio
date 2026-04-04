@@ -173,7 +173,7 @@ app.use('/api/preview', previewLimiter, previewRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/providers', providerRoutes);
 app.use('/api/free-access', freeAccessRoutes);
-app.use('/admin', adminRoutes);
+app.use('/api/admin', adminRoutes);
 
 // ─── Error Handler ────────────────────────────────────────────────────────────
 

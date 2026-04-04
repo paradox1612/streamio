@@ -22,8 +22,8 @@ backend:
   env:
     nodeEnv: production
     logLevel: info
-    frontendUrl: "http://streambridge.thekush.dev"
-    baseUrl: "http://streambridge.thekush.dev"
+    frontendUrl: "https://streambridge.thekush.dev"
+    baseUrl: "https://streambridge.thekush.dev"
     healthCheckEnabled: "true"
     healthCheckStartupEnabled: "false"
     healthCheckBatchSize: "2"
@@ -55,8 +55,10 @@ postgres:
 ingress:
   enabled: true
   className: nginx
-  annotations: {}
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
   host: streambridge.thekush.dev
   tls:
-    enabled: false
-    secretName: ""
+    enabled: true
+    secretName: streambridge-origin-tls

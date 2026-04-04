@@ -94,52 +94,52 @@ export const providerAPI = {
 
 // ─── Admin ────────────────────────────────────────────────────────────────────
 export const adminAPI = {
-  login: (username, password) => api.post('/admin/auth/login', { username, password }),
-  logout: () => api.post('/admin/auth/logout'),
+  login: (username, password) => api.post('/api/admin/auth/login', { username, password }),
+  logout: () => api.post('/api/admin/auth/logout'),
 
   // Users
-  listUsers: (params) => api.get('/admin/users', { params }),
-  getUser: (id) => api.get(`/admin/users/${id}`),
-  deleteUser: (id) => api.delete(`/admin/users/${id}`),
-  suspendUser: (id, suspend) => api.patch(`/admin/users/${id}/suspend`, { suspend }),
+  listUsers: (params) => api.get('/api/admin/users', { params }),
+  getUser: (id) => api.get(`/api/admin/users/${id}`),
+  deleteUser: (id) => api.delete(`/api/admin/users/${id}`),
+  suspendUser: (id, suspend) => api.patch(`/api/admin/users/${id}/suspend`, { suspend }),
 
   // Providers
-  listProviders: (params) => api.get('/admin/providers', { params }),
-  getProvider: (id) => api.get(`/admin/providers/${id}`),
-  deleteProvider: (id) => api.delete(`/admin/providers/${id}`),
-  refreshProvider: (id) => api.post(`/admin/providers/${id}/refresh`),
+  listProviders: (params) => api.get('/api/admin/providers', { params }),
+  getProvider: (id) => api.get(`/api/admin/providers/${id}`),
+  deleteProvider: (id) => api.delete(`/api/admin/providers/${id}`),
+  refreshProvider: (id) => api.post(`/api/admin/providers/${id}/refresh`),
 
   // Stats
-  getOverview: () => api.get('/admin/stats/overview'),
-  getMatchingStats: () => api.get('/admin/stats/matching'),
-  getHealthStats: () => api.get('/admin/stats/health'),
-  listErrorReports: (params) => api.get('/admin/error-reports', { params }),
-  getErrorReport: (id) => api.get(`/admin/error-reports/${id}`),
-  updateErrorReport: (id, status) => api.patch(`/admin/error-reports/${id}`, { status }),
+  getOverview: () => api.get('/api/admin/stats/overview'),
+  getMatchingStats: () => api.get('/api/admin/stats/matching'),
+  getHealthStats: () => api.get('/api/admin/stats/health'),
+  listErrorReports: (params) => api.get('/api/admin/error-reports', { params }),
+  getErrorReport: (id) => api.get(`/api/admin/error-reports/${id}`),
+  updateErrorReport: (id, status) => api.patch(`/api/admin/error-reports/${id}`, { status }),
 
   // TMDB
-  syncTmdb: () => api.post('/admin/tmdb/sync'),
-  getTmdbStatus: () => api.get('/admin/tmdb/status'),
-  rematch: () => api.post('/admin/tmdb/rematch'),
+  syncTmdb: () => api.post('/api/admin/tmdb/sync'),
+  getTmdbStatus: () => api.get('/api/admin/tmdb/status'),
+  rematch: () => api.post('/api/admin/tmdb/rematch'),
 
   // System
-  refreshAll: () => api.post('/admin/system/refresh-all'),
-  runJob: (jobName) => api.post(`/admin/system/run-job/${jobName}`),
-  getJobs: () => api.get('/admin/system/jobs'),
-  getDbStats: () => api.get('/admin/system/db'),
+  refreshAll: () => api.post('/api/admin/system/refresh-all'),
+  runJob: (jobName) => api.post(`/api/admin/system/run-job/${jobName}`),
+  getJobs: () => api.get('/api/admin/system/jobs'),
+  getDbStats: () => api.get('/api/admin/system/db'),
 
   // Free access admin
-  listFreeAccessGroups: () => api.get('/admin/free-access/groups'),
-  getFreeAccessGroup: (id) => api.get(`/admin/free-access/groups/${id}`),
-  createFreeAccessGroup: (data) => api.post('/admin/free-access/groups', data),
-  updateFreeAccessGroup: (id, data) => api.patch(`/admin/free-access/groups/${id}`, data),
-  deleteFreeAccessGroup: (id) => api.delete(`/admin/free-access/groups/${id}`),
-  addFreeAccessHost: (id, data) => api.post(`/admin/free-access/groups/${id}/hosts`, data),
-  deleteFreeAccessHost: (groupId, hostId) => api.delete(`/admin/free-access/groups/${groupId}/hosts/${hostId}`),
-  addFreeAccessAccount: (id, data) => api.post(`/admin/free-access/groups/${id}/accounts`, data),
-  deleteFreeAccessAccount: (groupId, accountId) => api.delete(`/admin/free-access/groups/${groupId}/accounts/${accountId}`),
-  refreshFreeAccessGroup: (id) => api.post(`/admin/free-access/groups/${id}/refresh`),
-  listFreeAccessAssignments: (params) => api.get('/admin/free-access/assignments', { params }),
+  listFreeAccessGroups: () => api.get('/api/admin/free-access/groups'),
+  getFreeAccessGroup: (id) => api.get(`/api/admin/free-access/groups/${id}`),
+  createFreeAccessGroup: (data) => api.post('/api/admin/free-access/groups', data),
+  updateFreeAccessGroup: (id, data) => api.patch(`/api/admin/free-access/groups/${id}`, data),
+  deleteFreeAccessGroup: (id) => api.delete(`/api/admin/free-access/groups/${id}`),
+  addFreeAccessHost: (id, data) => api.post(`/api/admin/free-access/groups/${id}/hosts`, data),
+  deleteFreeAccessHost: (groupId, hostId) => api.delete(`/api/admin/free-access/groups/${groupId}/hosts/${hostId}`),
+  addFreeAccessAccount: (id, data) => api.post(`/api/admin/free-access/groups/${id}/accounts`, data),
+  deleteFreeAccessAccount: (groupId, accountId) => api.delete(`/api/admin/free-access/groups/${groupId}/accounts/${accountId}`),
+  refreshFreeAccessGroup: (id) => api.post(`/api/admin/free-access/groups/${id}/refresh`),
+  listFreeAccessAssignments: (params) => api.get('/api/admin/free-access/assignments', { params }),
 };
 
 // ─── Public Preview (no auth) ─────────────────────────────────────────────────

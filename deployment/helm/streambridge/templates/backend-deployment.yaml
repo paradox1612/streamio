@@ -26,6 +26,18 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.postgres.enabled }}
+      initContainers:
+        - name: wait-for-postgres
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - >
+              until pg_isready -h {{ include "streambridge.postgresName" . }} -p 5432 -U {{ .Values.postgres.auth.username }} -d {{ .Values.postgres.auth.database }};
+              do echo "waiting for postgres"; sleep 2; done
+      {{- end }}
       containers:
         - name: backend
           image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"

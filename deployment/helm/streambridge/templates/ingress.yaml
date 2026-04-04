@@ -30,13 +30,6 @@ spec:
                 name: {{ include "streambridge.backendName" . }}
                 port:
                   number: {{ .Values.backend.service.port }}
-          - path: /admin
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "streambridge.backendName" . }}
-                port:
-                  number: {{ .Values.backend.service.port }}
           - path: /addon
             pathType: Prefix
             backend:
