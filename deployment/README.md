@@ -24,11 +24,16 @@ deployment/
 
 ## K3s Notes
 
-- K3s ships with Traefik by default, so the chart defaults `ingress.className` to `traefik`.
+- The base chart defaults `ingress.className` to `traefik`, but homelab clusters can override this to `nginx`.
 - K3s usually provides the `local-path` storage class, which works for the bundled Postgres PVC.
 - For production, an external managed Postgres is safer than an in-cluster single-replica database.
 - The chart runs cron jobs in a separate scheduler pod, while web pods use `APP_ROLE=web`.
 - Scheduled jobs also use PostgreSQL advisory locks, so duplicate scheduler instances will skip a job instead of double-running it.
+- Ongoing K3s planning and session notes live in `deployment/k3s/`.
+- For a LAN-only homelab without public DNS, use a host like `streambridge.<node-ip>.nip.io` and disable TLS until you add local DNS or certificates.
+- For a homelab without an external image registry, use `imagePullPolicy: IfNotPresent` and import the built images into the K3s node container runtime.
+- If your cluster uses NGINX Ingress instead of Traefik, set `ingress.className=nginx`.
+- GitHub Actions can publish backend and frontend images to GHCR via `.github/workflows/build-images.yml`.
 
 ## Quick Start
 
@@ -42,6 +47,12 @@ For K3s, you can start from the tuned profile:
 
 ```bash
 cp deployment/helm/streambridge/values.k3s.yaml /tmp/streambridge-values.yaml
+```
+
+For a LAN-only homelab, you can also start from:
+
+```bash
+cp deployment/helm/streambridge/values.homelab.yaml /tmp/streambridge-values.yaml
 ```
 
 2. Set at minimum:
@@ -79,6 +90,30 @@ docker build \
   --build-arg VITE_API_URL=https://stream.example.com \
   ./frontend
 ```
+
+The frontend image must be rebuilt whenever the public API URL changes because Vite injects `VITE_API_URL` at build time.
+
+For a homelab with no external registry, a common workflow is:
+
+```bash
+docker build -t streambridge-backend:homelab ./backend
+docker build \
+  -t streambridge-frontend:homelab \
+  --build-arg VITE_API_URL=http://streambridge.<node-ip>.nip.io \
+  ./frontend
+
+docker save streambridge-backend:homelab | ssh <k3s-node> "sudo k3s ctr images import -"
+docker save streambridge-frontend:homelab | ssh <k3s-node> "sudo k3s ctr images import -"
+```
+
+For a GitHub-driven workflow, push to `main` or run the workflow manually to publish:
+
+- `ghcr.io/paradox1612/streambridge-backend`
+- `ghcr.io/paradox1612/streambridge-frontend`
+
+The frontend build reads `VITE_API_URL` from the GitHub Actions repository variable `VITE_API_URL`. If that variable is not set, it defaults to `https://streambridge.thekush.dev`.
+
+If GHCR packages remain private, create a Kubernetes image pull secret and set `imagePullSecrets` in your Helm values.
 
 ## Ingress Routing
 

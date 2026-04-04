@@ -1,0 +1,62 @@
+imagePullSecrets: []
+
+frontend:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/paradox1612/streambridge-frontend
+    tag: latest
+    pullPolicy: Always
+  service:
+    type: ClusterIP
+    port: 80
+
+backend:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/paradox1612/streambridge-backend
+    tag: latest
+    pullPolicy: Always
+  service:
+    type: ClusterIP
+    port: 3001
+  env:
+    nodeEnv: production
+    logLevel: info
+    frontendUrl: "http://streambridge.thekush.dev"
+    baseUrl: "http://streambridge.thekush.dev"
+    healthCheckEnabled: "true"
+    healthCheckStartupEnabled: "false"
+    healthCheckBatchSize: "2"
+    healthCheckProviderMinIntervalMs: "3600000"
+    accountLookupSuccessTtlSeconds: "600"
+    accountLookupFailureTtlSeconds: "300"
+  secrets:
+    databaseUrl: ""
+    tmdbApiKey: "set-me"
+    adminUsername: admin
+    adminPassword: "set-me-strong-password"
+    jwtSecret: "set-me-long-random-secret"
+
+scheduler:
+  enabled: true
+  replicaCount: 1
+
+postgres:
+  enabled: true
+  auth:
+    database: streambridge
+    username: postgres
+    password: "set-me-db-password"
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClassName: local-path
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations: {}
+  host: streambridge.thekush.dev
+  tls:
+    enabled: false
+    secretName: ""
