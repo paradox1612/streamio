@@ -1,5 +1,5 @@
 const fetch = require('node-fetch');
-const { providerQueries, hostHealthQueries } = require('../db/queries');
+const { providerQueries, providerNetworkQueries, hostHealthQueries } = require('../db/queries');
 const logger = require('../utils/logger');
 const cache = require('../utils/cache');
 
@@ -50,8 +50,14 @@ const hostHealthService = {
   async checkProvider(provider) {
     let bestHost = null;
     let bestTime = Infinity;
+    const networkHosts = provider.network_id
+      ? await providerNetworkQueries.listHosts(provider.network_id)
+      : [];
+    const hostsToCheck = networkHosts.length
+      ? networkHosts.map(row => row.host_url)
+      : provider.hosts;
 
-    for (const host of provider.hosts) {
+    for (const host of hostsToCheck) {
       const result = await pingHost(host, provider.username, provider.password);
       await hostHealthQueries.upsert({
         providerId: provider.id,

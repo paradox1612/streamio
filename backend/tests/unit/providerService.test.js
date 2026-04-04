@@ -4,13 +4,29 @@
 
 jest.mock('node-fetch');
 jest.mock('../../src/db/queries', () => ({
+  providerNetworkQueries: {
+    listAllHosts: jest.fn(),
+    findById: jest.fn(),
+    create: jest.fn(),
+    addHosts: jest.fn().mockResolvedValue(),
+    touchCatalogRefresh: jest.fn().mockResolvedValue(),
+  },
+  canonicalContentQueries: {
+    resolveEntries: jest.fn(async (entries) => entries),
+    getCoverage: jest.fn().mockResolvedValue({ canonical_count: '0', externally_matched_count: '0' }),
+  },
   providerQueries: {
     create: jest.fn(),
     findByIdAndUser: jest.fn(),
     updateHealth: jest.fn(),
+    update: jest.fn().mockResolvedValue({}),
   },
   vodQueries: {
     upsertBatch: jest.fn().mockResolvedValue(),
+    upsertNetworkBatch: jest.fn().mockResolvedValue(),
+  },
+  pool: {
+    query: jest.fn().mockResolvedValue({ rows: [] }),
   },
 }));
 
@@ -18,7 +34,7 @@ jest.mock('../../src/utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), e
 
 const fetch = require('node-fetch');
 const { Response } = jest.requireActual('node-fetch');
-const { providerQueries } = require('../../src/db/queries');
+const { providerQueries, providerNetworkQueries, canonicalContentQueries, vodQueries, pool } = require('../../src/db/queries');
 const providerService = require('../../src/services/providerService');
 
 describe('providerService', () => {
@@ -27,6 +43,8 @@ describe('providerService', () => {
   describe('create', () => {
     it('normalizes hosts (strips trailing slash) and creates provider', async () => {
       providerQueries.create.mockResolvedValue({ id: 'p1', name: 'Test', hosts: ['http://host1.com'] });
+      providerNetworkQueries.listAllHosts.mockResolvedValue([]);
+      providerNetworkQueries.create.mockResolvedValue({ id: 'network-1' });
 
       const result = await providerService.create('user-1', {
         name: 'Test',
@@ -37,8 +55,32 @@ describe('providerService', () => {
 
       expect(providerQueries.create).toHaveBeenCalledWith(expect.objectContaining({
         hosts: ['http://host1.com', 'http://host2.com'],
+        networkId: 'network-1',
       }));
       expect(result).toMatchObject({ id: 'p1' });
+    });
+
+    it('attaches to an existing network when credentials work on a known host', async () => {
+      providerNetworkQueries.listAllHosts.mockResolvedValue([
+        { provider_network_id: 'network-42', host_url: 'http://known-host.com' },
+      ]);
+      providerNetworkQueries.findById.mockResolvedValue({ id: 'network-42' });
+      providerQueries.create.mockResolvedValue({ id: 'p2', network_id: 'network-42' });
+      fetch.mockResolvedValue(new Response(
+        JSON.stringify({ user_info: { auth: 1, username: 'user' } }),
+        { status: 200 }
+      ));
+
+      await providerService.create('user-1', {
+        name: 'Test',
+        hosts: ['http://new-brand.com/'],
+        username: 'user',
+        password: 'pass',
+      });
+
+      expect(providerQueries.create).toHaveBeenCalledWith(expect.objectContaining({
+        networkId: 'network-42',
+      }));
     });
   });
 
@@ -146,7 +188,6 @@ describe('providerService', () => {
         password: 'pass',
       });
 
-      const { vodQueries } = require('../../src/db/queries');
       vodQueries.getStats = jest.fn().mockResolvedValue({ movie_count: 20, series_count: 5, category_count: 4, total: 25 });
       vodQueries.getMatchStats = jest.fn().mockResolvedValue({ total: 25, matched: 20, unmatched: 5 });
       vodQueries.getCategoryBreakdown = jest.fn().mockResolvedValue([]);
@@ -186,6 +227,7 @@ describe('providerService', () => {
         port: '8080',
       });
       expect(result.accountInfoError).toBeNull();
+      expect(result.canonicalCoverage).toEqual({ canonical_count: '0', externally_matched_count: '0' });
     });
   });
 

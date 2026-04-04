@@ -54,6 +54,25 @@ CREATE TABLE IF NOT EXISTS user_providers (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS provider_networks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR NOT NULL,
+  identity_key VARCHAR UNIQUE,
+  legacy_provider_id UUID UNIQUE,
+  catalog_last_refreshed_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS provider_network_hosts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  provider_network_id UUID NOT NULL REFERENCES provider_networks(id) ON DELETE CASCADE,
+  host_url VARCHAR NOT NULL,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(provider_network_id, host_url)
+);
+
 -- ─────────────────────────────────────────
 -- VOD Catalog per provider
 -- ─────────────────────────────────────────
@@ -75,6 +94,58 @@ CREATE TABLE IF NOT EXISTS user_provider_vod (
   container_extension VARCHAR DEFAULT 'mp4',
   created_at TIMESTAMP DEFAULT NOW(),
   UNIQUE(provider_id, stream_id, vod_type)
+);
+
+CREATE TABLE IF NOT EXISTS canonical_content (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  vod_type VARCHAR NOT NULL CHECK (vod_type IN ('movie', 'series', 'live')),
+  canonical_title VARCHAR NOT NULL,
+  canonical_normalized_title VARCHAR NOT NULL,
+  title_year INTEGER,
+  tmdb_id INTEGER,
+  imdb_id VARCHAR,
+  confidence_score FLOAT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(vod_type, canonical_normalized_title, title_year)
+);
+
+CREATE TABLE IF NOT EXISTS content_aliases (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  provider_network_id UUID REFERENCES provider_networks(id) ON DELETE CASCADE,
+  provider_id UUID REFERENCES user_providers(id) ON DELETE CASCADE,
+  raw_title VARCHAR NOT NULL,
+  normalized_title VARCHAR,
+  canonical_title VARCHAR,
+  canonical_normalized_title VARCHAR,
+  title_year INTEGER,
+  vod_type VARCHAR NOT NULL CHECK (vod_type IN ('movie', 'series', 'live')),
+  canonical_content_id UUID REFERENCES canonical_content(id) ON DELETE SET NULL,
+  confidence_score FLOAT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(provider_network_id, raw_title, vod_type)
+);
+
+CREATE TABLE IF NOT EXISTS network_vod (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  provider_network_id UUID NOT NULL REFERENCES provider_networks(id) ON DELETE CASCADE,
+  stream_id VARCHAR NOT NULL,
+  raw_title VARCHAR NOT NULL,
+  normalized_title VARCHAR,
+  canonical_title VARCHAR,
+  canonical_normalized_title VARCHAR,
+  title_year INTEGER,
+  content_languages TEXT[] DEFAULT ARRAY[]::TEXT[],
+  quality_tags TEXT[] DEFAULT ARRAY[]::TEXT[],
+  poster_url VARCHAR,
+  category VARCHAR,
+  vod_type VARCHAR NOT NULL CHECK (vod_type IN ('movie', 'series', 'live')),
+  container_extension VARCHAR DEFAULT 'mp4',
+  epg_channel_id TEXT,
+  canonical_content_id UUID REFERENCES canonical_content(id) ON DELETE SET NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(provider_network_id, stream_id, vod_type)
 );
 
 -- ─────────────────────────────────────────
@@ -247,6 +318,14 @@ ALTER TABLE user_provider_vod
   ADD COLUMN IF NOT EXISTS content_languages TEXT[] DEFAULT ARRAY[]::TEXT[];
 ALTER TABLE user_provider_vod
   ADD COLUMN IF NOT EXISTS quality_tags TEXT[] DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE user_provider_vod
+  ADD COLUMN IF NOT EXISTS canonical_content_id UUID REFERENCES canonical_content(id) ON DELETE SET NULL;
+ALTER TABLE user_providers
+  ADD COLUMN IF NOT EXISTS network_id UUID REFERENCES provider_networks(id) ON DELETE SET NULL;
+ALTER TABLE user_providers
+  ADD COLUMN IF NOT EXISTS catalog_variant BOOLEAN DEFAULT false;
+ALTER TABLE user_providers
+  ADD COLUMN IF NOT EXISTS network_attached_at TIMESTAMP;
 ALTER TABLE tmdb_movies
   ADD COLUMN IF NOT EXISTS normalized_title VARCHAR;
 ALTER TABLE tmdb_series
@@ -260,11 +339,14 @@ ALTER TABLE free_access_provider_groups
 CREATE INDEX IF NOT EXISTS idx_users_addon_token ON users(addon_token);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_user_providers_user_id ON user_providers(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_providers_network_id ON user_providers(network_id);
 CREATE INDEX IF NOT EXISTS idx_user_provider_vod_provider_id ON user_provider_vod(provider_id);
 CREATE INDEX IF NOT EXISTS idx_user_provider_vod_user_id ON user_provider_vod(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_provider_vod_user_raw_title ON user_provider_vod(user_id, raw_title);
 CREATE INDEX IF NOT EXISTS idx_user_provider_vod_type ON user_provider_vod(vod_type);
 CREATE INDEX IF NOT EXISTS idx_user_provider_vod_normalized_title ON user_provider_vod(normalized_title);
 CREATE INDEX IF NOT EXISTS idx_user_provider_vod_canonical_normalized_title ON user_provider_vod(canonical_normalized_title);
+CREATE INDEX IF NOT EXISTS idx_user_provider_vod_canonical_content_id ON user_provider_vod(canonical_content_id);
 CREATE INDEX IF NOT EXISTS idx_user_provider_vod_user_type_normalized ON user_provider_vod(user_id, vod_type, normalized_title);
 CREATE INDEX IF NOT EXISTS idx_upv_user_type_canonical ON user_provider_vod(user_id, vod_type, canonical_normalized_title);
 CREATE INDEX IF NOT EXISTS user_provider_vod_normalized_title_trgm_gist ON user_provider_vod
@@ -273,8 +355,21 @@ CREATE INDEX IF NOT EXISTS user_provider_vod_canonical_title_trgm_gist ON user_p
   USING gist(canonical_normalized_title gist_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_matched_content_raw_title ON matched_content(raw_title);
 CREATE INDEX IF NOT EXISTS idx_matched_content_tmdb_id ON matched_content(tmdb_id);
+CREATE INDEX IF NOT EXISTS idx_matched_content_imdb_id ON matched_content(imdb_id) WHERE imdb_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_host_health_provider_id ON host_health(provider_id);
 CREATE INDEX IF NOT EXISTS idx_job_runs_job_name ON job_runs(job_name);
+CREATE INDEX IF NOT EXISTS idx_provider_network_hosts_network_id ON provider_network_hosts(provider_network_id);
+CREATE INDEX IF NOT EXISTS idx_provider_network_hosts_host_url ON provider_network_hosts(host_url);
+CREATE INDEX IF NOT EXISTS idx_network_vod_network_id ON network_vod(provider_network_id);
+CREATE INDEX IF NOT EXISTS idx_network_vod_network_type ON network_vod(provider_network_id, vod_type);
+CREATE INDEX IF NOT EXISTS idx_network_vod_raw_title ON network_vod(provider_network_id, raw_title);
+CREATE INDEX IF NOT EXISTS idx_network_vod_normalized_title ON network_vod(canonical_normalized_title);
+CREATE INDEX IF NOT EXISTS idx_network_vod_canonical_content_id ON network_vod(canonical_content_id);
+CREATE INDEX IF NOT EXISTS idx_canonical_content_lookup ON canonical_content(vod_type, canonical_normalized_title, title_year);
+CREATE INDEX IF NOT EXISTS idx_canonical_content_tmdb_id ON canonical_content(tmdb_id) WHERE tmdb_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_canonical_content_imdb_id ON canonical_content(imdb_id) WHERE imdb_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_content_aliases_network_raw_title ON content_aliases(provider_network_id, raw_title, vod_type);
+CREATE INDEX IF NOT EXISTS idx_content_aliases_canonical_content_id ON content_aliases(canonical_content_id);
 CREATE INDEX IF NOT EXISTS idx_free_access_groups_active ON free_access_provider_groups(is_active);
 CREATE INDEX IF NOT EXISTS idx_free_access_hosts_group_id ON free_access_provider_hosts(provider_group_id);
 CREATE INDEX IF NOT EXISTS idx_free_access_accounts_group_id ON free_access_provider_accounts(provider_group_id);
@@ -357,6 +452,111 @@ CREATE INDEX IF NOT EXISTS idx_host_health_provider ON host_health(provider_id, 
 -- ─────────────────────────────────────────
 ALTER TABLE user_provider_vod
   ADD COLUMN IF NOT EXISTS epg_channel_id TEXT;
+
+INSERT INTO provider_networks (name, legacy_provider_id)
+SELECT CONCAT('Migrated network: ', p.name), p.id
+FROM user_providers p
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM provider_networks pn
+  WHERE pn.legacy_provider_id = p.id
+);
+
+UPDATE user_providers p
+SET network_id = pn.id,
+    network_attached_at = COALESCE(p.network_attached_at, NOW())
+FROM provider_networks pn
+WHERE pn.legacy_provider_id = p.id
+  AND p.network_id IS NULL;
+
+INSERT INTO provider_network_hosts (provider_network_id, host_url)
+SELECT DISTINCT p.network_id, host
+FROM user_providers p
+CROSS JOIN LATERAL unnest(p.hosts) AS host
+WHERE p.network_id IS NOT NULL
+ON CONFLICT (provider_network_id, host_url) DO NOTHING;
+
+INSERT INTO canonical_content (vod_type, canonical_title, canonical_normalized_title, title_year)
+SELECT DISTINCT
+  v.vod_type,
+  COALESCE(v.canonical_title, v.raw_title),
+  COALESCE(v.canonical_normalized_title, v.normalized_title),
+  v.title_year
+FROM user_provider_vod v
+WHERE COALESCE(v.canonical_normalized_title, v.normalized_title) IS NOT NULL
+ON CONFLICT (vod_type, canonical_normalized_title, title_year) DO NOTHING;
+
+UPDATE user_provider_vod v
+SET canonical_content_id = cc.id
+FROM canonical_content cc
+WHERE v.canonical_content_id IS NULL
+  AND cc.vod_type = v.vod_type
+  AND cc.canonical_normalized_title = COALESCE(v.canonical_normalized_title, v.normalized_title)
+  AND cc.title_year IS NOT DISTINCT FROM v.title_year;
+
+INSERT INTO network_vod (
+  provider_network_id,
+  stream_id,
+  raw_title,
+  normalized_title,
+  canonical_title,
+  canonical_normalized_title,
+  title_year,
+  content_languages,
+  quality_tags,
+  poster_url,
+  category,
+  vod_type,
+  container_extension,
+  epg_channel_id,
+  canonical_content_id
+)
+SELECT DISTINCT ON (p.network_id, v.stream_id, v.vod_type)
+  p.network_id,
+  v.stream_id,
+  v.raw_title,
+  v.normalized_title,
+  v.canonical_title,
+  v.canonical_normalized_title,
+  v.title_year,
+  v.content_languages,
+  v.quality_tags,
+  v.poster_url,
+  v.category,
+  v.vod_type,
+  v.container_extension,
+  v.epg_channel_id,
+  v.canonical_content_id
+FROM user_provider_vod v
+JOIN user_providers p ON p.id = v.provider_id
+WHERE p.network_id IS NOT NULL
+ON CONFLICT (provider_network_id, stream_id, vod_type) DO NOTHING;
+
+INSERT INTO content_aliases (
+  provider_network_id,
+  provider_id,
+  raw_title,
+  normalized_title,
+  canonical_title,
+  canonical_normalized_title,
+  title_year,
+  vod_type,
+  canonical_content_id
+)
+SELECT DISTINCT
+  p.network_id,
+  v.provider_id,
+  v.raw_title,
+  v.normalized_title,
+  v.canonical_title,
+  v.canonical_normalized_title,
+  v.title_year,
+  v.vod_type,
+  v.canonical_content_id
+FROM user_provider_vod v
+JOIN user_providers p ON p.id = v.provider_id
+WHERE p.network_id IS NOT NULL
+ON CONFLICT (provider_network_id, raw_title, vod_type) DO NOTHING;
 
 ALTER TABLE user_provider_vod
   DROP CONSTRAINT IF EXISTS user_provider_vod_vod_type_check;

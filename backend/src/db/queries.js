@@ -1,5 +1,12 @@
 const pool = require('./pool');
 
+function pickFirstDefined(entry, ...keys) {
+  for (const key of keys) {
+    if (entry[key] !== undefined) return entry[key];
+  }
+  return undefined;
+}
+
 const USER_PUBLIC_SELECT = `
   SELECT
     u.id,
@@ -177,21 +184,92 @@ const userQueries = {
   },
 };
 
-// ─── Providers ───────────────────────────────────────────────────────────────
+// ─── Provider Networks / Providers ───────────────────────────────────────────
 
-const providerQueries = {
-  async create({ userId, name, hosts, username, password }) {
+const providerNetworkQueries = {
+  async create({ name, identityKey = null, legacyProviderId = null }) {
     const { rows } = await pool.query(
-      `INSERT INTO user_providers (user_id, name, hosts, username, password)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [userId, name, hosts, username, password]
+      `INSERT INTO provider_networks (name, identity_key, legacy_provider_id, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       RETURNING *`,
+      [name, identityKey, legacyProviderId]
     );
     return rows[0];
   },
 
   async findById(id) {
     const { rows } = await pool.query(
-      'SELECT * FROM user_providers WHERE id = $1',
+      'SELECT * FROM provider_networks WHERE id = $1',
+      [id]
+    );
+    return rows[0];
+  },
+
+  async addHosts(providerNetworkId, hosts) {
+    if (!providerNetworkId || !Array.isArray(hosts) || hosts.length === 0) return;
+    const values = [];
+    const placeholders = hosts.map((host, index) => {
+      const base = index * 2;
+      values.push(providerNetworkId, host);
+      return `($${base + 1}, $${base + 2})`;
+    });
+    await pool.query(
+      `INSERT INTO provider_network_hosts (provider_network_id, host_url)
+       VALUES ${placeholders.join(', ')}
+       ON CONFLICT (provider_network_id, host_url) DO NOTHING`,
+      values
+    );
+  },
+
+  async listHosts(providerNetworkId) {
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM provider_network_hosts
+       WHERE provider_network_id = $1
+       ORDER BY created_at ASC`,
+      [providerNetworkId]
+    );
+    return rows;
+  },
+
+  async listAllHosts() {
+    const { rows } = await pool.query(
+      `SELECT h.*, n.name AS network_name
+       FROM provider_network_hosts h
+       JOIN provider_networks n ON n.id = h.provider_network_id
+       WHERE h.is_active = true
+       ORDER BY h.created_at ASC`
+    );
+    return rows;
+  },
+
+  async touchCatalogRefresh(providerNetworkId) {
+    await pool.query(
+      `UPDATE provider_networks
+       SET catalog_last_refreshed_at = NOW(), updated_at = NOW()
+       WHERE id = $1`,
+      [providerNetworkId]
+    );
+  },
+};
+
+const providerQueries = {
+  async create({ userId, name, hosts, username, password, networkId = null, catalogVariant = false }) {
+    const { rows } = await pool.query(
+      `INSERT INTO user_providers (user_id, name, hosts, username, password, network_id, catalog_variant, network_attached_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $6 IS NULL THEN NULL ELSE NOW() END)
+       RETURNING *`,
+      [userId, name, hosts, username, password, networkId, catalogVariant]
+    );
+    return rows[0];
+  },
+
+  async findById(id) {
+    const { rows } = await pool.query(
+      `SELECT p.*, n.name AS network_name
+       FROM user_providers p
+       LEFT JOIN provider_networks n ON n.id = p.network_id
+       WHERE p.id = $1`,
       [id]
     );
     return rows[0];
@@ -199,7 +277,10 @@ const providerQueries = {
 
   async findByIdAndUser(id, userId) {
     const { rows } = await pool.query(
-      'SELECT * FROM user_providers WHERE id = $1 AND user_id = $2',
+      `SELECT p.*, n.name AS network_name
+       FROM user_providers p
+       LEFT JOIN provider_networks n ON n.id = p.network_id
+       WHERE p.id = $1 AND p.user_id = $2`,
       [id, userId]
     );
     return rows[0];
@@ -208,11 +289,25 @@ const providerQueries = {
   async findByUser(userId) {
     const { rows } = await pool.query(
       `SELECT p.*,
-              (SELECT COUNT(*) FROM user_provider_vod v WHERE v.provider_id = p.id) AS vod_count,
-              (SELECT COUNT(*) FROM user_provider_vod v
-               JOIN matched_content m ON m.raw_title = v.raw_title
-               WHERE v.provider_id = p.id AND m.tmdb_id IS NOT NULL) AS matched_count
+              n.name AS network_name,
+              COALESCE(
+                (SELECT COUNT(*) FROM network_vod nv WHERE nv.provider_network_id = p.network_id),
+                (SELECT COUNT(*) FROM user_provider_vod v WHERE v.provider_id = p.id)
+              ) AS vod_count,
+              COALESCE(
+                (SELECT COUNT(*)
+                 FROM network_vod nv
+                 LEFT JOIN canonical_content cc ON cc.id = nv.canonical_content_id
+                 LEFT JOIN matched_content m ON m.raw_title = nv.raw_title
+                 WHERE nv.provider_network_id = p.network_id
+                   AND (cc.tmdb_id IS NOT NULL OR m.tmdb_id IS NOT NULL)),
+                (SELECT COUNT(*)
+                 FROM user_provider_vod v
+                 LEFT JOIN matched_content m ON m.raw_title = v.raw_title
+                 WHERE v.provider_id = p.id AND m.tmdb_id IS NOT NULL)
+              ) AS matched_count
        FROM user_providers p
+       LEFT JOIN provider_networks n ON n.id = p.network_id
        WHERE p.user_id = $1
        ORDER BY p.created_at DESC`,
       [userId]
@@ -222,10 +317,14 @@ const providerQueries = {
 
   async listAll({ limit = 100, offset = 0 } = {}) {
     const { rows } = await pool.query(
-      `SELECT p.*, u.email as user_email,
-              (SELECT COUNT(*) FROM user_provider_vod v WHERE v.provider_id = p.id) AS vod_count
+      `SELECT p.*, u.email as user_email, n.name AS network_name,
+              COALESCE(
+                (SELECT COUNT(*) FROM network_vod nv WHERE nv.provider_network_id = p.network_id),
+                (SELECT COUNT(*) FROM user_provider_vod v WHERE v.provider_id = p.id)
+              ) AS vod_count
        FROM user_providers p
        JOIN users u ON u.id = p.user_id
+       LEFT JOIN provider_networks n ON n.id = p.network_id
        ORDER BY p.created_at DESC
        LIMIT $1 OFFSET $2`,
       [limit, offset]
@@ -234,7 +333,7 @@ const providerQueries = {
   },
 
   async update(id, userId, fields) {
-    const allowed = ['name', 'hosts', 'username', 'password'];
+    const allowed = ['name', 'hosts', 'username', 'password', 'catalog_variant'];
     const updates = [];
     const values = [];
     let idx = 1;
@@ -247,8 +346,24 @@ const providerQueries = {
     if (!updates.length) return null;
     values.push(id, userId);
     const { rows } = await pool.query(
-      `UPDATE user_providers SET ${updates.join(', ')} WHERE id = $${idx} AND user_id = $${idx + 1} RETURNING *`,
+      `UPDATE user_providers
+       SET ${updates.join(', ')}
+       WHERE id = $${idx} AND user_id = $${idx + 1}
+       RETURNING *`,
       values
+    );
+    return rows[0];
+  },
+
+  async attachNetwork(id, userId, { networkId, catalogVariant = false }) {
+    const { rows } = await pool.query(
+      `UPDATE user_providers
+       SET network_id = $1,
+           catalog_variant = $2,
+           network_attached_at = NOW()
+       WHERE id = $3 AND user_id = $4
+       RETURNING *`,
+      [networkId, catalogVariant, id, userId]
     );
     return rows[0];
   },
@@ -274,9 +389,10 @@ const providerQueries = {
 
   async getAllForHealthCheck({ activeWithinDays = parseInt(process.env.ACTIVE_USER_LOOKBACK_DAYS || '14', 10) } = {}) {
     const { rows } = await pool.query(
-      `SELECT p.*
+      `SELECT p.*, n.name AS network_name
        FROM user_providers p
        JOIN users u ON u.id = p.user_id
+       LEFT JOIN provider_networks n ON n.id = p.network_id
        WHERE u.is_active = true
          AND (
            u.last_seen >= NOW() - ($1::int * INTERVAL '1 day')
@@ -291,11 +407,18 @@ const providerQueries = {
 // ─── VOD ─────────────────────────────────────────────────────────────────────
 
 const vodQueries = {
+  async getProviderCatalogContext(providerId) {
+    return providerQueries.findById(providerId);
+  },
+
   async upsertBatch(entries) {
     if (!entries.length) return;
     const values = [];
     const placeholders = entries.map((e, i) => {
-      const base = i * 15;
+      const base = i * 16;
+      const titleYear = pickFirstDefined(e, 'titleYear', 'title_year', 'year');
+      const contentLanguages = pickFirstDefined(e, 'contentLanguages', 'content_languages', 'languages');
+      const qualityTags = pickFirstDefined(e, 'qualityTags', 'quality_tags');
       values.push(
         e.userId,
         e.providerId,
@@ -304,19 +427,20 @@ const vodQueries = {
         e.normalizedTitle || null,
         e.canonicalTitle || null,
         e.canonicalNormalizedTitle || null,
-        e.titleYear || null,
-        e.contentLanguages || [],
-        e.qualityTags || [],
+        titleYear || null,
+        contentLanguages || [],
+        qualityTags || [],
         e.posterUrl,
         e.category,
         e.vodType,
         e.containerExtension || null,
-        e.epgChannelId || null
+        e.epgChannelId || null,
+        e.canonicalContentId || null
       );
-      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}, $${base + 12}, $${base + 13}, $${base + 14}, $${base + 15})`;
+      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}, $${base + 12}, $${base + 13}, $${base + 14}, $${base + 15}, $${base + 16})`;
     });
     await pool.query(
-      `INSERT INTO user_provider_vod (user_id, provider_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension, epg_channel_id)
+      `INSERT INTO user_provider_vod (user_id, provider_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension, epg_channel_id, canonical_content_id)
        VALUES ${placeholders.join(', ')}
        ON CONFLICT (provider_id, stream_id, vod_type) DO UPDATE
        SET raw_title = EXCLUDED.raw_title,
@@ -329,7 +453,55 @@ const vodQueries = {
            poster_url = EXCLUDED.poster_url,
            category = EXCLUDED.category,
            container_extension = EXCLUDED.container_extension,
-           epg_channel_id = EXCLUDED.epg_channel_id`,
+           epg_channel_id = EXCLUDED.epg_channel_id,
+           canonical_content_id = EXCLUDED.canonical_content_id`,
+      values
+    );
+  },
+
+  async upsertNetworkBatch(entries) {
+    if (!entries.length) return;
+    const values = [];
+    const placeholders = entries.map((e, i) => {
+      const base = i * 15;
+      const titleYear = pickFirstDefined(e, 'titleYear', 'title_year', 'year');
+      const contentLanguages = pickFirstDefined(e, 'contentLanguages', 'content_languages', 'languages');
+      const qualityTags = pickFirstDefined(e, 'qualityTags', 'quality_tags');
+      values.push(
+        e.providerNetworkId,
+        e.streamId,
+        e.rawTitle,
+        e.normalizedTitle || null,
+        e.canonicalTitle || null,
+        e.canonicalNormalizedTitle || null,
+        titleYear || null,
+        contentLanguages || [],
+        qualityTags || [],
+        e.posterUrl,
+        e.category,
+        e.vodType,
+        e.containerExtension || null,
+        e.epgChannelId || null,
+        e.canonicalContentId || null
+      );
+      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}, $${base + 12}, $${base + 13}, $${base + 14}, $${base + 15})`;
+    });
+    await pool.query(
+      `INSERT INTO network_vod (provider_network_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension, epg_channel_id, canonical_content_id)
+       VALUES ${placeholders.join(', ')}
+       ON CONFLICT (provider_network_id, stream_id, vod_type) DO UPDATE
+       SET raw_title = EXCLUDED.raw_title,
+           normalized_title = EXCLUDED.normalized_title,
+           canonical_title = EXCLUDED.canonical_title,
+           canonical_normalized_title = EXCLUDED.canonical_normalized_title,
+           title_year = EXCLUDED.title_year,
+           content_languages = EXCLUDED.content_languages,
+           quality_tags = EXCLUDED.quality_tags,
+           poster_url = EXCLUDED.poster_url,
+           category = EXCLUDED.category,
+           container_extension = EXCLUDED.container_extension,
+           epg_channel_id = EXCLUDED.epg_channel_id,
+           canonical_content_id = EXCLUDED.canonical_content_id`,
       values
     );
   },
@@ -338,30 +510,91 @@ const vodQueries = {
     await pool.query('DELETE FROM user_provider_vod WHERE provider_id = $1', [providerId]);
   },
 
+  async resolveByExternalIdForUser(userId, externalId, { single = true, onlyOnline = false } = {}) {
+    const externalField = externalId.startsWith('tt') ? 'imdb_id' : 'tmdb_id';
+    const normalizedValue = externalId.startsWith('tmdb:') ? parseInt(externalId.slice(5), 10) : externalId;
+    const limitClause = single ? 'LIMIT 1' : '';
+    const onlineClause = onlyOnline ? `AND p.status = 'online'` : '';
+    const { rows } = await pool.query(
+      `SELECT
+         COALESCE(nv.id, v.id) AS id,
+         COALESCE(nv.stream_id, v.stream_id) AS stream_id,
+         COALESCE(nv.raw_title, v.raw_title) AS raw_title,
+         COALESCE(nv.normalized_title, v.normalized_title) AS normalized_title,
+         COALESCE(nv.canonical_title, v.canonical_title) AS canonical_title,
+         COALESCE(nv.canonical_normalized_title, v.canonical_normalized_title) AS canonical_normalized_title,
+         COALESCE(nv.title_year, v.title_year) AS title_year,
+         COALESCE(nv.content_languages, v.content_languages) AS content_languages,
+         COALESCE(nv.quality_tags, v.quality_tags) AS quality_tags,
+         COALESCE(nv.poster_url, v.poster_url) AS poster_url,
+         COALESCE(nv.category, v.category) AS category,
+         COALESCE(nv.vod_type, v.vod_type) AS vod_type,
+         COALESCE(nv.container_extension, v.container_extension) AS container_extension,
+         COALESCE(nv.epg_channel_id, v.epg_channel_id) AS epg_channel_id,
+         p.id AS provider_id,
+         p.network_id,
+         p.catalog_variant,
+         p.active_host,
+         p.username,
+         p.password,
+         COALESCE(cc.tmdb_id, m.tmdb_id) AS tmdb_id,
+         COALESCE(cc.imdb_id, m.imdb_id) AS imdb_id,
+         COALESCE(cc.confidence_score, m.confidence_score) AS confidence_score
+       FROM user_providers p
+       LEFT JOIN network_vod nv
+         ON nv.provider_network_id = p.network_id
+        AND p.catalog_variant = false
+       LEFT JOIN user_provider_vod v
+         ON v.provider_id = p.id
+        AND (p.catalog_variant = true OR p.network_id IS NULL)
+       LEFT JOIN canonical_content cc
+         ON cc.id = COALESCE(nv.canonical_content_id, v.canonical_content_id)
+       LEFT JOIN matched_content m
+         ON m.raw_title = COALESCE(nv.raw_title, v.raw_title)
+       WHERE p.user_id = $1
+         ${onlineClause}
+         AND (
+           cc.${externalField} = $2
+           OR m.${externalField} = $2
+         )
+       ORDER BY COALESCE(nv.raw_title, v.raw_title) ASC, p.id ASC
+       ${limitClause}`,
+      [userId, normalizedValue]
+    );
+    return single ? (rows[0] || null) : rows;
+  },
+
   async getByProvider(providerId, { userId, type, page = 1, limit = 100, search = '', matched, category } = {}) {
+    const provider = await this.getProviderCatalogContext(providerId);
+    const useNetwork = Boolean(provider?.network_id && !provider?.catalog_variant);
+    const sourceTable = useNetwork ? 'network_vod' : 'user_provider_vod';
+    const sourceAlias = 'v';
+    const providerFilterColumn = useNetwork ? 'v.provider_network_id' : 'v.provider_id';
+    const providerFilterValue = useNetwork ? provider.network_id : providerId;
     let query = `
       SELECT
         v.*,
-        m.tmdb_id,
-        m.tmdb_type,
-        m.confidence_score,
-        m.imdb_id,
+        COALESCE(cc.tmdb_id, m.tmdb_id) AS tmdb_id,
+        COALESCE(cc.imdb_id, m.imdb_id) AS imdb_id,
+        COALESCE(m.tmdb_type, CASE WHEN cc.vod_type = 'series' THEN 'series' ELSE 'movie' END) AS tmdb_type,
+        COALESCE(cc.confidence_score, m.confidence_score) AS confidence_score,
         wh.progress_pct AS watch_progress_pct,
         wh.last_watched_at,
         (wh.id IS NOT NULL) AS is_watched
-      FROM user_provider_vod v
+      FROM ${sourceTable} ${sourceAlias}
+      LEFT JOIN canonical_content cc ON cc.id = v.canonical_content_id
       LEFT JOIN matched_content m ON m.raw_title = v.raw_title
       LEFT JOIN watch_history wh
         ON wh.user_id = $2
        AND wh.raw_title = v.raw_title
-      WHERE v.provider_id = $1
+      WHERE ${providerFilterColumn} = $1
     `;
-    const params = [providerId, userId || null];
+    const params = [providerFilterValue, userId || null];
     let idx = 3;
     if (type) { query += ` AND v.vod_type = $${idx++}`; params.push(type); }
     if (search) { query += ` AND v.raw_title ILIKE $${idx++}`; params.push(`%${search}%`); }
-    if (matched === true) { query += ` AND m.tmdb_id IS NOT NULL`; }
-    if (matched === false) { query += ` AND (m.tmdb_id IS NULL AND m.id IS NOT NULL)`; }
+    if (matched === true) { query += ` AND (m.tmdb_id IS NOT NULL OR cc.tmdb_id IS NOT NULL)`; }
+    if (matched === false) { query += ` AND (m.tmdb_id IS NULL AND cc.tmdb_id IS NULL AND m.id IS NOT NULL)`; }
     if (category) { query += ` AND v.category = $${idx++}`; params.push(category); }
     query += ` ORDER BY
       v.canonical_normalized_title ASC NULLS LAST,
@@ -375,19 +608,25 @@ const vodQueries = {
   },
 
   async countByProvider(providerId, { type, search = '', matched, category } = {}) {
+    const provider = await this.getProviderCatalogContext(providerId);
+    const useNetwork = Boolean(provider?.network_id && !provider?.catalog_variant);
+    const sourceTable = useNetwork ? 'network_vod' : 'user_provider_vod';
+    const providerFilterColumn = useNetwork ? 'provider_network_id' : 'provider_id';
+    const providerFilterValue = useNetwork ? provider.network_id : providerId;
     let query = `
       SELECT COUNT(*) AS total
-      FROM user_provider_vod v
+      FROM ${sourceTable} v
+      LEFT JOIN canonical_content cc ON cc.id = v.canonical_content_id
       LEFT JOIN matched_content m ON m.raw_title = v.raw_title
-      WHERE v.provider_id = $1
+      WHERE ${providerFilterColumn} = $1
     `;
-    const params = [providerId];
+    const params = [providerFilterValue];
     let idx = 2;
 
     if (type) { query += ` AND v.vod_type = $${idx++}`; params.push(type); }
     if (search) { query += ` AND v.raw_title ILIKE $${idx++}`; params.push(`%${search}%`); }
-    if (matched === true) { query += ' AND m.tmdb_id IS NOT NULL'; }
-    if (matched === false) { query += ' AND (m.tmdb_id IS NULL AND m.id IS NOT NULL)'; }
+    if (matched === true) { query += ' AND (m.tmdb_id IS NOT NULL OR cc.tmdb_id IS NOT NULL)'; }
+    if (matched === false) { query += ' AND ((m.tmdb_id IS NULL AND cc.tmdb_id IS NULL) AND m.id IS NOT NULL)'; }
     if (category) { query += ` AND v.category = $${idx++}`; params.push(category); }
 
     const { rows } = await pool.query(query, params);
@@ -395,12 +634,17 @@ const vodQueries = {
   },
 
   async getCategoriesByProvider(providerId, { type } = {}) {
+    const provider = await this.getProviderCatalogContext(providerId);
+    const useNetwork = Boolean(provider?.network_id && !provider?.catalog_variant);
+    const sourceTable = useNetwork ? 'network_vod' : 'user_provider_vod';
+    const providerFilterColumn = useNetwork ? 'provider_network_id' : 'provider_id';
+    const providerFilterValue = useNetwork ? provider.network_id : providerId;
     let query = `
       SELECT DISTINCT category
-      FROM user_provider_vod
-      WHERE provider_id = $1
+      FROM ${sourceTable}
+      WHERE ${providerFilterColumn} = $1
     `;
-    const params = [providerId];
+    const params = [providerFilterValue];
 
     if (type) {
       query += ' AND vod_type = $2';
@@ -416,63 +660,115 @@ const vodQueries = {
   },
 
   async getStats(providerId) {
+    const provider = await this.getProviderCatalogContext(providerId);
+    const useNetwork = Boolean(provider?.network_id && !provider?.catalog_variant);
+    const sourceTable = useNetwork ? 'network_vod' : 'user_provider_vod';
+    const providerFilterColumn = useNetwork ? 'provider_network_id' : 'provider_id';
+    const providerFilterValue = useNetwork ? provider.network_id : providerId;
     const { rows } = await pool.query(
       `SELECT
          COUNT(*) FILTER (WHERE vod_type = 'movie') AS movie_count,
          COUNT(*) FILTER (WHERE vod_type = 'series') AS series_count,
          COUNT(DISTINCT category) AS category_count,
          COUNT(*) AS total
-       FROM user_provider_vod WHERE provider_id = $1`,
-      [providerId]
+       FROM ${sourceTable} WHERE ${providerFilterColumn} = $1`,
+      [providerFilterValue]
     );
     return rows[0];
   },
 
   async getMatchStats(providerId) {
+    const provider = await this.getProviderCatalogContext(providerId);
+    const useNetwork = Boolean(provider?.network_id && !provider?.catalog_variant);
+    const sourceTable = useNetwork ? 'network_vod' : 'user_provider_vod';
+    const providerFilterColumn = useNetwork ? 'provider_network_id' : 'provider_id';
+    const providerFilterValue = useNetwork ? provider.network_id : providerId;
     const { rows } = await pool.query(
       `SELECT
          COUNT(v.id) AS total,
-         COUNT(m.tmdb_id) AS matched,
-         COUNT(v.id) - COUNT(m.tmdb_id) AS unmatched
-       FROM user_provider_vod v
+         COUNT(*) FILTER (WHERE m.tmdb_id IS NOT NULL OR cc.tmdb_id IS NOT NULL) AS matched,
+         COUNT(v.id) - COUNT(*) FILTER (WHERE m.tmdb_id IS NOT NULL OR cc.tmdb_id IS NOT NULL) AS unmatched
+       FROM ${sourceTable} v
+       LEFT JOIN canonical_content cc ON cc.id = v.canonical_content_id
        LEFT JOIN matched_content m ON m.raw_title = v.raw_title AND m.tmdb_id IS NOT NULL
-       WHERE v.provider_id = $1`,
-      [providerId]
+       WHERE ${providerFilterColumn} = $1`,
+      [providerFilterValue]
     );
     return rows[0];
   },
 
   async getUnmatchedTitles(providerId) {
+    const provider = await this.getProviderCatalogContext(providerId);
+    const useNetwork = Boolean(provider?.network_id && !provider?.catalog_variant);
+    const sourceTable = useNetwork ? 'network_vod' : 'user_provider_vod';
+    const providerFilterColumn = useNetwork ? 'provider_network_id' : 'provider_id';
+    const providerFilterValue = useNetwork ? provider.network_id : providerId;
     const { rows } = await pool.query(
       `SELECT v.raw_title, v.vod_type
-       FROM user_provider_vod v
+       FROM ${sourceTable} v
+       LEFT JOIN canonical_content cc ON cc.id = v.canonical_content_id
        LEFT JOIN matched_content m ON m.raw_title = v.raw_title
-       WHERE v.provider_id = $1 AND (m.id IS NULL OR m.tmdb_id IS NULL)
+       WHERE ${providerFilterColumn} = $1
+         AND (cc.tmdb_id IS NULL AND (m.id IS NULL OR m.tmdb_id IS NULL))
        ORDER BY v.raw_title ASC`,
-      [providerId]
+      [providerFilterValue]
     );
     return rows;
   },
 
   async getCategoryBreakdown(providerId) {
+    const provider = await this.getProviderCatalogContext(providerId);
+    const useNetwork = Boolean(provider?.network_id && !provider?.catalog_variant);
+    const sourceTable = useNetwork ? 'network_vod' : 'user_provider_vod';
+    const providerFilterColumn = useNetwork ? 'provider_network_id' : 'provider_id';
+    const providerFilterValue = useNetwork ? provider.network_id : providerId;
     const { rows } = await pool.query(
       `SELECT category, vod_type, COUNT(*) as count
-       FROM user_provider_vod
-       WHERE provider_id = $1
+       FROM ${sourceTable}
+       WHERE ${providerFilterColumn} = $1
        GROUP BY category, vod_type
        ORDER BY count DESC`,
-      [providerId]
+      [providerFilterValue]
     );
     return rows;
   },
 
   async findByTmdbIdForUser(userId, tmdbId) {
     const { rows } = await pool.query(
-      `SELECT v.*, p.active_host, p.username, p.password
-       FROM user_provider_vod v
-       JOIN matched_content m ON m.raw_title = v.raw_title AND m.tmdb_id = $2
-       JOIN user_providers p ON p.id = v.provider_id AND p.user_id = $1
-       WHERE v.user_id = $1
+      `SELECT
+         COALESCE(nv.id, v.id) AS id,
+         COALESCE(nv.stream_id, v.stream_id) AS stream_id,
+         COALESCE(nv.raw_title, v.raw_title) AS raw_title,
+         COALESCE(nv.normalized_title, v.normalized_title) AS normalized_title,
+         COALESCE(nv.canonical_title, v.canonical_title) AS canonical_title,
+         COALESCE(nv.canonical_normalized_title, v.canonical_normalized_title) AS canonical_normalized_title,
+         COALESCE(nv.title_year, v.title_year) AS title_year,
+         COALESCE(nv.content_languages, v.content_languages) AS content_languages,
+         COALESCE(nv.quality_tags, v.quality_tags) AS quality_tags,
+         COALESCE(nv.poster_url, v.poster_url) AS poster_url,
+         COALESCE(nv.category, v.category) AS category,
+         COALESCE(nv.vod_type, v.vod_type) AS vod_type,
+         COALESCE(nv.container_extension, v.container_extension) AS container_extension,
+         COALESCE(nv.epg_channel_id, v.epg_channel_id) AS epg_channel_id,
+         p.id AS provider_id,
+         p.active_host,
+         p.username,
+         p.password,
+         COALESCE(cc.tmdb_id, m.tmdb_id) AS tmdb_id,
+         COALESCE(cc.imdb_id, m.imdb_id) AS imdb_id
+       FROM user_providers p
+       LEFT JOIN network_vod nv
+         ON nv.provider_network_id = p.network_id
+        AND p.catalog_variant = false
+       LEFT JOIN user_provider_vod v
+         ON v.provider_id = p.id
+        AND (p.catalog_variant = true OR p.network_id IS NULL)
+       LEFT JOIN canonical_content cc
+         ON cc.id = COALESCE(nv.canonical_content_id, v.canonical_content_id)
+       LEFT JOIN matched_content m
+         ON m.raw_title = COALESCE(nv.raw_title, v.raw_title)
+       WHERE p.user_id = $1
+         AND (cc.tmdb_id = $2 OR m.tmdb_id = $2)
        LIMIT 1`,
       [userId, tmdbId]
     );
@@ -480,14 +776,27 @@ const vodQueries = {
   },
 
   async findByInternalIdForUser(userId, internalId) {
-    const { rows } = await pool.query(
-      `SELECT v.*, p.active_host, p.username, p.password
-       FROM user_provider_vod v
-       JOIN user_providers p ON p.id = v.provider_id AND p.user_id = $1
-       WHERE v.id = $2 AND v.user_id = $1
+    let { rows } = await pool.query(
+      `SELECT nv.*, p.id AS provider_id, p.active_host, p.username, p.password
+       FROM network_vod nv
+       JOIN user_providers p
+         ON p.network_id = nv.provider_network_id
+        AND p.user_id = $1
+        AND p.catalog_variant = false
+       WHERE nv.id = $2
        LIMIT 1`,
       [userId, internalId]
     );
+    if (!rows[0]) {
+      ({ rows } = await pool.query(
+        `SELECT v.*, p.active_host, p.username, p.password
+         FROM user_provider_vod v
+         JOIN user_providers p ON p.id = v.provider_id AND p.user_id = $1
+         WHERE v.id = $2 AND v.user_id = $1
+         LIMIT 1`,
+        [userId, internalId]
+      ));
+    }
     return rows[0];
   },
 
@@ -553,6 +862,106 @@ const vodQueries = {
   async totalCount() {
     const { rows } = await pool.query('SELECT COUNT(*) FROM user_provider_vod');
     return parseInt(rows[0].count);
+  },
+};
+
+// ─── Canonical Content ───────────────────────────────────────────────────────
+
+const canonicalContentQueries = {
+  async findOrCreate({ vodType, canonicalTitle, canonicalNormalizedTitle, titleYear, tmdbId = null, imdbId = null, confidenceScore = null }) {
+    const { rows } = await pool.query(
+      `INSERT INTO canonical_content (
+         vod_type,
+         canonical_title,
+         canonical_normalized_title,
+         title_year,
+         tmdb_id,
+         imdb_id,
+         confidence_score,
+         updated_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+       ON CONFLICT (vod_type, canonical_normalized_title, title_year) DO UPDATE SET
+         canonical_title = EXCLUDED.canonical_title,
+         tmdb_id = COALESCE(canonical_content.tmdb_id, EXCLUDED.tmdb_id),
+         imdb_id = COALESCE(canonical_content.imdb_id, EXCLUDED.imdb_id),
+         confidence_score = COALESCE(EXCLUDED.confidence_score, canonical_content.confidence_score),
+         updated_at = NOW()
+       RETURNING *`,
+      [vodType, canonicalTitle, canonicalNormalizedTitle, titleYear || null, tmdbId, imdbId, confidenceScore]
+    );
+    return rows[0];
+  },
+
+  async upsertAlias({ providerNetworkId, providerId, rawTitle, normalizedTitle, canonicalTitle, canonicalNormalizedTitle, titleYear, vodType, canonicalContentId = null, confidenceScore = null }) {
+    const { rows } = await pool.query(
+      `INSERT INTO content_aliases (
+         provider_network_id,
+         provider_id,
+         raw_title,
+         normalized_title,
+         canonical_title,
+         canonical_normalized_title,
+         title_year,
+         vod_type,
+         canonical_content_id,
+         confidence_score,
+         updated_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+       ON CONFLICT (provider_network_id, raw_title, vod_type) DO UPDATE SET
+         provider_id = EXCLUDED.provider_id,
+         normalized_title = EXCLUDED.normalized_title,
+         canonical_title = EXCLUDED.canonical_title,
+         canonical_normalized_title = EXCLUDED.canonical_normalized_title,
+         title_year = EXCLUDED.title_year,
+         canonical_content_id = COALESCE(EXCLUDED.canonical_content_id, content_aliases.canonical_content_id),
+         confidence_score = COALESCE(EXCLUDED.confidence_score, content_aliases.confidence_score),
+         updated_at = NOW()
+       RETURNING *`,
+      [providerNetworkId, providerId, rawTitle, normalizedTitle || null, canonicalTitle || null, canonicalNormalizedTitle || null, titleYear || null, vodType, canonicalContentId, confidenceScore]
+    );
+    return rows[0];
+  },
+
+  async resolveEntries(entries, { providerNetworkId, providerId }) {
+    if (!Array.isArray(entries) || entries.length === 0) return [];
+    const resolved = [];
+    for (const entry of entries) {
+      if (!entry?.vodType || !entry?.rawTitle) continue;
+      const canonical = await this.findOrCreate({
+        vodType: entry.vodType,
+        canonicalTitle: entry.canonicalTitle || entry.rawTitle,
+        canonicalNormalizedTitle: entry.canonicalNormalizedTitle || entry.normalizedTitle,
+        titleYear: entry.titleYear || null,
+      });
+      await this.upsertAlias({
+        providerNetworkId,
+        providerId,
+        rawTitle: entry.rawTitle,
+        normalizedTitle: entry.normalizedTitle || null,
+        canonicalTitle: entry.canonicalTitle || entry.rawTitle,
+        canonicalNormalizedTitle: entry.canonicalNormalizedTitle || entry.normalizedTitle,
+        titleYear: entry.titleYear || null,
+        vodType: entry.vodType,
+        canonicalContentId: canonical?.id || null,
+      });
+      resolved.push({
+        ...entry,
+        canonicalContentId: canonical?.id || null,
+      });
+    }
+    return resolved;
+  },
+
+  async getCoverage() {
+    const { rows } = await pool.query(
+      `SELECT
+         COUNT(*) AS canonical_count,
+         COUNT(*) FILTER (WHERE tmdb_id IS NOT NULL OR imdb_id IS NOT NULL) AS externally_matched_count
+       FROM canonical_content`
+    );
+    return rows[0];
   },
 };
 
@@ -1216,6 +1625,29 @@ const freeAccessQueries = {
     return rows;
   },
 
+  async listRuntimeEligibleAccounts({ providerGroupId = null } = {}) {
+    const params = [];
+    let where = `
+      WHERE g.is_active = true
+        AND a.status <> 'suspended'
+    `;
+
+    if (providerGroupId) {
+      params.push(providerGroupId);
+      where += ` AND a.provider_group_id = $${params.length}`;
+    }
+
+    const { rows } = await pool.query(
+      `SELECT a.*, g.name AS provider_group_name, g.trial_days
+       FROM free_access_provider_accounts a
+       JOIN free_access_provider_groups g ON g.id = a.provider_group_id
+       ${where}
+       ORDER BY a.last_assigned_at ASC NULLS FIRST, a.last_checked_at ASC NULLS FIRST, a.created_at ASC`,
+      params
+    );
+    return rows;
+  },
+
   async getHostsForGroup(providerGroupId) {
     const { rows } = await pool.query(
       `SELECT *
@@ -1259,6 +1691,9 @@ const freeAccessQueries = {
     const values = [];
     const placeholders = entries.map((e, i) => {
       const base = i * 13;
+      const titleYear = pickFirstDefined(e, 'titleYear', 'title_year', 'year');
+      const contentLanguages = pickFirstDefined(e, 'contentLanguages', 'content_languages', 'languages');
+      const qualityTags = pickFirstDefined(e, 'qualityTags', 'quality_tags');
       values.push(
         e.providerGroupId,
         e.streamId,
@@ -1266,9 +1701,9 @@ const freeAccessQueries = {
         e.normalizedTitle || null,
         e.canonicalTitle || null,
         e.canonicalNormalizedTitle || null,
-        e.titleYear || null,
-        e.contentLanguages || [],
-        e.qualityTags || [],
+        titleYear || null,
+        contentLanguages || [],
+        qualityTags || [],
         e.posterUrl || null,
         e.category || null,
         e.vodType,
@@ -1359,8 +1794,10 @@ const freeAccessQueries = {
 
 module.exports = {
   userQueries,
+  providerNetworkQueries,
   providerQueries,
   vodQueries,
+  canonicalContentQueries,
   watchHistoryQueries,
   tmdbQueries,
   matchQueries,

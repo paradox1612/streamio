@@ -18,6 +18,8 @@ const mockVodQueries = {
   getCategoryBreakdown: jest.fn(),
   getByProvider: jest.fn(),
   findOnDemandCandidateForUser: jest.fn(),
+  resolveByExternalIdForUser: jest.fn(),
+  findByInternalIdForUser: jest.fn(),
 };
 const mockMatchQueries = {
   upsert: jest.fn(),
@@ -28,6 +30,7 @@ const mockWatchHistoryQueries = {
 const mockCache = {
   get: jest.fn(),
   set: jest.fn(),
+  del: jest.fn(),
 };
 const mockHostHealthService = {
   getProviderHealth: jest.fn(),
@@ -195,30 +198,28 @@ describe('addonHandler handleStream', () => {
   it('returns all matching movie variants with raw titles in the stream labels', async () => {
     mockCache.get.mockReturnValue(null);
     mockUserQueries.findByToken.mockResolvedValue({ id: 'user-1' });
-    pool.query.mockResolvedValueOnce({
-      rows: [
-        {
-          provider_id: 'provider-1',
-          raw_title: 'Peaky Blinders: The Immortal Man (2026) (Hindi)',
-          active_host: 'http://fallback-1.test',
-          username: 'alice',
-          password: 'secret',
-          stream_id: '101',
-          vod_type: 'movie',
-          container_extension: 'mp4',
-        },
-        {
-          provider_id: 'provider-2',
-          raw_title: 'Peaky Blinders: The Immortal Man (2026) (Tamil)',
-          active_host: 'http://fallback-2.test',
-          username: 'alice',
-          password: 'secret',
-          stream_id: '202',
-          vod_type: 'movie',
-          container_extension: 'mkv',
-        },
-      ],
-    });
+    mockVodQueries.resolveByExternalIdForUser.mockResolvedValueOnce([
+      {
+        provider_id: 'provider-1',
+        raw_title: 'Peaky Blinders: The Immortal Man (2026) (Hindi)',
+        active_host: 'http://fallback-1.test',
+        username: 'alice',
+        password: 'secret',
+        stream_id: '101',
+        vod_type: 'movie',
+        container_extension: 'mp4',
+      },
+      {
+        provider_id: 'provider-2',
+        raw_title: 'Peaky Blinders: The Immortal Man (2026) (Tamil)',
+        active_host: 'http://fallback-2.test',
+        username: 'alice',
+        password: 'secret',
+        stream_id: '202',
+        vod_type: 'movie',
+        container_extension: 'mkv',
+      },
+    ]);
     mockHostHealthService.getProviderHealth
       .mockResolvedValueOnce([{ status: 'online', host_url: 'http://host-1.test', response_time_ms: 786 }])
       .mockResolvedValueOnce([{ status: 'online', host_url: 'http://host-2.test', response_time_ms: 512 }]);
@@ -250,40 +251,38 @@ describe('addonHandler handleStream', () => {
       preferred_languages: ['hindi'],
       excluded_languages: [],
     });
-    pool.query.mockResolvedValueOnce({
-      rows: [
-        {
-          provider_id: 'provider-1',
-          raw_title: 'War Machine (2026)',
-          active_host: 'http://fallback-1.test',
-          username: 'alice',
-          password: 'secret',
-          stream_id: '101',
-          vod_type: 'movie',
-          container_extension: 'mp4',
-        },
-        {
-          provider_id: 'provider-1',
-          raw_title: 'War Machine (2026) (Hindi)',
-          active_host: 'http://fallback-1.test',
-          username: 'alice',
-          password: 'secret',
-          stream_id: '102',
-          vod_type: 'movie',
-          container_extension: 'mp4',
-        },
-        {
-          provider_id: 'provider-1',
-          raw_title: 'War Machine (2026) (Tamil)',
-          active_host: 'http://fallback-1.test',
-          username: 'alice',
-          password: 'secret',
-          stream_id: '103',
-          vod_type: 'movie',
-          container_extension: 'mp4',
-        },
-      ],
-    });
+    mockVodQueries.resolveByExternalIdForUser.mockResolvedValueOnce([
+      {
+        provider_id: 'provider-1',
+        raw_title: 'War Machine (2026)',
+        active_host: 'http://fallback-1.test',
+        username: 'alice',
+        password: 'secret',
+        stream_id: '101',
+        vod_type: 'movie',
+        container_extension: 'mp4',
+      },
+      {
+        provider_id: 'provider-1',
+        raw_title: 'War Machine (2026) (Hindi)',
+        active_host: 'http://fallback-1.test',
+        username: 'alice',
+        password: 'secret',
+        stream_id: '102',
+        vod_type: 'movie',
+        container_extension: 'mp4',
+      },
+      {
+        provider_id: 'provider-1',
+        raw_title: 'War Machine (2026) (Tamil)',
+        active_host: 'http://fallback-1.test',
+        username: 'alice',
+        password: 'secret',
+        stream_id: '103',
+        vod_type: 'movie',
+        container_extension: 'mp4',
+      },
+    ]);
     mockHostHealthService.getProviderHealth
       .mockResolvedValueOnce([{ status: 'online', host_url: 'http://host-1.test', response_time_ms: 500 }]);
 
@@ -304,20 +303,18 @@ describe('addonHandler handleStream', () => {
   it('returns fallback movie URLs immediately when provider health rows are missing', async () => {
     mockCache.get.mockReturnValue(null);
     mockUserQueries.findByToken.mockResolvedValue({ id: 'user-1' });
-    pool.query.mockResolvedValueOnce({
-      rows: [
-        {
-          provider_id: 'provider-1',
-          raw_title: 'War Machine (2026) (Hindi)',
-          active_host: 'http://fallback-1.test',
-          username: 'alice',
-          password: 'secret',
-          stream_id: '101',
-          vod_type: 'movie',
-          container_extension: 'mp4',
-        },
-      ],
-    });
+    mockVodQueries.resolveByExternalIdForUser.mockResolvedValueOnce([
+      {
+        provider_id: 'provider-1',
+        raw_title: 'War Machine (2026) (Hindi)',
+        active_host: 'http://fallback-1.test',
+        username: 'alice',
+        password: 'secret',
+        stream_id: '101',
+        vod_type: 'movie',
+        container_extension: 'mp4',
+      },
+    ]);
     mockProviderQueries.findByIdAndUser.mockResolvedValue({
       id: 'provider-1',
       active_host: 'http://fallback-1.test',
@@ -346,13 +343,13 @@ describe('addonHandler handleStream', () => {
 describe('addonHandler tryOnDemandMatch', () => {
   it('backfills all successful movie variants for the same IMDb id', async () => {
     pool.query
-      .mockResolvedValueOnce({ rows: [{ id: 1265609, original_title: 'War Machine', normalized_title: 'war machine', year: 2026, imdb_id: 'tt15940132', tmdb_type: 'movie' }] })
-      .mockResolvedValueOnce({ rows: [{ raw_title: 'War Machine (2026)', provider_id: 'provider-1' }] });
+      .mockResolvedValueOnce({ rows: [{ id: 1265609, original_title: 'War Machine', normalized_title: 'war machine', year: 2026, imdb_id: 'tt15940132', tmdb_type: 'movie' }] });
     mockVodQueries.findOnDemandCandidateForUser.mockResolvedValue([
       { raw_title: 'War Machine (2026)', normalized_title: 'war machine 2026' },
       { raw_title: 'War Machine (2026) (Hindi)', normalized_title: 'war machine 2026' },
       { raw_title: 'War Machine (2026) (Tamil)', normalized_title: 'war machine 2026' },
     ]);
+    mockVodQueries.resolveByExternalIdForUser.mockResolvedValueOnce({ raw_title: 'War Machine (2026)', provider_id: 'provider-1' });
     mockTmdbQueries.exactMatchMovie.mockResolvedValue(null);
     mockTmdbQueries.fuzzyMatchMovie.mockResolvedValue({ id: 1265609, score: 0.7058824 });
 
@@ -387,8 +384,7 @@ describe('addonHandler tryOnDemandMatch', () => {
 
   it('skips TMDB rematching when a candidate already points at the same target', async () => {
     pool.query
-      .mockResolvedValueOnce({ rows: [{ id: 1265609, original_title: 'War Machine', normalized_title: 'war machine', year: 2026, imdb_id: 'tt15940132', tmdb_type: 'movie' }] })
-      .mockResolvedValueOnce({ rows: [{ raw_title: 'War Machine (2026)', provider_id: 'provider-1' }] });
+      .mockResolvedValueOnce({ rows: [{ id: 1265609, original_title: 'War Machine', normalized_title: 'war machine', year: 2026, imdb_id: 'tt15940132', tmdb_type: 'movie' }] });
     mockVodQueries.findOnDemandCandidateForUser.mockResolvedValue([
       {
         raw_title: 'War Machine (2026)',
@@ -398,6 +394,7 @@ describe('addonHandler tryOnDemandMatch', () => {
         confidence_score: 0.91,
       },
     ]);
+    mockVodQueries.resolveByExternalIdForUser.mockResolvedValueOnce({ raw_title: 'War Machine (2026)', provider_id: 'provider-1' });
 
     const result = await __test__.tryOnDemandMatch('user-1', 'tt15940132', 'movie');
 
@@ -415,8 +412,7 @@ describe('addonHandler tryOnDemandMatch', () => {
 
   it('falls back to the matched candidate when the immediate post-match lookup is still empty', async () => {
     pool.query
-      .mockResolvedValueOnce({ rows: [{ id: 1265609, original_title: 'War Machine', normalized_title: 'war machine', year: 2026, imdb_id: 'tt15940132', tmdb_type: 'movie' }] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ id: 1265609, original_title: 'War Machine', normalized_title: 'war machine', year: 2026, imdb_id: 'tt15940132', tmdb_type: 'movie' }] });
     mockVodQueries.findOnDemandCandidateForUser.mockResolvedValue([
       {
         raw_title: 'War Machine (2026)',
@@ -429,6 +425,7 @@ describe('addonHandler tryOnDemandMatch', () => {
         container_extension: 'mp4',
       },
     ]);
+    mockVodQueries.resolveByExternalIdForUser.mockResolvedValueOnce(null);
     mockTmdbQueries.exactMatchMovie.mockResolvedValue(null);
     mockTmdbQueries.fuzzyMatchMovie.mockResolvedValue({ id: 1265609, score: 0.7058824 });
 
@@ -448,8 +445,7 @@ describe('addonHandler tryOnDemandMatch', () => {
 
   it('matches short movie titles by stripping the target year from provider metadata', async () => {
     pool.query
-      .mockResolvedValueOnce({ rows: [{ id: 438631, original_title: 'Dune', normalized_title: 'dune', year: 2021, imdb_id: 'tt1160419', tmdb_type: 'movie' }] })
-      .mockResolvedValueOnce({ rows: [{ raw_title: 'Dune (2021)', provider_id: 'provider-1' }] });
+      .mockResolvedValueOnce({ rows: [{ id: 438631, original_title: 'Dune', normalized_title: 'dune', year: 2021, imdb_id: 'tt1160419', tmdb_type: 'movie' }] });
     mockVodQueries.findOnDemandCandidateForUser.mockResolvedValue([
       {
         raw_title: 'Dune (2021)',
@@ -458,6 +454,7 @@ describe('addonHandler tryOnDemandMatch', () => {
     ]);
     mockTmdbQueries.exactMatchMovie
       .mockResolvedValueOnce({ id: 438631, score: 1 });
+    mockVodQueries.resolveByExternalIdForUser.mockResolvedValueOnce({ raw_title: 'Dune (2021)', provider_id: 'provider-1' });
 
     const result = await __test__.tryOnDemandMatch('user-1', 'tt1160419', 'movie');
 
@@ -480,12 +477,12 @@ describe('addonHandler tryOnDemandMatch', () => {
     });
 
     pool.query
-      .mockResolvedValueOnce({ rows: [{ id: 1265609, original_title: 'War Machine', normalized_title: 'war machine', year: 2026, imdb_id: 'tt15940132', tmdb_type: 'movie' }] })
-      .mockResolvedValueOnce({ rows: [{ raw_title: 'War Machine (2026)', provider_id: 'provider-1' }] });
+      .mockResolvedValueOnce({ rows: [{ id: 1265609, original_title: 'War Machine', normalized_title: 'war machine', year: 2026, imdb_id: 'tt15940132', tmdb_type: 'movie' }] });
 
     mockVodQueries.findOnDemandCandidateForUser.mockReturnValue(deferred.promise);
     mockTmdbQueries.exactMatchMovie.mockResolvedValue(null);
     mockTmdbQueries.fuzzyMatchMovie.mockResolvedValue({ id: 1265609, score: 0.7058824 });
+    mockVodQueries.resolveByExternalIdForUser.mockResolvedValueOnce({ raw_title: 'War Machine (2026)', provider_id: 'provider-1' });
 
     const firstPromise = __test__.resolveOnDemandMatchShared('user-1', 'tt15940132', 'movie');
     const secondPromise = __test__.resolveOnDemandMatchShared('user-1', 'tt15940132', 'movie');

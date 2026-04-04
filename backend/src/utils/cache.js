@@ -18,6 +18,13 @@ const NAMESPACE_TTLS = {
   manifestByToken: 60, // 1 min
   hostHealth: 300, // 5 min
   epg: 14400, // 4 hours
+  resolvedVodLookup: 60, // 1 min
+  resolvedVodLookupMiss: 15, // 15 sec
+  resolvedMeta: 30, // 30 sec
+  resolvedMetaMiss: 15, // 15 sec
+  resolvedStreams: 20, // 20 sec
+  resolvedStreamsMiss: 10, // 10 sec
+  providerHostRecheck: 90, // 90 sec
 };
 
 /**

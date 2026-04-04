@@ -13,6 +13,40 @@ const { beginAddonRequest, endAddonRequest } = require('../utils/loadManager');
 const TMDB_POSTER_BASE = 'https://image.tmdb.org/t/p/w500';
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const pendingOnDemandMatches = new Map();
+const lookupMetrics = {
+  cacheHits: 0,
+  cacheMisses: 0,
+  slowPathCount: 0,
+  slowPathMs: 0,
+  hostRechecks: 0,
+};
+
+function recordLookupMetric(metric, amount = 1) {
+  lookupMetrics[metric] = (lookupMetrics[metric] || 0) + amount;
+}
+
+function buildLookupCacheKey(userId, baseId, mode = 'single') {
+  return `${userId}:${mode}:${baseId}`;
+}
+
+function getCachedLookupResult(cacheKey) {
+  const hit = cache.get('resolvedVodLookup', cacheKey);
+  if (hit) {
+    recordLookupMetric('cacheHits');
+    return hit;
+  }
+  const miss = cache.get('resolvedVodLookupMiss', cacheKey);
+  if (miss) {
+    recordLookupMetric('cacheHits');
+    return miss;
+  }
+  recordLookupMetric('cacheMisses');
+  return undefined;
+}
+
+function setCachedLookupResult(cacheKey, value, { miss = false } = {}) {
+  cache.set(miss ? 'resolvedVodLookupMiss' : 'resolvedVodLookup', cacheKey, miss ? { missing: true } : value);
+}
 
 function normalizeCategoryName(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -218,64 +252,36 @@ function parseStremioId(id) {
  * Handles tt*, tmdb:*, and sb_* ID formats.
  */
 async function resolveVodItem(userId, baseId) {
+  const cacheKey = buildLookupCacheKey(userId, baseId, 'single');
+  const cached = getCachedLookupResult(cacheKey);
+  if (cached !== undefined) return cached.missing ? null : cached;
+
+  let result = null;
   if (baseId.startsWith('sb_')) {
-    return vodQueries.findByInternalIdForUser(userId, baseId.slice(3));
+    result = await vodQueries.findByInternalIdForUser(userId, baseId.slice(3));
+  } else if (baseId.startsWith('tt') || baseId.startsWith('tmdb:')) {
+    result = await vodQueries.resolveByExternalIdForUser(userId, baseId, { single: true, onlyOnline: true });
   }
 
-  if (baseId.startsWith('tt')) {
-    const { rows } = await pool.query(
-      `SELECT v.*, p.active_host, p.username, p.password
-       FROM user_provider_vod v
-       JOIN matched_content m ON m.raw_title = v.raw_title AND m.imdb_id = $1
-       JOIN user_providers p ON p.id = v.provider_id AND p.status = 'online'
-       WHERE v.user_id = $2
-       LIMIT 1`,
-      [baseId, userId]
-    );
-    return rows[0] || null;
-  }
-
-  if (baseId.startsWith('tmdb:')) {
-    return vodQueries.findByTmdbIdForUser(userId, parseInt(baseId.slice(5)));
-  }
-
-  return null;
+  setCachedLookupResult(cacheKey, result, { miss: !result });
+  return result;
 }
 
 async function resolveVodItemsForStream(userId, baseId) {
+  const cacheKey = buildLookupCacheKey(userId, baseId, 'all');
+  const cached = getCachedLookupResult(cacheKey);
+  if (cached !== undefined) return cached.missing ? [] : cached;
+
+  let result = [];
   if (baseId.startsWith('sb_')) {
     const item = await vodQueries.findByInternalIdForUser(userId, baseId.slice(3));
-    return item ? [item] : [];
+    result = item ? [item] : [];
+  } else if (baseId.startsWith('tt') || baseId.startsWith('tmdb:')) {
+    result = await vodQueries.resolveByExternalIdForUser(userId, baseId, { single: false, onlyOnline: true });
   }
 
-  if (baseId.startsWith('tt')) {
-    const { rows } = await pool.query(
-      `SELECT v.*, p.active_host, p.username, p.password
-       FROM user_provider_vod v
-       JOIN matched_content m ON m.raw_title = v.raw_title AND m.imdb_id = $1
-       JOIN user_providers p ON p.id = v.provider_id AND p.user_id = $2 AND p.status = 'online'
-       WHERE v.user_id = $2
-       ORDER BY v.raw_title ASC, v.provider_id ASC`,
-      [baseId, userId]
-    );
-    return rows;
-  }
-
-  if (baseId.startsWith('tmdb:')) {
-    const tmdbId = parseInt(baseId.slice(5), 10);
-    const { rows } = await pool.query(
-      `SELECT v.*, p.active_host, p.username, p.password
-       FROM user_provider_vod v
-       JOIN matched_content m ON m.raw_title = v.raw_title AND m.tmdb_id = $2
-       JOIN user_providers p ON p.id = v.provider_id AND p.user_id = $1 AND p.status = 'online'
-       WHERE v.user_id = $1
-       ORDER BY v.raw_title ASC, v.provider_id ASC`,
-      [userId, tmdbId]
-    );
-    return rows;
-  }
-
-  return [];
+  setCachedLookupResult(cacheKey, result, { miss: result.length === 0 });
+  return result;
 }
 
 async function resolveFallbackVodItem(user, baseId, type) {
@@ -295,7 +301,7 @@ async function resolveFallbackVodItem(user, baseId, type) {
     imdbId: target.imdb_id || (baseId.startsWith('tt') ? baseId : null),
   });
 
-  if (!candidates.length) return null;
+  if (!Array.isArray(candidates) || candidates.length === 0) return null;
 
   for (const candidate of candidates) {
     const result = await resolveCandidateMatch(candidate, target);
@@ -345,11 +351,17 @@ async function resolveProviderPlaybackHosts(userId, providerId, providerSnapshot
   let onlineHosts = health.filter(h => h.status === 'online').slice(0, 3);
 
   if (recheckOnMiss && onlineHosts.length === 0) {
+    const recheckKey = `${providerId}:${provider.last_checked || 'none'}`;
+    const recentRecheck = cache.get('providerHostRecheck', recheckKey);
     try {
-      health = await hostHealthService.checkSingleProvider(providerId, userId);
-      cache.del('providerById', `${userId}:${providerId}`);
-      provider = await getCachedProviderForUser(providerId, userId) || provider;
-      onlineHosts = health.filter(h => h.status === 'online').slice(0, 3);
+      if (!recentRecheck) {
+        recordLookupMetric('hostRechecks');
+        cache.set('providerHostRecheck', recheckKey, true);
+        health = await hostHealthService.checkSingleProvider(providerId, userId);
+        cache.del('providerById', `${userId}:${providerId}`);
+        provider = await getCachedProviderForUser(providerId, userId) || provider;
+        onlineHosts = health.filter(h => h.status === 'online').slice(0, 3);
+      }
     } catch (err) {
       logger.warn(`On-demand host recheck failed for provider ${providerId}: ${err.message}`);
     }
@@ -490,8 +502,13 @@ async function resolveCandidateMatch(candidate, target) {
 }
 
 async function tryOnDemandMatch(userId, baseId, type) {
+  const startedAt = Date.now();
+  recordLookupMetric('slowPathCount');
   const target = await getTargetTmdbRecord(baseId, type);
-  if (!target) return null;
+  if (!target) {
+    recordLookupMetric('slowPathMs', Date.now() - startedAt);
+    return null;
+  }
 
   const candidates = await vodQueries.findOnDemandCandidateForUser(userId, {
     vodType: target.tmdb_type,
@@ -501,7 +518,10 @@ async function tryOnDemandMatch(userId, baseId, type) {
     imdbId: target.imdb_id || (baseId.startsWith('tt') ? baseId : null),
   });
 
-  if (!candidates.length) return null;
+  if (!candidates.length) {
+    recordLookupMetric('slowPathMs', Date.now() - startedAt);
+    return null;
+  }
 
   const targetNormalized = target.normalized_title || normalizeTitle(target.original_title || '');
   const targetType = target.tmdb_type === 'series' ? 'series' : 'movie';
@@ -536,11 +556,17 @@ async function tryOnDemandMatch(userId, baseId, type) {
   }
 
   if (matchedAny) {
+    cache.del('resolvedVodLookup', buildLookupCacheKey(userId, baseId, 'single'));
+    cache.del('resolvedVodLookupMiss', buildLookupCacheKey(userId, baseId, 'single'));
+    cache.del('resolvedVodLookup', buildLookupCacheKey(userId, baseId, 'all'));
+    cache.del('resolvedVodLookupMiss', buildLookupCacheKey(userId, baseId, 'all'));
     const resolvedItem = await resolveVodItem(userId, baseId);
+    recordLookupMetric('slowPathMs', Date.now() - startedAt);
     return resolvedItem || firstMatchedCandidate;
   }
 
   logger.info(`On-demand match found no candidate for ${baseId} (${targetNormalized})`);
+  recordLookupMetric('slowPathMs', Date.now() - startedAt);
   return null;
 }
 
@@ -576,6 +602,17 @@ async function handleMeta(token, type, id) {
     touchUserLastSeen(user.id).catch(() => {});
 
     const { baseId } = parseStremioId(id);
+    const metaCacheKey = `${token}:${type}:${id}`;
+    const cachedMeta = cache.get('resolvedMeta', metaCacheKey);
+    if (cachedMeta) {
+      recordLookupMetric('cacheHits');
+      return cachedMeta;
+    }
+    if (cache.get('resolvedMetaMiss', metaCacheKey)) {
+      recordLookupMetric('cacheHits');
+      return { meta: null };
+    }
+
     let vodItem = await resolveVodItem(user.id, baseId);
     if (!vodItem && (baseId.startsWith('tt') || baseId.startsWith('tmdb:'))) {
       vodItem = await resolveOnDemandMatchShared(user.id, baseId, type);
@@ -587,6 +624,7 @@ async function handleMeta(token, type, id) {
       if (user.free_access_status === 'expired' && type !== 'tv') {
         return buildExpiredMeta(baseId, type);
       }
+      cache.set('resolvedMetaMiss', metaCacheKey, true);
       return { meta: null };
     }
 
@@ -660,7 +698,10 @@ async function handleMeta(token, type, id) {
       }
     }
 
-    return { meta };
+    const payload = { meta };
+    cache.set('resolvedMeta', metaCacheKey, payload);
+    logger.info(`Lookup metrics: ${JSON.stringify(lookupMetrics)}`);
+    return payload;
   } finally {
     endAddonRequest();
   }
@@ -681,6 +722,16 @@ async function handleStream(token, type, id) {
     touchUserLastSeen(user.id).catch(() => {});
 
     const { baseId, season, episode } = parseStremioId(id);
+    const streamCacheKey = `${token}:${type}:${id}`;
+    const cachedStream = cache.get('resolvedStreams', streamCacheKey);
+    if (cachedStream) {
+      recordLookupMetric('cacheHits');
+      return cachedStream;
+    }
+    if (cache.get('resolvedStreamsMiss', streamCacheKey)) {
+      recordLookupMetric('cacheHits');
+      return { streams: [] };
+    }
 
     // Handle live streams (prefixed with "live_")
     if (baseId.startsWith('live_')) {
@@ -709,6 +760,7 @@ async function handleStream(token, type, id) {
       if (type !== 'tv' && user.free_access_status === 'expired') {
         return buildExpiredStreamResponse();
       }
+      cache.set('resolvedStreamsMiss', streamCacheKey, true);
       return { streams: [] };
     }
 
@@ -761,7 +813,10 @@ async function handleStream(token, type, id) {
       if (vodItem.access_source === 'free_access') {
         await freeAccessService.recordResolvedStream(vodItem.assignment_id);
       }
-      return { streams };
+      const payload = { streams };
+      cache.set('resolvedStreams', streamCacheKey, payload);
+      logger.info(`Lookup metrics: ${JSON.stringify(lookupMetrics)}`);
+      return payload;
     }
 
     // ── Series episode stream ──────────────────────────────────────────────────
@@ -857,7 +912,10 @@ async function handleStream(token, type, id) {
         if (vodItem.access_source === 'free_access') {
           await freeAccessService.recordResolvedStream(vodItem.assignment_id);
         }
-        return { streams };
+        const payload = { streams };
+        cache.set('resolvedStreams', streamCacheKey, payload);
+        logger.info(`Lookup metrics: ${JSON.stringify(lookupMetrics)}`);
+        return payload;
       } catch (err) {
         logger.warn(`Failed to resolve series stream for ${id}: ${err.message}`);
         return { streams: [] };
@@ -958,5 +1016,6 @@ module.exports = {
     resolveVodItemsForStream,
     tryOnDemandMatch,
     resolveOnDemandMatchShared,
+    lookupMetrics,
   },
 };

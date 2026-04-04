@@ -1,5 +1,5 @@
 const fetch = require('node-fetch');
-const { providerQueries, vodQueries } = require('../db/queries');
+const { providerQueries, providerNetworkQueries, canonicalContentQueries, vodQueries, pool } = require('../db/queries');
 const logger = require('../utils/logger');
 const cache = require('../utils/cache');
 const { normalizeTitle, parseMovieTitle, parseReleaseTitle, parseSeriesTitle } = require('../utils/titleNormalization');
@@ -20,6 +20,23 @@ function firstNonEmpty(...values) {
 
 function normalizeCategory(value, fallback = 'Unknown') {
   return firstNonEmpty(value) || fallback;
+}
+
+function normalizeHostList(hosts = []) {
+  return Array.from(new Set(
+    hosts
+      .map(host => String(host || '').trim())
+      .filter(Boolean)
+      .map(host => host.replace(/\/+$/, ''))
+  ));
+}
+
+function buildCatalogOverlapSignature(entry) {
+  return [
+    entry.vodType || entry.vod_type || '',
+    entry.canonicalNormalizedTitle || entry.canonical_normalized_title || entry.normalizedTitle || entry.normalized_title || '',
+    entry.titleYear || entry.title_year || '',
+  ].join('|');
 }
 
 function normalizeAccountInfo(data) {
@@ -162,8 +179,36 @@ async function fetchCategoryMap(host, username, password, action) {
 
 const providerService = {
   async create(userId, { name, hosts, username, password }) {
-    const cleanHosts = hosts.map(h => h.replace(/\/+$/, ''));
-    return providerQueries.create({ userId, name, hosts: cleanHosts, username, password });
+    const cleanHosts = normalizeHostList(hosts);
+    let network = null;
+
+    const knownHosts = await providerNetworkQueries.listAllHosts();
+    for (const candidate of knownHosts) {
+      const result = await fetchAccountInfoForHost(candidate.host_url, username, password);
+      if (result.ok) {
+        network = await providerNetworkQueries.findById(candidate.provider_network_id);
+        break;
+      }
+    }
+
+    if (!network) {
+      network = await providerNetworkQueries.create({
+        name: `${name} Network`,
+        identityKey: cleanHosts[0] || null,
+      });
+    }
+
+    await providerNetworkQueries.addHosts(network.id, cleanHosts);
+
+    return providerQueries.create({
+      userId,
+      name,
+      hosts: cleanHosts,
+      username,
+      password,
+      networkId: network.id,
+      catalogVariant: false,
+    });
   },
 
   async testConnection(host, username, password) {
@@ -301,15 +346,63 @@ const providerService = {
 
     // ── 4. Upsert everything in chunks ────────────────────────────────────────
     const all = [...vodMovies, ...vodSeries, ...liveStreams];
-    if (all.length > 0) {
-      const CHUNK = 500;
-      for (let i = 0; i < all.length; i += CHUNK) {
-        await vodQueries.upsertBatch(all.slice(i, i + CHUNK));
+    const resolvedEntries = provider.network_id
+      ? await canonicalContentQueries.resolveEntries(all, {
+        providerNetworkId: provider.network_id,
+        providerId,
+      })
+      : all;
+
+    let catalogVariant = Boolean(provider.catalog_variant);
+    if (provider.network_id && resolvedEntries.length > 0) {
+      const { rows: existingNetworkRows } = await pool.query(
+        `SELECT vod_type, canonical_normalized_title, title_year
+         FROM network_vod
+         WHERE provider_network_id = $1
+         LIMIT 250`,
+        [provider.network_id]
+      );
+
+      if (existingNetworkRows.length > 0) {
+        const existingSignatures = new Set(existingNetworkRows.map(buildCatalogOverlapSignature));
+        const incomingSignatures = new Set(resolvedEntries.map(buildCatalogOverlapSignature));
+        let overlap = 0;
+        for (const signature of incomingSignatures) {
+          if (existingSignatures.has(signature)) overlap += 1;
+        }
+        const overlapRatio = incomingSignatures.size === 0 ? 1 : overlap / incomingSignatures.size;
+        catalogVariant = overlapRatio < 0.6;
+        await providerQueries.update(providerId, userId, { catalog_variant: catalogVariant });
       }
     }
 
+    if (all.length > 0) {
+      const CHUNK = 500;
+      for (let i = 0; i < resolvedEntries.length; i += CHUNK) {
+        const chunk = resolvedEntries.slice(i, i + CHUNK);
+        await vodQueries.upsertBatch(chunk);
+        if (provider.network_id && !catalogVariant) {
+          await vodQueries.upsertNetworkBatch(chunk.map(entry => ({
+            ...entry,
+            providerNetworkId: provider.network_id,
+          })));
+        }
+      }
+    }
+
+    if (provider.network_id && !catalogVariant) {
+      await providerNetworkQueries.touchCatalogRefresh(provider.network_id);
+    }
+
     logger.info(`Catalog refreshed: ${vodMovies.length} movies, ${vodSeries.length} series, ${liveStreams.length} live channels`);
-    return { movies: vodMovies.length, series: vodSeries.length, live: liveStreams.length, total: all.length };
+    return {
+      movies: vodMovies.length,
+      series: vodSeries.length,
+      live: liveStreams.length,
+      total: all.length,
+      providerNetworkId: provider.network_id || null,
+      catalogVariant,
+    };
   },
 
   async fetchManagedCatalog(host, username, password, providerGroupId) {
@@ -392,6 +485,7 @@ const providerService = {
       categories,
       accountInfo: accountResult?.ok ? accountResult.accountInfo : null,
       accountInfoError: accountResult ? (accountResult.ok ? null : accountResult.error) : null,
+      canonicalCoverage: await canonicalContentQueries.getCoverage(),
     };
   },
 };
