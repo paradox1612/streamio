@@ -136,9 +136,14 @@ async function freeAccessCatalogRefreshJob() {
 
 function startScheduler() {
   logger.info('Starting background job scheduler...');
+  const healthChecksEnabled = process.env.HEALTH_CHECK_ENABLED !== 'false';
+  const startupHealthCheckEnabled = process.env.HEALTH_CHECK_STARTUP_ENABLED === 'true';
 
-  // Every 5 minutes
-  cron.schedule('*/5 * * * *', healthCheckJob);
+  if (healthChecksEnabled) {
+    cron.schedule('0 * * * *', healthCheckJob);
+  } else {
+    logger.warn('Scheduled health checks disabled via HEALTH_CHECK_ENABLED=false');
+  }
 
   // Every day at 2 AM
   cron.schedule('0 2 * * *', tmdbSyncJob);
@@ -158,10 +163,11 @@ function startScheduler() {
   // Every day at 3 AM for managed free catalog refresh
   cron.schedule('0 3 * * *', freeAccessCatalogRefreshJob);
 
-  logger.info('Scheduler started: health=*/5min, tmdb=2am, freeCatalog=3am, catalog=4am, matching=5am, epg=every4h, freeExpiry=hourly');
+  logger.info(`Scheduler started: health=${healthChecksEnabled ? 'hourly' : 'disabled'}, tmdb=2am, freeCatalog=3am, catalog=4am, matching=5am, epg=every4h, freeExpiry=hourly`);
 
-  // Run health check immediately on startup
-  setTimeout(healthCheckJob, 5000);
+  if (healthChecksEnabled && startupHealthCheckEnabled) {
+    setTimeout(healthCheckJob, 5000);
+  }
 }
 
 const jobs = {

@@ -45,18 +45,23 @@ describe('freeAccessService.getActiveSourceForUser', () => {
         ? [{ id: 'host-1', host: 'http://assigned-1' }, { id: 'host-2', host: 'http://assigned-2' }]
         : [{ id: 'host-3', host: 'http://fallback-1' }]
     ));
-    mockProviderService.testConnection
-      .mockResolvedValueOnce({ ok: false, error: 'connect ECONNREFUSED' })
-      .mockResolvedValueOnce({
-        ok: true,
-        accountInfo: {
-          status: 'Active',
-          maxConnections: 1,
-          activeConnections: 0,
-          expiresAt: '2026-05-01T00:00:00.000Z',
-        },
-      })
-      .mockResolvedValueOnce({ ok: false, error: 'ETIMEDOUT' });
+    mockProviderService.testConnection.mockImplementation(async (host) => {
+      if (host === 'http://assigned-1') {
+        return { ok: false, error: 'connect ECONNREFUSED' };
+      }
+      if (host === 'http://assigned-2') {
+        return {
+          ok: true,
+          accountInfo: {
+            status: 'Active',
+            maxConnections: 1,
+            activeConnections: 0,
+            expiresAt: '2026-05-01T00:00:00.000Z',
+          },
+        };
+      }
+      return { ok: false, error: 'ETIMEDOUT' };
+    });
 
     const result = await freeAccessService.getActiveSourceForUser('user-1');
 
@@ -75,6 +80,37 @@ describe('freeAccessService.getActiveSourceForUser', () => {
         lastActiveConnections: 0,
       })
     );
+  });
+
+  it('stops checking hosts after the first usable login', async () => {
+    mockFreeAccessQueries.findActiveAssignmentForUser.mockResolvedValue({
+      id: 'assignment-1',
+      account_id: 'account-1',
+      provider_group_id: 'group-1',
+    });
+    mockFreeAccessQueries.listRuntimeEligibleAccounts.mockResolvedValue([
+      { id: 'account-1', provider_group_id: 'group-1', username: 'u1', password: 'p1', status: 'assigned' },
+    ]);
+    mockFreeAccessQueries.findProviderGroupById.mockResolvedValue({ id: 'group-1', is_active: true });
+    mockFreeAccessQueries.getHostsForGroup.mockResolvedValue([
+      { id: 'host-1', host: 'http://alive-1' },
+      { id: 'host-2', host: 'http://alive-2' },
+    ]);
+    mockProviderService.testConnection.mockResolvedValue({
+      ok: true,
+      accountInfo: {
+        status: 'Active',
+        maxConnections: 2,
+        activeConnections: 0,
+        expiresAt: '2026-05-01T00:00:00.000Z',
+      },
+    });
+
+    const result = await freeAccessService.getActiveSourceForUser('user-1');
+
+    expect(result.hosts).toHaveLength(1);
+    expect(result.hosts[0].host).toBe('http://alive-1');
+    expect(mockProviderService.testConnection).toHaveBeenCalledTimes(1);
   });
 
   it('does not mark the account invalid when all hosts are down', async () => {

@@ -87,7 +87,7 @@ function InputForm({ onSubmit, loading, error }) {
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="sm:col-span-3">
-          <label className="block mb-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400/70">
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-200/78">
             Provider Host URL
           </label>
           <input
@@ -96,11 +96,11 @@ function InputForm({ onSubmit, loading, error }) {
             onChange={e => setHost(e.target.value)}
             placeholder="http://your-provider.com:8080"
             required
-            className="w-full rounded-xl border border-white/[0.1] bg-white/[0.04] px-4 py-2.5 text-sm text-white placeholder-slate-500/60 outline-none ring-0 transition focus:border-brand-400/50 focus:bg-white/[0.06] focus:ring-2 focus:ring-brand-400/20"
+            className="w-full rounded-xl border border-white/[0.16] bg-slate-950/72 px-4 py-3 text-sm text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] outline-none ring-0 transition placeholder:text-slate-400/70 hover:border-white/[0.24] focus:border-brand-400/60 focus:bg-slate-950/88 focus:ring-2 focus:ring-brand-400/20"
           />
         </div>
         <div>
-          <label className="block mb-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400/70">
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-200/78">
             Username
           </label>
           <input
@@ -110,11 +110,11 @@ function InputForm({ onSubmit, loading, error }) {
             placeholder="username"
             required
             autoComplete="off"
-            className="w-full rounded-xl border border-white/[0.1] bg-white/[0.04] px-4 py-2.5 text-sm text-white placeholder-slate-500/60 outline-none ring-0 transition focus:border-brand-400/50 focus:bg-white/[0.06] focus:ring-2 focus:ring-brand-400/20"
+            className="w-full rounded-xl border border-white/[0.16] bg-slate-950/72 px-4 py-3 text-sm text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] outline-none ring-0 transition placeholder:text-slate-400/70 hover:border-white/[0.24] focus:border-brand-400/60 focus:bg-slate-950/88 focus:ring-2 focus:ring-brand-400/20"
           />
         </div>
         <div>
-          <label className="block mb-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400/70">
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-200/78">
             Password
           </label>
           <input
@@ -124,7 +124,7 @@ function InputForm({ onSubmit, loading, error }) {
             placeholder="••••••••"
             required
             autoComplete="new-password"
-            className="w-full rounded-xl border border-white/[0.1] bg-white/[0.04] px-4 py-2.5 text-sm text-white placeholder-slate-500/60 outline-none ring-0 transition focus:border-brand-400/50 focus:bg-white/[0.06] focus:ring-2 focus:ring-brand-400/20"
+            className="w-full rounded-xl border border-white/[0.16] bg-slate-950/72 px-4 py-3 text-sm text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] outline-none ring-0 transition placeholder:text-slate-400/70 hover:border-white/[0.24] focus:border-brand-400/60 focus:bg-slate-950/88 focus:ring-2 focus:ring-brand-400/20"
           />
         </div>
         <div className="flex items-end">
@@ -152,7 +152,7 @@ function InputForm({ onSubmit, loading, error }) {
         </motion.div>
       )}
 
-      <p className="text-[11px] leading-5 text-slate-500/60">
+      <p className="text-[11px] leading-5 text-slate-400/72">
         <ShieldCheck className="inline-block h-3 w-3 mr-1 align-[-1px]" />
         Your credentials are used only for this preview. Nothing is stored unless you create an account.
       </p>

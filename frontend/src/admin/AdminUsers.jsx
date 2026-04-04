@@ -1,102 +1,304 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { adminAPI } from '../utils/api';
+import {
+  Clock3,
+  Gift,
+  Shield,
+  UserRoundCog,
+  UserRoundX,
+  Users,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
+import { adminAPI } from '../utils/api';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import { Card, CardContent } from '../components/ui/card';
+import DataTableFilter from '../components/ui/data-table-filter';
+import AdminDataTable from './AdminDataTable';
+
+function formatDate(value) {
+  if (!value) return 'Never';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown';
+  return date.toLocaleDateString();
+}
+
+function MetricCard({ label, value, detail, icon: Icon, tone }) {
+  return (
+    <Card className="overflow-hidden">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400/80">{label}</p>
+            <p className="mt-3 text-3xl font-bold text-white">{value}</p>
+            <p className="mt-2 text-sm text-slate-300/60">{detail}</p>
+          </div>
+          <div className={`flex h-11 w-11 items-center justify-center rounded-2xl border ${tone}`}>
+            <Icon className="h-5 w-5" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function AdminUsers() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState([]);
+  const [accessFilter, setAccessFilter] = useState([]);
 
-  const load = () => {
-    adminAPI.listUsers({ search, limit: 100 })
-      .then(res => setUsers(res.data))
-      .catch(() => toast.error('Failed to load users'))
-      .finally(() => setLoading(false));
+  const load = async (term, isInitialLoad = false) => {
+    if (isInitialLoad) setLoading(true);
+
+    try {
+      const response = await adminAPI.listUsers({ search: term, limit: 100 });
+      setUsers(Array.isArray(response.data) ? response.data : []);
+    } catch (_) {
+      toast.error('Failed to load users');
+    } finally {
+      if (isInitialLoad) setLoading(false);
+    }
   };
 
-  useEffect(() => { load(); }, [search]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      load(search, loading);
+    }, 220);
+
+    return () => window.clearTimeout(timer);
+  }, [loading, search]);
+
+  const filteredUsers = useMemo(() => users.filter((user) => {
+    const matchesStatus = statusFilter.length === 0
+      || statusFilter.includes(user.is_active ? 'active' : 'suspended');
+    const matchesAccess = accessFilter.length === 0
+      || accessFilter.includes(user.free_access_status || 'inactive');
+    return matchesStatus && matchesAccess;
+  }), [accessFilter, statusFilter, users]);
+
+  const metrics = useMemo(() => {
+    const active = filteredUsers.filter((user) => user.is_active).length;
+    const suspended = filteredUsers.length - active;
+    const freeAccessActive = filteredUsers.filter((user) => user.free_access_status === 'active').length;
+    const withProviders = filteredUsers.filter((user) => Number(user.provider_count || 0) > 0).length;
+
+    return { active, suspended, freeAccessActive, withProviders };
+  }, [filteredUsers]);
 
   const handleSuspend = async (user) => {
     try {
       await adminAPI.suspendUser(user.id, user.is_active);
       toast.success(user.is_active ? 'User suspended' : 'User activated');
-      load();
-    } catch (_) { toast.error('Action failed'); }
+      load(search);
+    } catch (_) {
+      toast.error('Action failed');
+    }
   };
 
   const handleDelete = async (user) => {
     if (!window.confirm(`Delete user ${user.email}? This is permanent.`)) return;
+
     try {
       await adminAPI.deleteUser(user.id);
       toast.success('User deleted');
-      setUsers(prev => prev.filter(u => u.id !== user.id));
-    } catch (_) { toast.error('Delete failed'); }
+      setUsers((current) => current.filter((entry) => entry.id !== user.id));
+    } catch (_) {
+      toast.error('Delete failed');
+    }
   };
 
-  if (loading) return <div style={{ color: '#64748b' }}>Loading...</div>;
+  const columns = [
+    {
+      key: 'email',
+      header: 'Identity',
+      render: (user) => (
+        <div className="min-w-[15rem]">
+          <div className="font-semibold text-white">{user.email}</div>
+          <div className="mt-1 text-xs text-slate-400/75">Created {formatDate(user.created_at)}</div>
+        </div>
+      ),
+    },
+    {
+      key: 'providers',
+      header: 'Providers',
+      headerClassName: 'text-center',
+      cellClassName: 'text-center',
+      render: (user) => (
+        <div>
+          <div className="text-lg font-semibold text-white">{Number(user.provider_count || 0).toLocaleString()}</div>
+          <div className="text-xs text-slate-400/70">linked sources</div>
+        </div>
+      ),
+    },
+    {
+      key: 'freeAccess',
+      header: 'Free Access',
+      render: (user) => {
+        const status = user.free_access_status || 'inactive';
+        const variant = status === 'active' ? 'success' : status === 'expired' ? 'warning' : 'outline';
+
+        return (
+          <Badge variant={variant} className="w-fit capitalize">
+            {status}
+          </Badge>
+        );
+      },
+    },
+    {
+      key: 'status',
+      header: 'Account Status',
+      render: (user) => (
+        <Badge variant={user.is_active ? 'success' : 'danger'} className="w-fit">
+          {user.is_active ? 'Active' : 'Suspended'}
+        </Badge>
+      ),
+    },
+    {
+      key: 'lastSeen',
+      header: 'Last Seen',
+      render: (user) => (
+        <div>
+          <div className="font-medium text-slate-100">{formatDate(user.last_seen)}</div>
+          <div className="text-xs text-slate-400/70">recent activity</div>
+        </div>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      cellClassName: 'min-w-[15rem]',
+      render: (user) => (
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" size="sm" className="rounded-xl">
+            <Link to={`/admin/users/${user.id}`}>View</Link>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="rounded-xl"
+            onClick={() => handleSuspend(user)}
+          >
+            {user.is_active ? 'Suspend' : 'Activate'}
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            className="rounded-xl"
+            onClick={() => handleDelete(user)}
+          >
+            Delete
+          </Button>
+        </div>
+      ),
+    },
+  ];
 
   return (
-    <div style={{ maxWidth: '1000px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-        <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#f1f5f9' }}>Users ({users.length})</h1>
-        <input placeholder="Search by email..." value={search} onChange={e => setSearch(e.target.value)}
-          style={{ padding: '8px 12px', borderRadius: '8px', background: '#1e293b', border: '1px solid #334155', color: '#f1f5f9', fontSize: '0.85rem', outline: 'none', width: '220px' }} />
+    <div className="space-y-6">
+      <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+        <Card className="overflow-hidden">
+          <CardContent className="p-6 sm:p-7">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-brand-200/70">Admin users</p>
+            <h1 className="mt-3 text-3xl font-bold text-white sm:text-4xl">User access, provider usage, and free-access state in one table.</h1>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300/65">
+              Search remains backed by the API, while status and free-access filters run instantly client-side so operators can narrow down action lists without extra network churn.
+            </p>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+          <MetricCard
+            label="Visible users"
+            value={filteredUsers.length}
+            detail={`${metrics.active} active, ${metrics.suspended} suspended`}
+            icon={Users}
+            tone="border-brand-400/20 bg-brand-500/10 text-brand-200"
+          />
+          <MetricCard
+            label="Free access"
+            value={metrics.freeAccessActive}
+            detail={`${metrics.withProviders} users have providers linked`}
+            icon={Gift}
+            tone="border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+          />
+        </div>
+      </section>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          label="Healthy accounts"
+          value={metrics.active}
+          detail="Currently allowed to sign in and operate."
+          icon={Shield}
+          tone="border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+        />
+        <MetricCard
+          label="Suspended"
+          value={metrics.suspended}
+          detail="Accounts currently blocked from access."
+          icon={UserRoundX}
+          tone="border-red-400/20 bg-red-500/10 text-red-200"
+        />
+        <MetricCard
+          label="Free access active"
+          value={metrics.freeAccessActive}
+          detail="Users inside a current trial window."
+          icon={Gift}
+          tone="border-amber-400/20 bg-amber-400/10 text-amber-200"
+        />
+        <MetricCard
+          label="With providers"
+          value={metrics.withProviders}
+          detail="Accounts that already configured catalog sources."
+          icon={UserRoundCog}
+          tone="border-sky-400/20 bg-sky-400/10 text-sky-200"
+        />
       </div>
 
-      <div style={{ background: '#1e293b', borderRadius: '12px', border: '1px solid #334155', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-          <thead>
-            <tr style={{ background: '#0f172a', color: '#64748b', borderBottom: '1px solid #334155' }}>
-              <th style={{ textAlign: 'left', padding: '12px 16px', fontWeight: 500 }}>Email</th>
-              <th style={{ textAlign: 'center', padding: '12px 8px', fontWeight: 500 }}>Providers</th>
-              <th style={{ textAlign: 'center', padding: '12px 8px', fontWeight: 500 }}>Free Access</th>
-              <th style={{ textAlign: 'center', padding: '12px 8px', fontWeight: 500 }}>Status</th>
-              <th style={{ textAlign: 'right', padding: '12px 8px', fontWeight: 500 }}>Created</th>
-              <th style={{ textAlign: 'right', padding: '12px 8px', fontWeight: 500 }}>Last Seen</th>
-              <th style={{ textAlign: 'center', padding: '12px 16px', fontWeight: 500 }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map(user => (
-              <tr key={user.id} style={{ borderBottom: '1px solid #334155' }}>
-                <td style={{ padding: '12px 16px', color: '#f1f5f9' }}>{user.email}</td>
-                <td style={{ textAlign: 'center', padding: '12px 8px', color: '#94a3b8' }}>{user.provider_count}</td>
-                <td style={{ textAlign: 'center', padding: '12px 8px' }}>
-                  <span style={{
-                    fontSize: '0.72rem',
-                    padding: '2px 8px',
-                    borderRadius: '20px',
-                    background: user.free_access_status === 'active' ? '#14532d' : user.free_access_status === 'expired' ? '#78350f' : '#1e293b',
-                    color: user.free_access_status === 'active' ? '#86efac' : user.free_access_status === 'expired' ? '#fde68a' : '#94a3b8',
-                  }}>
-                    {user.free_access_status || 'inactive'}
-                  </span>
-                </td>
-                <td style={{ textAlign: 'center', padding: '12px 8px' }}>
-                  <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '20px', background: user.is_active ? '#14532d' : '#7f1d1d', color: user.is_active ? '#86efac' : '#fca5a5' }}>
-                    {user.is_active ? 'Active' : 'Suspended'}
-                  </span>
-                </td>
-                <td style={{ textAlign: 'right', padding: '12px 8px', color: '#64748b', fontSize: '0.78rem' }}>{new Date(user.created_at).toLocaleDateString()}</td>
-                <td style={{ textAlign: 'right', padding: '12px 8px', color: '#64748b', fontSize: '0.78rem' }}>{user.last_seen ? new Date(user.last_seen).toLocaleDateString() : 'Never'}</td>
-                <td style={{ textAlign: 'center', padding: '12px 16px' }}>
-                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                    <Link to={`/admin/users/${user.id}`} style={{ padding: '5px 10px', borderRadius: '6px', background: '#334155', color: '#f1f5f9', textDecoration: 'none', fontSize: '0.75rem' }}>View</Link>
-                    <button onClick={() => handleSuspend(user)} style={{ padding: '5px 10px', borderRadius: '6px', background: user.is_active ? '#78350f' : '#14532d', color: user.is_active ? '#fde68a' : '#86efac', border: 'none', cursor: 'pointer', fontSize: '0.75rem' }}>
-                      {user.is_active ? 'Suspend' : 'Activate'}
-                    </button>
-                    <button onClick={() => handleDelete(user)} style={{ padding: '5px 10px', borderRadius: '6px', background: '#450a0a', color: '#fca5a5', border: 'none', cursor: 'pointer', fontSize: '0.75rem' }}>Delete</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {users.length === 0 && (
-              <tr><td colSpan="7" style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>No users found</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <AdminDataTable
+        title="User directory"
+        description="The table keeps existing admin actions intact while making state and access slices easier to scan."
+        count={filteredUsers.length}
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search users by email..."
+        filters={[
+          (
+            <DataTableFilter
+              label="Account status"
+              options={[
+                { value: 'active', label: 'Active', icon: Shield },
+                { value: 'suspended', label: 'Suspended', icon: UserRoundX },
+              ]}
+              selectedValues={statusFilter}
+              onChange={setStatusFilter}
+              isMultiSelect
+            />
+          ),
+          (
+            <DataTableFilter
+              label="Free access"
+              options={[
+                { value: 'active', label: 'Active', icon: Gift },
+                { value: 'expired', label: 'Expired', icon: Clock3 },
+                { value: 'inactive', label: 'Inactive', icon: UserRoundX },
+              ]}
+              selectedValues={accessFilter}
+              onChange={setAccessFilter}
+              isMultiSelect
+            />
+          ),
+        ]}
+        columns={columns}
+        rows={filteredUsers}
+        loading={loading}
+        emptyMessage="No users match the current search and filters."
+        rowKey={(user) => user.id}
+      />
     </div>
   );
 }

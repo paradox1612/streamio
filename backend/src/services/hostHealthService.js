@@ -4,6 +4,8 @@ const logger = require('../utils/logger');
 const cache = require('../utils/cache');
 
 const PING_TIMEOUT = 10000; // 10s
+const PROVIDER_HEALTH_BATCH_SIZE = Math.max(1, parseInt(process.env.HEALTH_CHECK_BATCH_SIZE || '2', 10));
+const PROVIDER_HEALTH_MIN_INTERVAL_MS = Math.max(0, parseInt(process.env.HEALTH_CHECK_PROVIDER_MIN_INTERVAL_MS || '3600000', 10));
 
 async function pingHost(host, username, password) {
   const url = `${host}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&action=get_vod_categories`;
@@ -29,10 +31,8 @@ const hostHealthService = {
     const providers = await providerQueries.getAllForHealthCheck();
     logger.info(`Health check: checking ${providers.length} providers`);
 
-    // Process providers in parallel batches of 10
-    const BATCH_SIZE = 10;
-    for (let i = 0; i < providers.length; i += BATCH_SIZE) {
-      const batch = providers.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < providers.length; i += PROVIDER_HEALTH_BATCH_SIZE) {
+      const batch = providers.slice(i, i + PROVIDER_HEALTH_BATCH_SIZE);
       const results = await Promise.allSettled(
         batch.map(provider => hostHealthService.checkProvider(provider))
       );
@@ -48,6 +48,15 @@ const hostHealthService = {
   },
 
   async checkProvider(provider) {
+    const lastCheckedAt = provider.last_checked_at || provider.updated_at || null;
+    if (PROVIDER_HEALTH_MIN_INTERVAL_MS > 0 && lastCheckedAt) {
+      const elapsedMs = Date.now() - new Date(lastCheckedAt).getTime();
+      if (Number.isFinite(elapsedMs) && elapsedMs >= 0 && elapsedMs < PROVIDER_HEALTH_MIN_INTERVAL_MS) {
+        logger.info(`Skipping provider ${provider.id} health check; last checked ${elapsedMs}ms ago`);
+        return;
+      }
+    }
+
     let bestHost = null;
     let bestTime = Infinity;
     const networkHosts = provider.network_id

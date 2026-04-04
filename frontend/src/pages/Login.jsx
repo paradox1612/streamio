@@ -1,120 +1,77 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import { ModernStunningSignIn } from '../components/ui/modern-stunning-sign-in';
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: '', password: '' });
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const logo = useMemo(() => (
+    <div className="relative flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/10 bg-white/[0.04] shadow-[0_18px_45px_rgba(8,16,31,0.38)]">
+      <div className="absolute inset-[5px] rounded-[14px] bg-gradient-to-br from-brand-400/30 via-cyan-200/10 to-white/[0.02]" />
+      <div className="relative h-5 w-5 rounded-full border border-white/35">
+        <div className="absolute left-1/2 top-[-1px] h-[calc(100%+2px)] w-[2px] -translate-x-1/2 bg-white/70" />
+        <div className="absolute left-[-1px] top-1/2 h-[2px] w-[calc(100%+2px)] -translate-y-1/2 bg-white/70" />
+      </div>
+    </div>
+  ), []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
     setLoading(true);
     try {
       await login(form.email, form.password);
       toast.success('Welcome back!');
       navigate('/dashboard');
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Login failed');
+      const nextError = err.response?.data?.error || 'Login failed';
+      setError(nextError);
+      toast.error(nextError);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="auth-shell">
-      <div className="relative z-10 flex items-center justify-center p-4 w-full">
-        <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
-
-          {/* Heading */}
-          <div className="flex flex-col space-y-2 text-center">
-            <h1 className="text-2xl font-semibold tracking-tight text-white">
-              Welcome back
-            </h1>
-            <p className="text-sm text-slate-400">
-              Enter your email below to sign in to your account
-            </p>
-          </div>
-
-          <div className="grid gap-6">
-            <form onSubmit={handleSubmit}>
-              <div className="grid gap-4">
-                {/* Email */}
-                <div className="grid gap-2">
-                  <label className="text-sm font-medium text-slate-200" htmlFor="email">
-                    Email
-                  </label>
-                  <input
-                    id="email"
-                    type="email"
-                    required
-                    autoComplete="email"
-                    placeholder="name@example.com"
-                    value={form.email}
-                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                    className="flex h-10 w-full rounded-md border border-white/10 bg-surface-900/80 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 transition-colors"
-                  />
-                </div>
-
-                {/* Password */}
-                <div className="grid gap-2">
-                  <div className="flex items-center">
-                    <label className="text-sm font-medium text-slate-200" htmlFor="password">
-                      Password
-                    </label>
-                    <Link
-                      to="/forgot-password"
-                      className="ml-auto inline-block text-sm underline text-slate-400 hover:text-slate-200 transition-colors"
-                    >
-                      Forgot your password?
-                    </Link>
-                  </div>
-                  <div className="relative">
-                    <input
-                      id="password"
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      autoComplete="current-password"
-                      value={form.password}
-                      onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                      className="flex h-10 w-full rounded-md border border-white/10 bg-surface-900/80 px-3 py-2 pr-10 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 transition-colors"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(v => !v)}
-                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-300 transition-colors"
-                    >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Submit */}
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="inline-flex items-center justify-center rounded-md text-sm font-medium h-10 px-4 py-2 w-full bg-brand-500 text-white hover:bg-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:ring-offset-2 focus:ring-offset-surface-900 disabled:pointer-events-none disabled:opacity-50 transition-colors"
-                >
-                  {loading ? 'Signing in…' : 'Sign In'}
-                </button>
-              </div>
-            </form>
-
-          </div>
-
-          {/* Footer */}
-          <p className="px-8 text-center text-sm text-slate-400">
-            Don&apos;t have an account?{' '}
-            <Link to="/signup" className="underline underline-offset-4 hover:text-white transition-colors">
-              Sign up
+    <ModernStunningSignIn
+      brandName="StreamBridge"
+      logo={logo}
+      title="Welcome back"
+      subtitle="Sign in with your email and password. Google and other SSO options are not enabled yet."
+      identifierMode="email"
+      identifierValue={form.email}
+      passwordValue={form.password}
+      onIdentifierChange={(e) => setForm((current) => ({ ...current, email: e.target.value }))}
+      onPasswordChange={(e) => setForm((current) => ({ ...current, password: e.target.value }))}
+      onSubmit={handleSubmit}
+      loading={loading}
+      loadingLabel="Signing in..."
+      error={error}
+      footer={(
+        <div className="space-y-3 text-sm text-slate-300/65">
+          <div className="flex items-center justify-between gap-3">
+            <Link to="/forgot-password" className="transition-colors hover:text-white">
+              Forgot your password?
             </Link>
+            <Link to="/signup" className="font-semibold text-brand-200 transition-colors hover:text-white">
+              Create account
+            </Link>
+          </div>
+          <p>
+            New here?{' '}
+            <Link to="/signup" className="font-semibold text-white transition-colors hover:text-brand-100">
+              Start with email and password
+            </Link>
+            .
           </p>
         </div>
-      </div>
-    </div>
+      )}
+    />
   );
 }

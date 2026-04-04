@@ -1,28 +1,42 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { providerAPI } from '../utils/api';
 import { PENDING_PROVIDER_KEY } from '../components/ProviderPreviewWidget';
-
-const CheckIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="20,6 9,17 4,12"></polyline>
-  </svg>
-);
+import { AuthComponent } from '../components/ui/sign-up';
 
 export default function Signup() {
   const { signup } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ email: '', password: '', fullName: '' });
-  const [showPassword, setShowPassword] = useState(false);
+  const [form, setForm] = useState({ email: '', password: '', confirmPassword: '', fullName: '' });
   const [isChecked, setIsChecked] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const logo = (
+    <div className="relative flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/10 bg-white/[0.04] shadow-[0_18px_45px_rgba(8,16,31,0.38)]">
+      <div className="absolute inset-[5px] rounded-[14px] bg-gradient-to-br from-brand-400/30 via-cyan-200/10 to-white/[0.02]" />
+      <div className="relative h-5 w-5 rounded-full border border-white/35">
+        <div className="absolute left-1/2 top-[-1px] h-[calc(100%+2px)] w-[2px] -translate-x-1/2 bg-white/70" />
+        <div className="absolute left-[-1px] top-1/2 h-[2px] w-[calc(100%+2px)] -translate-y-1/2 bg-white/70" />
+      </div>
+    </div>
+  );
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!form.email || !form.password || !form.confirmPassword) {
+      const nextError = 'Email, password, and confirmation are required';
+      setError(nextError);
+      return toast.error(nextError);
+    }
+    if (form.password !== form.confirmPassword) {
+      const nextError = 'Passwords do not match';
+      setError(nextError);
+      return toast.error(nextError);
+    }
     if (form.password.length < 8) return toast.error('Password must be at least 8 characters');
+    setError('');
     setLoading(true);
     try {
       await signup(form.email, form.password);
@@ -53,147 +67,40 @@ export default function Signup() {
       }
       navigate('/dashboard');
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Signup failed');
+      const nextError = err.response?.data?.error || 'Signup failed';
+      setError(nextError);
+      toast.error(nextError);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="auth-shell">
-      <div className="relative z-10 flex items-center justify-center p-4 w-full">
-        <div className="w-full max-w-sm">
-          <div
-            className="rounded-lg border border-white/10 shadow-[0_24px_80px_rgba(0,0,0,0.45)] p-6"
-            style={{ animation: 'fadeIn 0.3s ease-out', background: 'linear-gradient(180deg, rgba(18,28,49,0.88), rgba(9,17,31,0.78))' }}
-          >
-            {/* Header */}
-            <div className="text-center mb-6">
-              <div className="inline-flex items-center justify-center w-12 h-12 bg-surface-800 rounded-full mb-4 border border-white/10">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                  <circle cx="12" cy="7" r="4"></circle>
-                </svg>
-              </div>
-              <h1 className="text-2xl font-semibold text-white mb-2">Create account</h1>
-              <p className="text-sm text-slate-400">Enter your details to get started</p>
-            </div>
-
-            <form className="space-y-4" onSubmit={handleSubmit}>
-              {/* Full Name */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-200">Full Name</label>
-                <input
-                  type="text"
-                  value={form.fullName}
-                  onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))}
-                  placeholder="Enter your full name"
-                  className="w-full px-3 py-2 bg-surface-900/80 border border-white/10 rounded-md text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 transition-all duration-200"
-                />
-              </div>
-
-              {/* Email */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-200">Email</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                      <polyline points="22,6 12,13 2,6"></polyline>
-                    </svg>
-                  </div>
-                  <input
-                    type="email"
-                    required
-                    value={form.email}
-                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                    placeholder="name@example.com"
-                    autoComplete="email"
-                    className="w-full pl-9 pr-3 py-2 bg-surface-900/80 border border-white/10 rounded-md text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 transition-all duration-200"
-                  />
-                </div>
-              </div>
-
-              {/* Password */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-200">Password</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                      <circle cx="12" cy="16" r="1"></circle>
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                    </svg>
-                  </div>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    value={form.password}
-                    onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                    placeholder="Create a password"
-                    autoComplete="new-password"
-                    className="w-full pl-9 pr-10 py-2 bg-surface-900/80 border border-white/10 rounded-md text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 transition-all duration-200"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(v => !v)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-slate-300 transition-colors"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Terms checkbox */}
-              <div className="flex items-start space-x-2">
-                <div className="relative flex items-center mt-0.5">
-                  <input
-                    id="terms"
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={e => setIsChecked(e.target.checked)}
-                    className="sr-only"
-                  />
-                  <label htmlFor="terms" className="flex items-center cursor-pointer">
-                    <div className={`w-4 h-4 border rounded flex items-center justify-center transition-all duration-200 ${
-                      isChecked
-                        ? 'bg-brand-500 border-brand-500'
-                        : 'bg-surface-900/80 border-white/20 hover:border-white/40'
-                    }`}>
-                      {isChecked && <CheckIcon />}
-                    </div>
-                  </label>
-                </div>
-                <label htmlFor="terms" className="text-sm text-slate-400 cursor-pointer leading-4">
-                  I agree to the{' '}
-                  <Link to="/terms" className="text-slate-200 hover:underline">Terms of Service</Link>{' '}
-                  and{' '}
-                  <Link to="/privacy" className="text-slate-200 hover:underline">Privacy Policy</Link>
-                </label>
-              </div>
-
-              {/* Submit */}
-              <button
-                type="submit"
-                disabled={!isChecked || loading}
-                className="w-full bg-brand-500 text-white py-2 px-4 rounded-md text-sm font-medium hover:bg-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:ring-offset-2 focus:ring-offset-surface-900 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? 'Creating account…' : 'Create account'}
-              </button>
-            </form>
-
-            {/* Footer */}
-            <div className="mt-6 text-center">
-              <p className="text-sm text-slate-400">
-                Already have an account?{' '}
-                <Link to="/login" className="text-slate-200 font-medium hover:underline transition-colors">
-                  Sign in
-                </Link>
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <AuthComponent
+      logo={logo}
+      brandName="StreamBridge"
+      fullName={form.fullName}
+      email={form.email}
+      password={form.password}
+      confirmPassword={form.confirmPassword}
+      acceptTerms={isChecked}
+      onFullNameChange={(e) => setForm((current) => ({ ...current, fullName: e.target.value }))}
+      onEmailChange={(e) => setForm((current) => ({ ...current, email: e.target.value }))}
+      onPasswordChange={(e) => setForm((current) => ({ ...current, password: e.target.value }))}
+      onConfirmPasswordChange={(e) => setForm((current) => ({ ...current, confirmPassword: e.target.value }))}
+      onAcceptTermsChange={(e) => setIsChecked(e.target.checked)}
+      onSubmit={handleSubmit}
+      loading={loading}
+      error={error}
+      footer={(
+        <p className="text-sm text-slate-300/65">
+          Already have an account?{' '}
+          <Link to="/login" className="font-semibold text-white transition-colors hover:text-brand-100">
+            Sign in
+          </Link>
+          .
+        </p>
+      )}
+    />
   );
 }

@@ -46,10 +46,11 @@ function get(namespace, key) {
  * @param {string} namespace - Namespace key
  * @param {string} key - Item key
  * @param {*} value - Value to cache
+ * @param {number} [ttlOverride] - Optional TTL in seconds
  */
-function set(namespace, key, value) {
+function set(namespace, key, value, ttlOverride) {
   const fullKey = `${namespace}:${key}`;
-  const ttl = NAMESPACE_TTLS[namespace] || 300;
+  const ttl = Number.isFinite(ttlOverride) ? ttlOverride : (NAMESPACE_TTLS[namespace] || 300);
   cache.set(fullKey, value, ttl);
 }
 

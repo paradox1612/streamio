@@ -76,7 +76,10 @@ async function findUsableAccountForGroup(group, account, assignment = null) {
     return null;
   }
 
-  const hostChecks = hosts.map(async (host) => {
+  let sawCredentialFailure = false;
+  let latestAccountInfo = null;
+
+  for (const host of hosts) {
     const startedAt = Date.now();
     const result = await providerService.testConnection(host.host, account.username, account.password);
     const responseTimeMs = Date.now() - startedAt;
@@ -88,79 +91,58 @@ async function findUsableAccountForGroup(group, account, assignment = null) {
     });
 
     if (!result.ok) {
-      throw {
-        kind: /invalid credentials/i.test(String(result.error || '')) ? 'invalid_credentials' : 'host_unavailable',
-        accountInfo: null,
-      };
+      if (/invalid credentials/i.test(String(result.error || ''))) {
+        sawCredentialFailure = true;
+      }
+      continue;
     }
 
     if (!isAccountUsable(result.accountInfo)) {
-      throw {
-        kind: 'capacity_exhausted',
-        accountInfo: result.accountInfo,
-      };
+      latestAccountInfo = result.accountInfo;
+      continue;
     }
 
-    return {
+    const sourceHost = {
       host: {
         host: host.host,
         responseTimeMs,
       },
       accountInfo: result.accountInfo,
     };
-  });
-
-  try {
-    const fastest = await Promise.any(hostChecks);
-    const source = {
-      assignment,
-      providerGroup: group,
-      username: account.username,
-      password: account.password,
-      hosts: [fastest.host],
-    };
 
     await freeAccessQueries.updateAccountStatus(account.id, {
       status: assignment ? 'assigned' : 'available',
-      maxConnections: fastest.accountInfo.maxConnections,
-      lastActiveConnections: fastest.accountInfo.activeConnections,
-      lastExpirationAt: toIsoDate(fastest.accountInfo.expiresAt),
+      maxConnections: sourceHost.accountInfo.maxConnections,
+      lastActiveConnections: sourceHost.accountInfo.activeConnections,
+      lastExpirationAt: toIsoDate(sourceHost.accountInfo.expiresAt),
       lastCheckedAt: new Date().toISOString(),
     });
     cache.set('freeAccessRuntimeSource', cacheKey, {
       providerGroup: group,
       username: account.username,
       password: account.password,
-      hosts: [fastest.host],
+      hosts: [sourceHost.host],
     });
     cache.del('freeAccessRuntimeSourceMiss', cacheKey);
-    return source;
-  } catch (_) {
-    const settled = await Promise.allSettled(hostChecks);
-    let sawCredentialFailure = false;
-    let latestAccountInfo = null;
-
-    settled.forEach((result) => {
-      if (result.status !== 'rejected') return;
-      if (result.reason?.kind === 'invalid_credentials') {
-        sawCredentialFailure = true;
-      }
-      if (result.reason?.accountInfo) {
-        latestAccountInfo = result.reason.accountInfo;
-      }
-    });
-
-    await freeAccessQueries.updateAccountStatus(account.id, {
-      status: sawCredentialFailure ? 'invalid' : account.status || 'available',
-      maxConnections: latestAccountInfo?.maxConnections,
-      lastActiveConnections: latestAccountInfo?.activeConnections,
-      lastExpirationAt: toIsoDate(latestAccountInfo?.expiresAt),
-      lastCheckedAt: new Date().toISOString(),
-    });
-    cache.set('freeAccessRuntimeSourceMiss', cacheKey, { missing: true });
-    cache.del('freeAccessRuntimeSource', cacheKey);
-    return null;
+    return {
+      assignment,
+      providerGroup: group,
+      username: account.username,
+      password: account.password,
+      hosts: [sourceHost.host],
+    };
   }
+
+  await freeAccessQueries.updateAccountStatus(account.id, {
+    status: sawCredentialFailure ? 'invalid' : account.status || 'available',
+    maxConnections: latestAccountInfo?.maxConnections,
+    lastActiveConnections: latestAccountInfo?.activeConnections,
+    lastExpirationAt: toIsoDate(latestAccountInfo?.expiresAt),
+    lastCheckedAt: new Date().toISOString(),
+  });
+  cache.set('freeAccessRuntimeSourceMiss', cacheKey, { missing: true });
+  cache.del('freeAccessRuntimeSource', cacheKey);
+  return null;
 }
 
 async function findMatchingSourceForUser(userId, matchSource) {

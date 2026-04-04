@@ -1,28 +1,47 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
+import { Activity, ArrowRight, Database, Server, Shield, Users } from 'lucide-react';
 import { adminAPI } from '../utils/api';
 import toast from 'react-hot-toast';
+import { Badge } from '../components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import NumberTicker from '../components/sera/NumberTicker';
 
-function StatCard({ label, value, sub, color = '#818cf8' }) {
+function StatCard({ label, value, sub, icon: Icon, tone }) {
   return (
-    <div style={{ background: '#1e293b', borderRadius: '10px', padding: '18px', border: '1px solid #334155' }}>
-      <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
-      <div style={{ fontSize: '1.8rem', fontWeight: 700, color }}>{value ?? '—'}</div>
-      {sub && <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '3px' }}>{sub}</div>}
-    </div>
+    <Card className="overflow-hidden">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400/80">{label}</p>
+            <p className="mt-3 text-4xl font-bold text-white">
+              <NumberTicker value={Number(value) || 0} className="text-4xl font-bold text-white" />
+            </p>
+            <p className="mt-2 text-sm text-slate-300/60">{sub}</p>
+          </div>
+          <div className={`flex h-11 w-11 items-center justify-center rounded-2xl border ${tone}`}>
+            <Icon className="h-5 w-5" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
 function JobRow({ job }) {
-  const statusColor = job.status === 'success' ? '#86efac' : job.status === 'failed' ? '#fca5a5' : '#fde68a';
+  const variant = job.status === 'success' ? 'success' : job.status === 'failed' ? 'danger' : 'warning';
+
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #334155' }}>
+    <div className="flex items-center justify-between gap-4 border-b border-white/[0.08] py-4 last:border-b-0 last:pb-0">
       <div>
-        <div style={{ fontSize: '0.85rem', color: '#f1f5f9', fontWeight: 500 }}>{job.job_name}</div>
-        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{job.started_at ? new Date(job.started_at).toLocaleString() : 'Never'}</div>
+        <div className="text-sm font-semibold text-white">{job.job_name}</div>
+        <div className="mt-1 text-xs text-slate-400/72">
+          {job.started_at ? new Date(job.started_at).toLocaleString() : 'Never'}
+        </div>
       </div>
-      <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '20px', background: '#1e293b', color: statusColor, border: `1px solid ${statusColor}40` }}>
+      <Badge variant={variant} className="capitalize">
         {job.status}
-      </span>
+      </Badge>
     </div>
   );
 }
@@ -38,31 +57,109 @@ export default function AdminOverview() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div style={{ color: '#64748b' }}>Loading...</div>;
+  const metrics = useMemo(() => {
+    const matchRate = data?.matchStats?.total > 0
+      ? Math.round((data.matchStats.matched / data.matchStats.total) * 100)
+      : 0;
 
-  const matchRate = data?.matchStats?.total > 0
-    ? Math.round((data.matchStats.matched / data.matchStats.total) * 100) : 0;
+    return [
+      {
+        label: 'Users',
+        value: data?.userCount || 0,
+        sub: 'Accounts in the workspace',
+        icon: Users,
+        tone: 'border-brand-400/20 bg-brand-500/10 text-brand-200',
+      },
+      {
+        label: 'Providers',
+        value: data?.providerCount || 0,
+        sub: 'Sources attached across users',
+        icon: Server,
+        tone: 'border-cyan-400/20 bg-cyan-400/10 text-cyan-200',
+      },
+      {
+        label: 'Total Titles',
+        value: Number(data?.vodCount || 0),
+        sub: 'Indexed movies and series',
+        icon: Database,
+        tone: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200',
+      },
+      {
+        label: 'Match Rate',
+        value: matchRate,
+        sub: `${parseInt(data?.matchStats?.matched || 0, 10).toLocaleString()} matched titles`,
+        icon: Shield,
+        tone: 'border-amber-400/20 bg-amber-400/10 text-amber-200',
+      },
+    ];
+  }, [data]);
+
+  if (loading) return <div className="text-slate-400">Loading...</div>;
 
   return (
-    <div style={{ maxWidth: '900px' }}>
-      <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#f1f5f9', marginBottom: '20px' }}>System Overview</h1>
+    <div className="space-y-6">
+      <motion.section
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <Card className="overflow-hidden">
+          <CardContent className="p-6 sm:p-8 lg:p-10">
+            <div className="grid gap-8 lg:grid-cols-[1.02fr_0.98fr] lg:items-end">
+              <div>
+                <Badge variant="default" className="mb-5">
+                  <Activity className="h-3 w-3" />
+                  Admin overview
+                </Badge>
+                <h1 className="text-3xl font-bold leading-tight text-white sm:text-5xl">
+                  Run the admin control plane with the same dashboard language as the user workspace.
+                </h1>
+                <p className="hero-copy mt-4 max-w-2xl">
+                  Users, provider inventory, match quality, and job health stay in one operator-first surface.
+                </p>
+              </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px', marginBottom: '24px' }}>
-        <StatCard label="Users" value={data?.userCount} color="#818cf8" />
-        <StatCard label="Providers" value={data?.providerCount} color="#22d3ee" />
-        <StatCard label="Total Titles" value={data?.vodCount?.toLocaleString()} color="#a3e635" />
-        <StatCard label="Match Rate" value={`${matchRate}%`} sub={`${parseInt(data?.matchStats?.matched || 0).toLocaleString()} matched`} color="#fb923c" />
-      </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-[22px] border border-white/[0.07] bg-white/[0.025] p-5">
+                  <p className="metric-label mb-2">Last job runs</p>
+                  <p className="text-4xl font-bold text-white">{data?.lastRuns?.length || 0}</p>
+                  <p className="mt-2 text-sm text-slate-300/60">Latest scheduler activity visible to admins.</p>
+                </div>
+                <div className="rounded-[22px] border border-white/[0.07] bg-white/[0.025] p-5">
+                  <p className="metric-label mb-2">Catalog coverage</p>
+                  <p className="text-4xl font-bold text-white">{metrics[3].value}%</p>
+                  <p className="mt-2 text-sm text-slate-300/60">{metrics[3].sub}</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.section>
 
-      {/* Job status */}
-      <div style={{ background: '#1e293b', borderRadius: '12px', padding: '20px', border: '1px solid #334155' }}>
-        <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '16px' }}>Last Job Runs</h2>
-        {data?.lastRuns?.length > 0 ? (
-          data.lastRuns.map(job => <JobRow key={job.id} job={job} />)
-        ) : (
-          <div style={{ color: '#64748b', fontSize: '0.85rem' }}>No jobs run yet</div>
-        )}
-      </div>
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {metrics.map((metric) => (
+          <StatCard key={metric.label} {...metric} />
+        ))}
+      </section>
+
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b border-white/[0.08] pb-5">
+          <CardTitle className="text-xl font-bold text-white">Last job runs</CardTitle>
+        </CardHeader>
+        <CardContent className="p-6">
+          {data?.lastRuns?.length > 0 ? (
+            data.lastRuns.map((job) => <JobRow key={job.id} job={job} />)
+          ) : (
+            <div className="rounded-[22px] border border-white/[0.08] bg-white/[0.03] px-5 py-6 text-sm text-slate-400">
+              No jobs run yet.
+            </div>
+          )}
+          <div className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-brand-200">
+            Control-plane telemetry stays aligned with the user workspace shell
+            <ArrowRight className="h-4 w-4" />
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -31,10 +31,12 @@ jest.mock('../../src/db/queries', () => ({
 }));
 
 jest.mock('../../src/utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
+jest.mock('../../src/utils/cache', () => ({ get: jest.fn(), set: jest.fn(), del: jest.fn() }));
 
 const fetch = require('node-fetch');
 const { Response } = jest.requireActual('node-fetch');
 const { providerQueries, providerNetworkQueries, canonicalContentQueries, vodQueries, pool } = require('../../src/db/queries');
+const cache = require('../../src/utils/cache');
 const providerService = require('../../src/services/providerService');
 
 describe('providerService', () => {
@@ -85,6 +87,16 @@ describe('providerService', () => {
   });
 
   describe('testConnection', () => {
+    it('reuses cached account lookups for identical host credentials', async () => {
+      const cachedResult = { ok: false, error: 'HTTP 429' };
+      cache.get.mockReturnValueOnce(cachedResult);
+
+      const result = await providerService.testConnection('http://host.com', 'user', 'pass');
+
+      expect(result).toBe(cachedResult);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
     it('returns ok:true when provider responds with valid user_info', async () => {
       fetch.mockResolvedValue(new Response(
         JSON.stringify({
@@ -105,6 +117,7 @@ describe('providerService', () => {
       const result = await providerService.testConnection('http://host.com', 'user', 'pass');
       expect(result.ok).toBe(true);
       expect(result.host).toBe('http://host.com');
+      expect(cache.set).toHaveBeenCalled();
       expect(result.accountInfo).toMatchObject({
         status: 'Active',
         maxConnections: 3,

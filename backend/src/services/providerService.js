@@ -1,10 +1,20 @@
 const fetch = require('node-fetch');
+const crypto = require('crypto');
 const { providerQueries, providerNetworkQueries, canonicalContentQueries, vodQueries, pool } = require('../db/queries');
 const logger = require('../utils/logger');
 const cache = require('../utils/cache');
 const { normalizeTitle, parseMovieTitle, parseReleaseTitle, parseSeriesTitle } = require('../utils/titleNormalization');
 
 const FETCH_TIMEOUT = 20000; // 20s — some providers are slow
+const ACCOUNT_LOOKUP_SUCCESS_TTL_SECONDS = parseInt(process.env.ACCOUNT_LOOKUP_SUCCESS_TTL_SECONDS || '600', 10);
+const ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS = parseInt(process.env.ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS || '300', 10);
+
+function buildAccountLookupCacheKey(host, username, password) {
+  return crypto
+    .createHash('sha256')
+    .update(`${host}|${username}|${password}`)
+    .digest('hex');
+}
 
 function isTruthyAuth(value) {
   return value === 1 || value === '1' || value === true;
@@ -62,24 +72,40 @@ function normalizeAccountInfo(data) {
 }
 
 async function fetchAccountInfoForHost(host, username, password) {
+  const cacheKey = buildAccountLookupCacheKey(host, username, password);
+  const cached = cache.get('providerAccountInfo', cacheKey);
+  if (cached) return cached;
+
   const url = `${host}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
   try {
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timer);
-    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    if (!res.ok) {
+      const result = { ok: false, error: `HTTP ${res.status}` };
+      cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
+      return result;
+    }
     const data = await res.json();
     if (data?.user_info?.auth === 0 || data?.user_info?.auth === '0' || data?.user_info?.auth === false) {
-      return { ok: false, error: 'Invalid credentials' };
+      const result = { ok: false, error: 'Invalid credentials' };
+      cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
+      return result;
     }
     if (isTruthyAuth(data?.user_info?.auth) || data?.user_info) {
-      return { ok: true, host, accountInfo: normalizeAccountInfo(data) };
+      const result = { ok: true, host, accountInfo: normalizeAccountInfo(data) };
+      cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_SUCCESS_TTL_SECONDS);
+      return result;
     }
-    return { ok: false, error: 'Unexpected response' };
+    const result = { ok: false, error: 'Unexpected response' };
+    cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
+    return result;
   } catch (err) {
     clearTimeout(timer);
-    return { ok: false, error: err.message };
+    const result = { ok: false, error: err.message };
+    cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
+    return result;
   }
 }
 
@@ -93,12 +119,12 @@ async function getProviderAccountInfo(provider, { forceRefresh = false } = {}) {
   if (!forceRefresh) {
     const cached = cache.get('providerAccountInfo', cacheKey);
     if (cached) return cached;
+  } else {
+    cache.del('providerAccountInfo', buildAccountLookupCacheKey(hostToCheck, provider.username, provider.password));
   }
 
   const result = await fetchAccountInfoForHost(hostToCheck, provider.username, provider.password);
-  if (result.ok) {
-    cache.set('providerAccountInfo', cacheKey, result);
-  }
+  cache.set('providerAccountInfo', cacheKey, result, result.ok ? ACCOUNT_LOOKUP_SUCCESS_TTL_SECONDS : ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
   return result;
 }
 
