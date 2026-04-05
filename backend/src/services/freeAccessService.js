@@ -317,17 +317,22 @@ const freeAccessService = {
   },
 
   async resolveFallbackVodItem(userId, baseId, type) {
+    const items = await this.resolveFallbackVodItemsForStream(userId, baseId, type);
+    return items[0] || null;
+  },
+
+  async resolveFallbackVodItemsForStream(userId, baseId, type) {
     return findMatchingSourceForUser(userId, async (source) => {
-      let item = null;
+      let items = [];
       if (baseId.startsWith('tt')) {
-        item = await freeAccessQueries.findCatalogByImdbId(source.providerGroup.id, baseId);
+        items = await freeAccessQueries.findCatalogItemsByImdbId(source.providerGroup.id, baseId);
       } else if (baseId.startsWith('tmdb:')) {
-        item = await freeAccessQueries.findCatalogByTmdbId(source.providerGroup.id, parseInt(baseId.slice(5), 10));
+        items = await freeAccessQueries.findCatalogItemsByTmdbId(source.providerGroup.id, parseInt(baseId.slice(5), 10));
       }
 
-      if (!item) return null;
+      if (!Array.isArray(items) || items.length === 0) return null;
 
-      return {
+      return items.map((item) => ({
         ...item,
         provider_group_id: source.providerGroup.id,
         access_source: 'free_access',
@@ -335,7 +340,7 @@ const freeAccessService = {
         password: source.password,
         playback_hosts: source.hosts,
         assignment_id: source.assignment.id,
-      };
+      }));
     });
   },
 

@@ -376,6 +376,11 @@ async function resolveFallbackVodItem(user, baseId, type) {
   return freeAccessService.resolveFallbackVodItem(user.id, baseId, type);
 }
 
+async function resolveFallbackVodItemsForStream(user, baseId, type) {
+  const items = await freeAccessService.resolveFallbackVodItemsForStream(user.id, baseId, type);
+  return Array.isArray(items) ? items : [];
+}
+
 function applyLanguagePreferences(vodItems, user) {
   const preferred = Array.isArray(user?.preferred_languages) ? user.preferred_languages : [];
   const excluded = Array.isArray(user?.excluded_languages) ? user.excluded_languages : [];
@@ -952,9 +957,12 @@ async function handleStream(token, type, id) {
     }
 
     if (!vodItems.length && type !== 'tv') {
-      const fallbackItem = await resolveFallbackVodItem(user, baseId, type);
-      if (fallbackItem) {
-        vodItems = [fallbackItem];
+      vodItems = await resolveFallbackVodItemsForStream(user, baseId, type);
+      if (!vodItems.length) {
+        const fallbackItem = await resolveFallbackVodItem(user, baseId, type);
+        if (fallbackItem) {
+          vodItems = [fallbackItem];
+        }
       }
     }
 

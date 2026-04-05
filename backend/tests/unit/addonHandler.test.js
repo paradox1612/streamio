@@ -55,6 +55,7 @@ jest.mock('../../src/db/queries', () => ({
 jest.mock('../../src/services/providerService', () => ({}));
 jest.mock('../../src/services/freeAccessService', () => ({
   resolveFallbackVodItem: jest.fn().mockResolvedValue(null),
+  resolveFallbackVodItemsForStream: jest.fn().mockResolvedValue([]),
   resolveFallbackOnDemandCandidate: jest.fn().mockResolvedValue([]),
   recordResolvedStream: jest.fn().mockResolvedValue(),
 }));
@@ -72,6 +73,7 @@ process.env.TMDB_API_KEY = 'test-key';
 
 const fetch = require('node-fetch');
 const { pool } = require('../../src/db/queries');
+const freeAccessService = require('../../src/services/freeAccessService');
 const { buildManifest, handleCatalog, handleStream, __test__ } = require('../../src/addon/addonHandler');
 
 beforeEach(() => {
@@ -337,6 +339,58 @@ describe('addonHandler handleStream', () => {
         },
       ],
     });
+  });
+
+  it('returns all free-access fallback variants across languages', async () => {
+    mockCache.get.mockReturnValue(null);
+    mockUserQueries.findByToken.mockResolvedValue({ id: 'user-1' });
+    mockVodQueries.resolveByExternalIdForUser.mockResolvedValueOnce([]);
+    pool.query.mockResolvedValueOnce({ rows: [] });
+    fetch.mockResolvedValueOnce({ ok: false });
+    freeAccessService.resolveFallbackVodItemsForStream.mockResolvedValueOnce([
+      {
+        raw_title: 'War Machine (2026) (Hindi)',
+        username: 'alice',
+        password: 'secret',
+        stream_id: '101',
+        vod_type: 'movie',
+        container_extension: 'mp4',
+        access_source: 'free_access',
+        playback_hosts: [{ host: 'http://free-host.test', responseTimeMs: 320 }],
+        assignment_id: 'assignment-1',
+      },
+      {
+        raw_title: 'War Machine (2026) (Tamil)',
+        username: 'alice',
+        password: 'secret',
+        stream_id: '102',
+        vod_type: 'movie',
+        container_extension: 'mkv',
+        access_source: 'free_access',
+        playback_hosts: [{ host: 'http://free-host.test', responseTimeMs: 320 }],
+        assignment_id: 'assignment-1',
+      },
+    ]);
+
+    const result = await handleStream('token-1', 'movie', 'tt15940132');
+
+    expect(result).toEqual({
+      streams: [
+        {
+          url: 'http://free-host.test/movie/alice/secret/101.mp4',
+          title: 'War Machine (2026) (Hindi) — StreamBridge (Host 1, 320ms)',
+          name: 'War Machine (2026) (Hindi)',
+          behaviorHints: { notWebReady: false },
+        },
+        {
+          url: 'http://free-host.test/movie/alice/secret/102.mkv',
+          title: 'War Machine (2026) (Tamil) — StreamBridge (Host 1, 320ms)',
+          name: 'War Machine (2026) (Tamil)',
+          behaviorHints: { notWebReady: false },
+        },
+      ],
+    });
+    expect(freeAccessService.recordResolvedStream).toHaveBeenCalledWith('assignment-1');
   });
 });
 

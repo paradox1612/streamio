@@ -1968,27 +1968,37 @@ const freeAccessQueries = {
     );
   },
 
-  async findCatalogByTmdbId(providerGroupId, tmdbId) {
+  async findCatalogItemsByTmdbId(providerGroupId, tmdbId) {
     const { rows } = await pool.query(
       `SELECT c.*, m.tmdb_id, m.imdb_id, m.confidence_score
        FROM free_access_catalog c
        JOIN matched_content m ON m.raw_title = c.raw_title AND m.tmdb_id = $2
        WHERE c.provider_group_id = $1
-       LIMIT 1`,
+       ORDER BY c.raw_title ASC, c.stream_id ASC`,
       [providerGroupId, tmdbId]
     );
+    return rows;
+  },
+
+  async findCatalogByTmdbId(providerGroupId, tmdbId) {
+    const rows = await this.findCatalogItemsByTmdbId(providerGroupId, tmdbId);
     return rows[0];
   },
 
-  async findCatalogByImdbId(providerGroupId, imdbId) {
+  async findCatalogItemsByImdbId(providerGroupId, imdbId) {
     const { rows } = await pool.query(
       `SELECT c.*, m.tmdb_id, m.imdb_id, m.confidence_score
        FROM free_access_catalog c
        JOIN matched_content m ON m.raw_title = c.raw_title AND m.imdb_id = $2
        WHERE c.provider_group_id = $1
-       LIMIT 1`,
+       ORDER BY c.raw_title ASC, c.stream_id ASC`,
       [providerGroupId, imdbId]
     );
+    return rows;
+  },
+
+  async findCatalogByImdbId(providerGroupId, imdbId) {
+    const rows = await this.findCatalogItemsByImdbId(providerGroupId, imdbId);
     return rows[0];
   },
 
