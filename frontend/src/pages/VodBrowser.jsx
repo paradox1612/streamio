@@ -6,9 +6,9 @@
  *   • FixMatch modal upgraded with Sera UI lightbox style (prev/next, Esc)
  *   • Staggered containerAnimation / itemAnimation for the grid
  */
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { providerAPI } from '../utils/api';
+import { freeAccessAPI, providerAPI } from '../utils/api';
 import {
   MagnifyingGlassIcon,
   XMarkIcon,
@@ -251,7 +251,7 @@ function FixMatchModal({ item, providerId, allItems, currentIndex, onClose, onSu
 }
 
 // ── VodCard (Sera UI Video Gallery card pattern) ─────────────────────────────
-function VodCard({ item, onOpenModal, animVariants }) {
+function VodCard({ item, onOpenModal, animVariants, allowManualMatch = true }) {
   const matched  = item.tmdb_id != null;
   const score    = item.confidence_score ? Math.round(item.confidence_score * 100) : null;
   const watchedLabel = formatLastWatched(item.last_watched_at);
@@ -267,7 +267,9 @@ function VodCard({ item, onOpenModal, animVariants }) {
       style={{ aspectRatio: '2/3' }}
       whileHover={{ scale: 1.03, y: -6, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
       whileTap={{ scale: 0.98 }}
-      onClick={() => onOpenModal(item)}
+      onClick={() => {
+        if (allowManualMatch) onOpenModal(item);
+      }}
     >
       {/* Poster image */}
       {item.poster_url ? (
@@ -350,13 +352,18 @@ function VodCard({ item, onOpenModal, animVariants }) {
             transition={{ delay: 0.15 }}
           >
             <div
-              onClick={(e) => { e.stopPropagation(); onOpenModal(item); }}
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-[0_0_12px_rgba(255,255,255,0.2)]"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (allowManualMatch) onOpenModal(item);
+              }}
+              className={`flex h-8 w-8 items-center justify-center rounded-full shadow-[0_0_12px_rgba(255,255,255,0.2)] ${
+                allowManualMatch ? 'bg-white' : 'bg-slate-500/40'
+              }`}
             >
-              <SparklesIcon className="h-3.5 w-3.5 text-black" />
+              <SparklesIcon className={`h-3.5 w-3.5 ${allowManualMatch ? 'text-black' : 'text-white/70'}`} />
             </div>
             <span className="text-[11px] font-semibold text-white">
-              {matched ? 'Fix Match' : 'Match Title'}
+              {!allowManualMatch ? 'Metadata View' : matched ? 'Fix Match' : 'Match Title'}
             </span>
           </motion.div>
         </div>
@@ -375,12 +382,13 @@ export default function VodBrowser() {
   const [loadingProviders, setLoadingProviders] = useState(true);
   const [filter, setFilter]                 = useState({ type: '', matched: '', page: 1 });
   const [searchInput, setSearchInput]       = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [searchQuery, setSearchQuery]       = useState('');
   const [modalItem, setModalItem]           = useState(null);
   const [modalIndex, setModalIndex]         = useState(0);
-
-  const debounceRef = useRef(null);
   const searchRef   = useRef(null);
+  const hasByoProviders = Boolean(user?.has_byo_providers);
+  const hasFreeCatalog = Boolean(user?.has_active_free_access);
+  const isFreeAccessCatalog = !hasByoProviders && hasFreeCatalog;
 
   // "/" shortcut → focus search
   useEffect(() => {
@@ -394,19 +402,15 @@ export default function VodBrowser() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Debounce search input
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      setDebouncedSearch(searchInput);
-      setItems([]);
-      setFilter((f) => ({ ...f, page: 1 }));
-    }, 400);
-    return () => clearTimeout(debounceRef.current);
-  }, [searchInput]);
-
   // Load providers
   useEffect(() => {
+    if (!hasByoProviders) {
+      setProviders(isFreeAccessCatalog ? [{ id: 'free-access', name: 'Free Access Catalog' }] : []);
+      setSelectedProvider(isFreeAccessCatalog ? 'free-access' : '');
+      setLoadingProviders(false);
+      return;
+    }
+
     providerAPI.list()
       .then((res) => {
         setProviders(res.data);
@@ -414,7 +418,7 @@ export default function VodBrowser() {
       })
       .catch(() => reportableError('Failed to load providers'))
       .finally(() => setLoadingProviders(false));
-  }, []);
+  }, [hasByoProviders, isFreeAccessCatalog]);
 
   // Reset on provider/filter change
   useEffect(() => {
@@ -429,23 +433,32 @@ export default function VodBrowser() {
     try {
       const params = { page: filter.page, limit: 60 };
       if (filter.type)         params.type    = filter.type;
-      if (debouncedSearch)     params.search  = debouncedSearch;
+      if (searchQuery)         params.search  = searchQuery;
       if (filter.matched !== '') params.matched = filter.matched;
-      const res = await providerAPI.getVod(selectedProvider, params);
+      const res = isFreeAccessCatalog
+        ? await freeAccessAPI.getCatalog(params)
+        : await providerAPI.getVod(selectedProvider, params);
       setItems((prev) => filter.page === 1 ? res.data : [...prev, ...res.data]);
     } catch (_) {
       reportableError('Failed to load catalog');
     } finally {
       setLoading(false);
     }
-  }, [selectedProvider, filter, debouncedSearch]);
+  }, [selectedProvider, filter, searchQuery, isFreeAccessCatalog]);
 
-  useEffect(() => { loadVod(); }, [filter.page, debouncedSearch, selectedProvider, filter.type, filter.matched]); // eslint-disable-line
+  useEffect(() => { loadVod(); }, [filter.page, searchQuery, selectedProvider, filter.type, filter.matched]); // eslint-disable-line
 
   const handleFilterChange = (key, value) => {
     setItems([]);
     setFilter((f) => ({ ...f, [key]: value, page: 1 }));
   };
+
+  const applySearch = useCallback(() => {
+    const nextQuery = searchInput.trim();
+    setItems([]);
+    setSearchQuery(nextQuery);
+    setFilter((f) => ({ ...f, page: 1 }));
+  }, [searchInput]);
 
   // Modal navigation
   const openModal = (item) => {
@@ -476,18 +489,18 @@ export default function VodBrowser() {
     );
   }
 
-  if (!user?.has_byo_providers) {
+  if (!hasByoProviders && !hasFreeCatalog) {
     return (
       <div className="mx-auto max-w-7xl space-y-8">
         <section className="panel p-8">
           <div className="kicker mb-5">Browse VOD</div>
-          <h1 className="hero-title">Web catalog browsing unlocks only after you add a BYO provider.</h1>
-          <p className="hero-copy mt-4">Managed free access stays hidden and fallback-only. Connect your own source to browse movies and series here.</p>
+          <h1 className="hero-title">Start free access or add a provider to browse movies and series.</h1>
+          <p className="hero-copy mt-4">Free access now exposes the full managed movie and series catalog in the app. Live TV still requires BYO.</p>
         </section>
         <EmptyState
           icon={SparklesIcon}
-          heading="BYO required for web browsing"
-          description="Free access can still help inside addon fallback, but it is not exposed in the dashboard catalog."
+          heading="No catalog source connected yet"
+          description="Start free access for the managed catalog, or add your own provider if you want BYO browsing and Live TV."
           action={() => window.location.href = '/providers'}
           actionLabel="Add BYO Provider"
         />
@@ -520,7 +533,7 @@ export default function VodBrowser() {
             <p className="metric-label mb-1">Current Provider</p>
             <p className="break-words text-2xl font-bold text-white">{selectedProviderName || 'None selected'}</p>
             <p className="mt-2 text-sm text-slate-300/[0.68]">
-              {items.length} visible items{debouncedSearch ? ` for "${debouncedSearch}"` : ''}.
+              {items.length} visible items{searchQuery ? ` for "${searchQuery}"` : ''}.
             </p>
           </div>
         </div>
@@ -542,6 +555,9 @@ export default function VodBrowser() {
               placeholder={`Search in ${selectedProviderName || 'your library'}…`}
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') applySearch();
+              }}
               className="field-input pl-12 pr-11"
             />
             <AnimatePresence>
@@ -550,7 +566,12 @@ export default function VodBrowser() {
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.8 }}
-                  onClick={() => { setSearchInput(''); setDebouncedSearch(''); }}
+                  onClick={() => {
+                    setSearchInput('');
+                    setSearchQuery('');
+                    setItems([]);
+                    setFilter((f) => ({ ...f, page: 1 }));
+                  }}
                   className="absolute right-4 top-[3.05rem] text-slate-300/55 transition-colors hover:text-white"
                 >
                   <XMarkIcon className="h-4 w-4" />
@@ -559,11 +580,26 @@ export default function VodBrowser() {
             </AnimatePresence>
           </div>
 
-          <div>
-            <label className="field-label">Provider</label>
-            <select value={selectedProvider} onChange={(e) => setSelectedProvider(e.target.value)} className="field-select">
-              {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+          <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+            {hasByoProviders ? (
+              <div>
+                <label className="field-label">Provider</label>
+                <select value={selectedProvider} onChange={(e) => setSelectedProvider(e.target.value)} className="field-select">
+                  {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label className="field-label">Source</label>
+                <div className="field-input flex items-center">{selectedProviderName || 'Free Access Catalog'}</div>
+              </div>
+            )}
+
+            <div className="flex items-end">
+              <button type="button" onClick={applySearch} className="btn-primary w-full whitespace-nowrap sm:w-auto">
+              Search Title
+              </button>
+            </div>
           </div>
         </div>
 
@@ -599,8 +635,8 @@ export default function VodBrowser() {
       {items.length === 0 && !loading ? (
         <EmptyState
           icon={<SparklesIcon className="h-12 w-12" />}
-          heading={debouncedSearch ? `No results for "${debouncedSearch}"` : 'No titles found'}
-          description={debouncedSearch ? 'Try a different search term or adjust the filters.' : 'Refresh your provider catalog to load titles here.'}
+          heading={searchQuery ? `No results for "${searchQuery}"` : 'No titles found'}
+          description={searchQuery ? 'Try the full title or adjust the filters.' : 'Refresh your catalog source to load titles here.'}
         />
       ) : (
         <>
@@ -626,6 +662,7 @@ export default function VodBrowser() {
                       key={item.id}
                       item={item}
                       animVariants={itemAnim}
+                      allowManualMatch={!isFreeAccessCatalog}
                       onMatchFixed={() => { setItems([]); setFilter((f) => ({ ...f, page: 1 })); }}
                       onOpenModal={openModal}
                     />

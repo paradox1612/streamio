@@ -834,30 +834,34 @@ const vodQueries = {
       LEFT JOIN matched_content m ON m.raw_title = v.raw_title
       WHERE v.user_id = $1
         AND v.vod_type = $2
-        AND (
-          m.id IS NULL
-          OR m.tmdb_id IS NULL
-          OR m.imdb_id = $3
-          OR m.tmdb_id = $4
-          OR (m.tmdb_id IS NOT NULL AND m.imdb_id IS NULL)
-        )
     `;
-    const params = [userId, vodType, imdbId || null, tmdbId || null];
-    let idx = 5;
+    const params = [userId, vodType];
+    let idx = 3;
 
     if (normalizedTitle) {
       query += ` AND COALESCE(v.canonical_normalized_title, v.normalized_title) IS NOT NULL`;
       query += ` ORDER BY
+        CASE WHEN m.imdb_id = $${idx + 2} THEN 0 ELSE 1 END,
+        CASE WHEN m.tmdb_id = $${idx + 3} THEN 0 ELSE 1 END,
         CASE WHEN COALESCE(v.canonical_normalized_title, v.normalized_title) = $${idx} THEN 0 ELSE 1 END,
         CASE WHEN COALESCE(v.canonical_normalized_title, v.normalized_title) % $${idx} THEN 0 ELSE 1 END,
         CASE WHEN v.title_year = $${idx + 1} THEN 0 ELSE 1 END,
         COALESCE(v.canonical_normalized_title, v.normalized_title) <-> $${idx} ASC,
-        ABS(COALESCE(v.title_year, $${idx + 1}) - $${idx + 1}) ASC
-        LIMIT 25`;
+        ABS(COALESCE(v.title_year, $${idx + 1}) - $${idx + 1}) ASC,
+        v.raw_title ASC
+        LIMIT 100`;
       params.push(normalizedTitle);
       params.push(year || null);
+      params.push(imdbId || null);
+      params.push(tmdbId || null);
     } else {
-      query += ` ORDER BY v.created_at DESC LIMIT 25`;
+      query += ` ORDER BY
+        CASE WHEN m.imdb_id = $${idx} THEN 0 ELSE 1 END,
+        CASE WHEN m.tmdb_id = $${idx + 1} THEN 0 ELSE 1 END,
+        v.created_at DESC
+        LIMIT 100`;
+      params.push(imdbId || null);
+      params.push(tmdbId || null);
     }
 
     const { rows } = await pool.query(query, params);
@@ -1995,31 +1999,72 @@ const freeAccessQueries = {
       LEFT JOIN matched_content m ON m.raw_title = c.raw_title
       WHERE c.provider_group_id = $1
         AND c.vod_type = $2
-        AND (
-          m.id IS NULL
-          OR m.tmdb_id IS NULL
-          OR m.imdb_id = $3
-          OR m.tmdb_id = $4
-          OR (m.tmdb_id IS NOT NULL AND m.imdb_id IS NULL)
-        )
     `;
-    const params = [providerGroupId, vodType, imdbId || null, tmdbId || null];
-    let idx = 5;
+    const params = [providerGroupId, vodType];
+    let idx = 3;
 
     if (normalizedTitle) {
       query += ` AND COALESCE(c.canonical_normalized_title, c.normalized_title) IS NOT NULL`;
       query += ` ORDER BY
+        CASE WHEN m.imdb_id = $${idx + 2} THEN 0 ELSE 1 END,
+        CASE WHEN m.tmdb_id = $${idx + 3} THEN 0 ELSE 1 END,
         CASE WHEN COALESCE(c.canonical_normalized_title, c.normalized_title) = $${idx} THEN 0 ELSE 1 END,
         CASE WHEN COALESCE(c.canonical_normalized_title, c.normalized_title) % $${idx} THEN 0 ELSE 1 END,
         CASE WHEN c.title_year = $${idx + 1} THEN 0 ELSE 1 END,
         COALESCE(c.canonical_normalized_title, c.normalized_title) <-> $${idx} ASC,
-        ABS(COALESCE(c.title_year, $${idx + 1}) - $${idx + 1}) ASC
-        LIMIT 25`;
+        ABS(COALESCE(c.title_year, $${idx + 1}) - $${idx + 1}) ASC,
+        c.raw_title ASC
+        LIMIT 100`;
       params.push(normalizedTitle);
       params.push(year || null);
+      params.push(imdbId || null);
+      params.push(tmdbId || null);
     } else {
-      query += ' ORDER BY c.created_at DESC LIMIT 25';
+      query += ` ORDER BY
+        CASE WHEN m.imdb_id = $${idx} THEN 0 ELSE 1 END,
+        CASE WHEN m.tmdb_id = $${idx + 1} THEN 0 ELSE 1 END,
+        c.created_at DESC
+        LIMIT 100`;
+      params.push(imdbId || null);
+      params.push(tmdbId || null);
     }
+
+    const { rows } = await pool.query(query, params);
+    return rows;
+  },
+
+  async getCatalogByAssignment(assignment, { page = 1, limit = 100, search = '', type, matched } = {}) {
+    let query = `
+      SELECT
+        c.*,
+        m.tmdb_id,
+        m.imdb_id,
+        m.confidence_score
+      FROM free_access_catalog c
+      LEFT JOIN matched_content m ON m.raw_title = c.raw_title
+      WHERE c.provider_group_id = $1
+    `;
+    const params = [assignment.provider_group_id];
+    let idx = 2;
+
+    if (type) {
+      query += ` AND c.vod_type = $${idx++}`;
+      params.push(type);
+    }
+    if (search) {
+      query += ` AND c.raw_title ILIKE $${idx++}`;
+      params.push(`%${search}%`);
+    }
+    if (matched === true) query += ' AND m.tmdb_id IS NOT NULL';
+    if (matched === false) query += ' AND (m.id IS NULL OR m.tmdb_id IS NULL)';
+
+    query += ` ORDER BY
+      c.canonical_normalized_title ASC NULLS LAST,
+      c.normalized_title ASC NULLS LAST,
+      c.raw_title ASC,
+      c.stream_id ASC
+      LIMIT $${idx++} OFFSET $${idx++}`;
+    params.push(limit, (page - 1) * limit);
 
     const { rows } = await pool.query(query, params);
     return rows;

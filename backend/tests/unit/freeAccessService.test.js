@@ -142,3 +142,18 @@ describe('freeAccessService.getActiveSourceForUser', () => {
     );
   });
 });
+
+describe('freeAccessService.buildCapabilityState', () => {
+  it('allows catalog browsing when free access is active without BYO providers', () => {
+    expect(freeAccessService.buildCapabilityState({
+      has_byo_providers: false,
+      has_active_free_access: true,
+      free_access_status: 'active',
+    })).toEqual(expect.objectContaining({
+      hasByoProviders: false,
+      hasActiveFreeAccess: true,
+      canBrowseWebCatalog: true,
+      canUseLiveTv: false,
+    }));
+  });
+});

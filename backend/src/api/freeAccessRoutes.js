@@ -8,6 +8,22 @@ router.get('/status', requireAuth, async (req, res) => {
   res.json(status);
 });
 
+router.get('/catalog', requireAuth, async (req, res) => {
+  try {
+    const { type, page, limit, search, matched } = req.query;
+    const items = await freeAccessService.getCatalogForUser(req.user.id, {
+      type,
+      page: parseInt(page, 10) || 1,
+      limit: Math.min(parseInt(limit, 10) || 50, 200),
+      search,
+      matched: matched === 'true' ? true : matched === 'false' ? false : undefined,
+    });
+    res.json(items);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 router.post('/start', requireAuth, async (req, res) => {
   try {
     const assignment = await freeAccessService.startOrExtend(req.user.id);

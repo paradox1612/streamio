@@ -40,7 +40,7 @@ function buildCapabilityState(user) {
     freeAccessStatus: user?.free_access_status || 'inactive',
     freeAccessExpiresAt: user?.free_access_expires_at || null,
     canUseLiveTv: Boolean(user?.can_use_live_tv),
-    canBrowseWebCatalog: Boolean(user?.has_byo_providers),
+    canBrowseWebCatalog: Boolean(user?.has_byo_providers || user?.has_active_free_access),
   };
 }
 
@@ -356,6 +356,19 @@ const freeAccessService = {
     });
 
     return candidates || [];
+  },
+
+  async getCatalogForUser(userId, { page = 1, limit = 100, search = '', type, matched } = {}) {
+    const assignment = await freeAccessQueries.findActiveAssignmentForUser(userId);
+    if (!assignment) return [];
+
+    return freeAccessQueries.getCatalogByAssignment(assignment, {
+      page,
+      limit,
+      search,
+      type,
+      matched,
+    });
   },
 
   async recordResolvedStream(assignmentId) {

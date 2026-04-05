@@ -10,18 +10,19 @@ The admin preloads one or more Xtream-style providers. Each provider can have:
 - multiple username/password accounts
 - a trial policy
 
-The system assigns a trial account to the user for 7 days, exposes only working streams, hides provider details from the user-facing product, blocks live TV during trial, and removes or disables expired trial access automatically.
+The system assigns a trial account to the user for 7 days, exposes the full managed movie and series catalog in the app and addon, hides provider details from the user-facing product, blocks live TV during trial, and removes or disables expired trial access automatically.
 
 ## Final Product Rules
 
 - Trial length: 7 days
-- Trial content: VOD and series only
+- Trial content: all managed movies and series
 - Live TV during trial: disabled
 - Renewal rule for now: user may request a new trial only after the previous trial has expired
 - Renewal limit for now: unlimited, but only one active trial at a time per user
 - User-facing URL model: keep the existing addon token URL
 - Stream delivery model: server resolves the assigned provider/account internally and returns the stream
 - Provider/account details: never shown in UI or addon responses
+- App browsing during trial: enabled for the managed movie and series catalog
 
 ## Core Decision
 
@@ -120,7 +121,7 @@ Fields:
 2. User chooses "Try free for 7 days".
 3. Backend finds one eligible trial account.
 4. Backend creates a `user_trials` row.
-5. Backend exposes addon/catalog normally, but only from the assigned trial source.
+5. Backend exposes addon/catalog normally from the assigned trial source, including app browsing for managed movies and series.
 6. Live TV routes are hidden or return `403`.
 
 ### After expiry

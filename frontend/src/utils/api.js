@@ -64,6 +64,7 @@ export const userAPI = {
 
 export const freeAccessAPI = {
   getStatus: () => api.get('/api/free-access/status'),
+  getCatalog: (params) => api.get('/api/free-access/catalog', { params }),
   start: () => api.post('/api/free-access/start'),
   extend: () => api.post('/api/free-access/extend'),
 };

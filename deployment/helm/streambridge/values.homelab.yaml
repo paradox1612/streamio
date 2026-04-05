@@ -55,10 +55,8 @@ postgres:
 ingress:
   enabled: true
   className: nginx
-  annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  annotations: {}
   host: streambridge.thekush.dev
   tls:
-    enabled: true
-    secretName: streambridge-origin-tls
+    enabled: false
+    secretName: ""

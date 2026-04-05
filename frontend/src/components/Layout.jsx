@@ -80,7 +80,14 @@ export default function Layout({ children }) {
 
   const navItems = baseNavItems.filter((item) => {
     if (item.path === '/live') return Boolean(user?.can_use_live_tv);
-    if (item.path === '/vod') return Boolean(user?.canBrowseWebCatalog ?? user?.can_browse_web_catalog ?? user?.has_byo_providers);
+    if (item.path === '/vod') {
+      return Boolean(
+        user?.canBrowseWebCatalog
+        ?? user?.can_browse_web_catalog
+        ?? user?.has_byo_providers
+        ?? user?.has_active_free_access
+      );
+    }
     return true;
   });
 
