@@ -324,9 +324,25 @@ async function resolveFallbackVodItem(user, baseId, type) {
 
   if (!Array.isArray(candidates) || candidates.length === 0) return null;
 
+  let matchedAny = false;
   for (const candidate of candidates) {
     const result = await resolveCandidateMatch(candidate, target);
-    if (!result) continue;
+    if (!result?.matched) {
+      logResolverDebug('fallback candidate rejected', {
+        userId: user.id,
+        baseId,
+        type,
+        candidateTitle: candidate.raw_title,
+        candidateTmdbId: candidate.tmdb_id || null,
+        candidateImdbId: candidate.imdb_id || null,
+        reason: result?.reason || 'unknown',
+        candidateNormalizedTitle: result?.candidateTitle || candidate.canonical_normalized_title || candidate.normalized_title || null,
+        targetNormalizedTitle: result?.targetNormalized || target.normalized_title || null,
+        matchedTmdbId: result?.matchedTmdbId || null,
+        matchedScore: result?.matchedScore || null,
+      });
+      continue;
+    }
 
     await matchQueries.upsert({
       rawTitle: candidate.raw_title,
@@ -334,6 +350,26 @@ async function resolveFallbackVodItem(user, baseId, type) {
       tmdbType: target.tmdb_type === 'series' ? 'series' : 'movie',
       imdbId: target.imdb_id || (baseId.startsWith('tt') ? baseId : null),
       confidenceScore: result.score,
+    });
+    matchedAny = true;
+    logResolverDebug('fallback candidate matched', {
+      userId: user.id,
+      baseId,
+      type,
+      candidateTitle: candidate.raw_title,
+      targetTmdbId: target.id,
+      score: result.score,
+      reason: result.reason || 'matched',
+    });
+  }
+
+  if (!matchedAny) {
+    logResolverDebug('fallback matching completed without a match', {
+      userId: user.id,
+      baseId,
+      type,
+      targetTmdbId: target.id,
+      targetNormalizedTitle: target.normalized_title || normalizeTitle(target.original_title || ''),
     });
   }
 
@@ -513,13 +549,8 @@ async function getTargetTmdbRecord(baseId, type) {
 }
 
 async function resolveCandidateMatch(candidate, target) {
-  if (candidate.tmdb_id === target.id || (target.imdb_id && candidate.imdb_id === target.imdb_id)) {
-    return {
-      id: target.id,
-      score: candidate.confidence_score || 1,
-    };
-  }
-
+  const targetType = target.tmdb_type === 'series' ? 'series' : 'movie';
+  const targetNormalized = target.normalized_title || normalizeTitle(target.original_title || '');
   const parsedCandidate = target.tmdb_type === 'series'
     ? parseSeriesTitle(candidate.raw_title || '')
     : parseMovieTitle(candidate.raw_title || '');
@@ -527,9 +558,26 @@ async function resolveCandidateMatch(candidate, target) {
     || parsedCandidate.canonicalNormalizedTitle
     || candidate.normalized_title
     || normalizeTitle(candidate.raw_title || '');
-  if (!candidateTitle) return null;
+  const candidateYear = candidate.title_year || parsedCandidate.year || null;
 
-  const targetType = target.tmdb_type === 'series' ? 'series' : 'movie';
+  if (candidate.tmdb_id === target.id || (target.imdb_id && candidate.imdb_id === target.imdb_id)) {
+    return {
+      matched: true,
+      id: target.id,
+      score: candidate.confidence_score || 1,
+      reason: 'existing_external_id_match',
+    };
+  }
+
+  if (!candidateTitle) {
+    return {
+      matched: false,
+      reason: 'missing_candidate_title',
+      candidateTitle: null,
+      targetNormalized,
+    };
+  }
+
   const titleVariants = [candidateTitle];
 
   if (target.year) {
@@ -551,11 +599,61 @@ async function resolveCandidateMatch(candidate, target) {
       : tmdbQueries.fuzzyMatchMovie(titleVariant, target.year));
 
     if (result && result.id === target.id && result.score >= 0.6) {
-      return result;
+      return {
+        matched: true,
+        ...result,
+        reason: exactResult ? 'tmdb_exact_match' : 'tmdb_fuzzy_match',
+      };
+    }
+
+    if (result && result.id !== target.id) {
+      return {
+        matched: false,
+        reason: 'matched_different_tmdb_record',
+        candidateTitle,
+        targetNormalized,
+        candidateYear,
+        matchedTmdbId: result.id,
+        matchedScore: result.score,
+        targetTmdbId: target.id,
+      };
+    }
+
+    if (result && result.score < 0.6) {
+      return {
+        matched: false,
+        reason: 'match_score_below_threshold',
+        candidateTitle,
+        targetNormalized,
+        candidateYear,
+        matchedTmdbId: result.id,
+        matchedScore: result.score,
+        targetTmdbId: target.id,
+      };
     }
   }
 
-  return null;
+  if (candidateTitle === targetNormalized) {
+    const yearDelta = target.year && candidateYear ? Math.abs(candidateYear - target.year) : null;
+    const yearCompatible = !target.year || !candidateYear || yearDelta <= (targetType === 'series' ? 2 : 1);
+    if (yearCompatible) {
+      return {
+        matched: true,
+        id: target.id,
+        score: 0.99,
+        reason: 'normalized_title_match',
+      };
+    }
+  }
+
+  return {
+    matched: false,
+    reason: 'no_tmdb_match',
+    candidateTitle,
+    targetNormalized,
+    candidateYear,
+    targetTmdbId: target.id,
+  };
 }
 
 async function tryOnDemandMatch(userId, baseId, type) {
@@ -615,7 +713,7 @@ async function tryOnDemandMatch(userId, baseId, type) {
     }
 
     const result = await candidateMatchCache.get(cacheKey);
-    if (!result) {
+    if (!result?.matched) {
       logResolverDebug('candidate rejected', {
         userId,
         baseId,
@@ -623,6 +721,11 @@ async function tryOnDemandMatch(userId, baseId, type) {
         candidateTitle: candidate.raw_title,
         candidateTmdbId: candidate.tmdb_id || null,
         candidateImdbId: candidate.imdb_id || null,
+        reason: result?.reason || 'unknown',
+        candidateNormalizedTitle: result?.candidateTitle || candidate.canonical_normalized_title || candidate.normalized_title || null,
+        targetNormalizedTitle: result?.targetNormalized || targetNormalized,
+        matchedTmdbId: result?.matchedTmdbId || null,
+        matchedScore: result?.matchedScore || null,
       });
       continue;
     }
@@ -644,6 +747,7 @@ async function tryOnDemandMatch(userId, baseId, type) {
       candidateTitle: candidate.raw_title,
       targetTmdbId: target.id,
       score: result.score,
+      reason: result.reason || 'matched',
     });
   }
 
