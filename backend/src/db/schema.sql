@@ -172,7 +172,8 @@ CREATE TABLE IF NOT EXISTS tmdb_series (
   first_air_year INTEGER,
   popularity FLOAT DEFAULT 0,
   poster_path VARCHAR,
-  overview TEXT
+  overview TEXT,
+  imdb_id VARCHAR
 );
 
 -- ─────────────────────────────────────────
@@ -330,6 +331,8 @@ ALTER TABLE tmdb_movies
   ADD COLUMN IF NOT EXISTS normalized_title VARCHAR;
 ALTER TABLE tmdb_series
   ADD COLUMN IF NOT EXISTS normalized_title VARCHAR;
+ALTER TABLE tmdb_series
+  ADD COLUMN IF NOT EXISTS imdb_id VARCHAR;
 ALTER TABLE free_access_provider_groups
   ADD COLUMN IF NOT EXISTS catalog_last_refreshed_at TIMESTAMP;
 
@@ -356,6 +359,7 @@ CREATE INDEX IF NOT EXISTS user_provider_vod_canonical_title_trgm_gist ON user_p
 CREATE INDEX IF NOT EXISTS idx_matched_content_raw_title ON matched_content(raw_title);
 CREATE INDEX IF NOT EXISTS idx_matched_content_tmdb_id ON matched_content(tmdb_id);
 CREATE INDEX IF NOT EXISTS idx_matched_content_imdb_id ON matched_content(imdb_id) WHERE imdb_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_tmdb_series_imdb_id ON tmdb_series(imdb_id) WHERE imdb_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_host_health_provider_id ON host_health(provider_id);
 CREATE INDEX IF NOT EXISTS idx_job_runs_job_name ON job_runs(job_name);
 CREATE INDEX IF NOT EXISTS idx_provider_network_hosts_network_id ON provider_network_hosts(provider_network_id);

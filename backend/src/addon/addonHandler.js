@@ -466,7 +466,9 @@ async function getTargetTmdbRecord(baseId, type) {
 
   if (baseId.startsWith('tt')) {
     const { rows } = await pool.query(
-      'SELECT id, original_title, normalized_title, release_year AS year, imdb_id, \'movie\' AS tmdb_type FROM tmdb_movies WHERE imdb_id = $1 LIMIT 1',
+      type === 'series'
+        ? 'SELECT id, original_title, normalized_title, first_air_year AS year, imdb_id, \'series\' AS tmdb_type FROM tmdb_series WHERE imdb_id = $1 LIMIT 1'
+        : 'SELECT id, original_title, normalized_title, release_year AS year, imdb_id, \'movie\' AS tmdb_type FROM tmdb_movies WHERE imdb_id = $1 LIMIT 1',
       [baseId]
     );
     if (rows[0]) {
@@ -493,12 +495,23 @@ async function getTargetTmdbRecord(baseId, type) {
 
       if (type === 'series' && Array.isArray(data.tv_results) && data.tv_results[0]) {
         const item = data.tv_results[0];
-        const result = {
+        const series = {
           id: item.id,
           original_title: item.name || item.original_name || '',
           normalized_title: normalizeTitle(item.name || item.original_name || ''),
-          year: item.first_air_date ? parseInt(item.first_air_date.split('-')[0], 10) : null,
+          first_air_year: item.first_air_date ? parseInt(item.first_air_date.split('-')[0], 10) : null,
+          popularity: item.popularity || 0,
+          poster_path: item.poster_path || null,
+          overview: item.overview || null,
           imdb_id: baseId,
+        };
+        await tmdbQueries.upsertSeries(series);
+        const result = {
+          id: series.id,
+          original_title: series.original_title,
+          normalized_title: series.normalized_title,
+          year: series.first_air_year,
+          imdb_id: series.imdb_id,
           tmdb_type: 'series',
         };
         logResolverDebug('target lookup by imdb id from tmdb api', {

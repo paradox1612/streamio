@@ -2,6 +2,7 @@ jest.mock('node-fetch', () => jest.fn());
 
 const mockTmdbQueries = {
   upsertMovie: jest.fn(),
+  upsertSeries: jest.fn(),
   exactMatchMovie: jest.fn(),
   fuzzyMatchMovie: jest.fn(),
   exactMatchSeries: jest.fn(),
@@ -120,6 +121,48 @@ describe('addonHandler getTargetTmdbRecord', () => {
       year: 2026,
       imdb_id: 'tt15574124',
       tmdb_type: 'movie',
+    });
+  });
+
+  it('upserts series metadata fetched from TMDB find fallback', async () => {
+    pool.query.mockResolvedValueOnce({ rows: [] });
+    fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        tv_results: [{
+          id: 1399,
+          name: 'Game of Thrones',
+          original_name: 'Game of Thrones',
+          first_air_date: '2011-04-17',
+          popularity: 99.1,
+          poster_path: '/got.jpg',
+          overview: 'Seven kingdoms, many problems.',
+        }],
+      }),
+    });
+
+    const result = await __test__.getTargetTmdbRecord('tt0944947', 'series');
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.themoviedb.org/3/find/tt0944947?api_key=test-key&external_source=imdb_id'
+    );
+    expect(mockTmdbQueries.upsertSeries).toHaveBeenCalledWith({
+      id: 1399,
+      original_title: 'Game of Thrones',
+      normalized_title: 'game of thrones',
+      first_air_year: 2011,
+      popularity: 99.1,
+      poster_path: '/got.jpg',
+      overview: 'Seven kingdoms, many problems.',
+      imdb_id: 'tt0944947',
+    });
+    expect(result).toEqual({
+      id: 1399,
+      original_title: 'Game of Thrones',
+      normalized_title: 'game of thrones',
+      year: 2011,
+      imdb_id: 'tt0944947',
+      tmdb_type: 'series',
     });
   });
 });

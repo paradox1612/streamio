@@ -1097,18 +1097,19 @@ const tmdbQueries = {
     );
   },
 
-  async upsertSeries({ id, original_title, normalized_title, first_air_year, popularity, poster_path, overview }) {
+  async upsertSeries({ id, original_title, normalized_title, first_air_year, popularity, poster_path, overview, imdb_id }) {
     await pool.query(
-      `INSERT INTO tmdb_series (id, original_title, normalized_title, first_air_year, popularity, poster_path, overview)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO tmdb_series (id, original_title, normalized_title, first_air_year, popularity, poster_path, overview, imdb_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (id) DO UPDATE SET
          original_title = EXCLUDED.original_title,
          normalized_title = EXCLUDED.normalized_title,
          first_air_year = EXCLUDED.first_air_year,
          popularity = EXCLUDED.popularity,
          poster_path = EXCLUDED.poster_path,
-         overview = EXCLUDED.overview`,
-      [id, original_title, normalized_title, first_air_year, popularity, poster_path, overview]
+         overview = EXCLUDED.overview,
+         imdb_id = COALESCE(tmdb_series.imdb_id, EXCLUDED.imdb_id)`,
+      [id, original_title, normalized_title, first_air_year, popularity, poster_path, overview, imdb_id || null]
     );
   },
 
@@ -1116,7 +1117,7 @@ const tmdbQueries = {
     if (!entries.length) return;
     const values = [];
     const placeholders = entries.map((e, i) => {
-      const base = i * 7;
+      const base = i * 8;
       values.push(
         e.id,
         e.original_title,
@@ -1124,12 +1125,13 @@ const tmdbQueries = {
         e.first_air_year || null,
         e.popularity || 0,
         e.poster_path || null,
-        e.overview || null
+        e.overview || null,
+        e.imdb_id || null
       );
-      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`;
+      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`;
     });
     await pool.query(
-      `INSERT INTO tmdb_series (id, original_title, normalized_title, first_air_year, popularity, poster_path, overview)
+      `INSERT INTO tmdb_series (id, original_title, normalized_title, first_air_year, popularity, poster_path, overview, imdb_id)
        VALUES ${placeholders.join(', ')}
        ON CONFLICT (id) DO UPDATE SET
          original_title = EXCLUDED.original_title,
@@ -1137,7 +1139,8 @@ const tmdbQueries = {
          first_air_year = EXCLUDED.first_air_year,
          popularity = EXCLUDED.popularity,
          poster_path = EXCLUDED.poster_path,
-         overview = EXCLUDED.overview`,
+         overview = EXCLUDED.overview,
+         imdb_id = COALESCE(tmdb_series.imdb_id, EXCLUDED.imdb_id)`,
       values
     );
   },
