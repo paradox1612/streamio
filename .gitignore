@@ -17,3 +17,5 @@ build/
 coverage/
 .next/
 .DS_Store
+
+.claude/
