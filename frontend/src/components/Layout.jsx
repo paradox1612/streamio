@@ -85,7 +85,6 @@ export default function Layout({ children }) {
         user?.canBrowseWebCatalog
         ?? user?.can_browse_web_catalog
         ?? user?.has_byo_providers
-        ?? user?.has_active_free_access
       );
     }
     return true;

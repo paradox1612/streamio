@@ -8,7 +8,7 @@
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { freeAccessAPI, providerAPI } from '../utils/api';
+import { providerAPI } from '../utils/api';
 import {
   MagnifyingGlassIcon,
   XMarkIcon,
@@ -387,9 +387,6 @@ export default function VodBrowser() {
   const [modalIndex, setModalIndex]         = useState(0);
   const searchRef   = useRef(null);
   const hasByoProviders = Boolean(user?.has_byo_providers);
-  const hasFreeCatalog = Boolean(user?.has_active_free_access);
-  const isFreeAccessCatalog = !hasByoProviders && hasFreeCatalog;
-
   // "/" shortcut → focus search
   useEffect(() => {
     const onKey = (e) => {
@@ -405,8 +402,8 @@ export default function VodBrowser() {
   // Load providers
   useEffect(() => {
     if (!hasByoProviders) {
-      setProviders(isFreeAccessCatalog ? [{ id: 'free-access', name: 'Free Access Catalog' }] : []);
-      setSelectedProvider(isFreeAccessCatalog ? 'free-access' : '');
+      setProviders([]);
+      setSelectedProvider('');
       setLoadingProviders(false);
       return;
     }
@@ -418,7 +415,7 @@ export default function VodBrowser() {
       })
       .catch(() => reportableError('Failed to load providers'))
       .finally(() => setLoadingProviders(false));
-  }, [hasByoProviders, isFreeAccessCatalog]);
+  }, [hasByoProviders]);
 
   // Reset on provider/filter change
   useEffect(() => {
@@ -435,16 +432,14 @@ export default function VodBrowser() {
       if (filter.type)         params.type    = filter.type;
       if (searchQuery)         params.search  = searchQuery;
       if (filter.matched !== '') params.matched = filter.matched;
-      const res = isFreeAccessCatalog
-        ? await freeAccessAPI.getCatalog(params)
-        : await providerAPI.getVod(selectedProvider, params);
+      const res = await providerAPI.getVod(selectedProvider, params);
       setItems((prev) => filter.page === 1 ? res.data : [...prev, ...res.data]);
     } catch (_) {
       reportableError('Failed to load catalog');
     } finally {
       setLoading(false);
     }
-  }, [selectedProvider, filter, searchQuery, isFreeAccessCatalog]);
+  }, [selectedProvider, filter, searchQuery]);
 
   useEffect(() => { loadVod(); }, [filter.page, searchQuery, selectedProvider, filter.type, filter.matched]); // eslint-disable-line
 
@@ -489,18 +484,18 @@ export default function VodBrowser() {
     );
   }
 
-  if (!hasByoProviders && !hasFreeCatalog) {
+  if (!hasByoProviders) {
     return (
       <div className="mx-auto max-w-7xl space-y-8">
         <section className="panel p-8">
           <div className="kicker mb-5">Browse VOD</div>
-          <h1 className="hero-title">Start free access or add a provider to browse movies and series.</h1>
-          <p className="hero-copy mt-4">Free access now exposes the full managed movie and series catalog in the app. Live TV still requires BYO.</p>
+          <h1 className="hero-title">Add a provider to browse movies and series.</h1>
+          <p className="hero-copy mt-4">Free access stays addon-only for hidden movie and series resolution. Web browsing remains BYO-only.</p>
         </section>
         <EmptyState
           icon={SparklesIcon}
-          heading="No catalog source connected yet"
-          description="Start free access for the managed catalog, or add your own provider if you want BYO browsing and Live TV."
+          heading="No BYO catalog source connected yet"
+          description="Add your own provider to browse the web catalog. Free access remains hidden addon fallback only."
           action={() => window.location.href = '/providers'}
           actionLabel="Add BYO Provider"
         />
@@ -581,19 +576,12 @@ export default function VodBrowser() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
-            {hasByoProviders ? (
-              <div>
-                <label className="field-label">Provider</label>
-                <select value={selectedProvider} onChange={(e) => setSelectedProvider(e.target.value)} className="field-select">
-                  {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
-            ) : (
-              <div>
-                <label className="field-label">Source</label>
-                <div className="field-input flex items-center">{selectedProviderName || 'Free Access Catalog'}</div>
-              </div>
-            )}
+            <div>
+              <label className="field-label">Provider</label>
+              <select value={selectedProvider} onChange={(e) => setSelectedProvider(e.target.value)} className="field-select">
+                {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
 
             <div className="flex items-end">
               <button type="button" onClick={applySearch} className="btn-primary w-full whitespace-nowrap sm:w-auto">

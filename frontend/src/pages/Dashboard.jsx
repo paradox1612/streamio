@@ -378,9 +378,9 @@ export default function Dashboard() {
             <div className="grid gap-4 sm:grid-cols-2">
               {[
                 { label: 'Providers online',  numVal: onlineCount,        desc: providers.length ? `${providers.length - onlineCount} need attention.` : 'No BYO providers added yet.' },
-                { label: 'Catalog confidence',numVal: matchRate, suffix:'%', desc: hasByoProviders ? `${totalMatched.toLocaleString()} matched titles.` : (freeAccess.status === 'active' ? 'Free catalog browsing is live for managed movies and series.' : 'Start free access to unlock the managed movie and series catalog.') },
+                { label: 'Catalog confidence',numVal: matchRate, suffix:'%', desc: hasByoProviders ? `${totalMatched.toLocaleString()} matched titles.` : (freeAccess.status === 'active' ? 'Free access is active for hidden addon fallback resolution.' : 'Add a BYO provider to unlock dashboard catalog browsing.') },
                 { label: 'Addon status',      display: addonUrl ? 'Ready' : 'Pending', desc: 'Private install path available.' },
-                { label: 'Free access',       display: freeAccess.status === 'active' ? freeAccessLabel : freeAccess.status === 'expired' ? 'Expired' : 'Not started', desc: hasByoProviders ? 'Managed catalog browsing is available alongside your BYO sources; live TV stays BYO-only.' : 'Start it manually to browse the managed movie and series catalog; live TV still requires BYO.' },
+                { label: 'Free access',       display: freeAccess.status === 'active' ? freeAccessLabel : freeAccess.status === 'expired' ? 'Expired' : 'Not started', desc: hasByoProviders ? 'Managed fallback is available alongside your BYO sources; live TV stays BYO-only.' : 'Start it manually for hidden addon fallback resolution. Web browsing and Live TV still require BYO.' },
               ].map(({ label, numVal, suffix, display, desc }) => (
                 <div key={label} className="rounded-[22px] border border-white/[0.07] bg-white/[0.025] p-5">
                   <p className="metric-label mb-2">{label}</p>

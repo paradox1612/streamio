@@ -10,7 +10,7 @@ The admin preloads one or more Xtream-style providers. Each provider can have:
 - multiple username/password accounts
 - a trial policy
 
-The system assigns a trial account to the user for 7 days, exposes the full managed movie and series catalog in the app and addon, hides provider details from the user-facing product, blocks live TV during trial, and removes or disables expired trial access automatically.
+The system assigns a trial account to the user for 7 days, exposes managed movie and series resolution through the addon, hides provider details from the user-facing product, blocks live TV during trial, and removes or disables expired trial access automatically.
 
 ## Final Product Rules
 
@@ -22,7 +22,7 @@ The system assigns a trial account to the user for 7 days, exposes the full mana
 - User-facing URL model: keep the existing addon token URL
 - Stream delivery model: server resolves the assigned provider/account internally and returns the stream
 - Provider/account details: never shown in UI or addon responses
-- App browsing during trial: enabled for the managed movie and series catalog
+- App browsing during trial: disabled unless the user adds their own provider
 
 ## Core Decision
 

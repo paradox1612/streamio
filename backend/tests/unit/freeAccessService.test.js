@@ -144,7 +144,7 @@ describe('freeAccessService.getActiveSourceForUser', () => {
 });
 
 describe('freeAccessService.buildCapabilityState', () => {
-  it('allows catalog browsing when free access is active without BYO providers', () => {
+  it('keeps catalog browsing disabled without BYO providers even when free access is active', () => {
     expect(freeAccessService.buildCapabilityState({
       has_byo_providers: false,
       has_active_free_access: true,
@@ -152,7 +152,7 @@ describe('freeAccessService.buildCapabilityState', () => {
     })).toEqual(expect.objectContaining({
       hasByoProviders: false,
       hasActiveFreeAccess: true,
-      canBrowseWebCatalog: true,
+      canBrowseWebCatalog: false,
       canUseLiveTv: false,
     }));
   });

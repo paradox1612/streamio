@@ -2033,42 +2033,6 @@ const freeAccessQueries = {
     return rows;
   },
 
-  async getCatalogByAssignment(assignment, { page = 1, limit = 100, search = '', type, matched } = {}) {
-    let query = `
-      SELECT
-        c.*,
-        m.tmdb_id,
-        m.imdb_id,
-        m.confidence_score
-      FROM free_access_catalog c
-      LEFT JOIN matched_content m ON m.raw_title = c.raw_title
-      WHERE c.provider_group_id = $1
-    `;
-    const params = [assignment.provider_group_id];
-    let idx = 2;
-
-    if (type) {
-      query += ` AND c.vod_type = $${idx++}`;
-      params.push(type);
-    }
-    if (search) {
-      query += ` AND c.raw_title ILIKE $${idx++}`;
-      params.push(`%${search}%`);
-    }
-    if (matched === true) query += ' AND m.tmdb_id IS NOT NULL';
-    if (matched === false) query += ' AND (m.id IS NULL OR m.tmdb_id IS NULL)';
-
-    query += ` ORDER BY
-      c.canonical_normalized_title ASC NULLS LAST,
-      c.normalized_title ASC NULLS LAST,
-      c.raw_title ASC,
-      c.stream_id ASC
-      LIMIT $${idx++} OFFSET $${idx++}`;
-    params.push(limit, (page - 1) * limit);
-
-    const { rows } = await pool.query(query, params);
-    return rows;
-  },
 };
 
 module.exports = {
