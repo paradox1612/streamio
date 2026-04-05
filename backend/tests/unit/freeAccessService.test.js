@@ -157,3 +157,10 @@ describe('freeAccessService.buildCapabilityState', () => {
     }));
   });
 });
+
+describe('freeAccessService.resolveFallbackVodItem', () => {
+  it('returns null when the plural fallback resolver returns null', async () => {
+    const result = await freeAccessService.resolveFallbackVodItem('user-1', 'tt1234567', 'movie');
+    expect(result).toBeNull();
+  });
+});

@@ -318,7 +318,7 @@ const freeAccessService = {
 
   async resolveFallbackVodItem(userId, baseId, type) {
     const items = await this.resolveFallbackVodItemsForStream(userId, baseId, type);
-    return items[0] || null;
+    return Array.isArray(items) ? (items[0] || null) : null;
   },
 
   async resolveFallbackVodItemsForStream(userId, baseId, type) {
