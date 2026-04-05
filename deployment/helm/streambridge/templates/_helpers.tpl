@@ -43,7 +43,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- if .Values.backend.secrets.databaseUrl -}}
 {{- .Values.backend.secrets.databaseUrl -}}
 {{- else if .Values.postgres.enabled -}}
-{{- printf "postgresql://%s:%s@%s:5432/%s" .Values.postgres.auth.username .Values.postgres.auth.password (include "streambridge.postgresName" .) .Values.postgres.auth.database -}}
+{{- printf "postgresql://%s:%s@%s:5432/%s" (urlquery .Values.postgres.auth.username) (urlquery .Values.postgres.auth.password) (include "streambridge.postgresName" .) .Values.postgres.auth.database -}}
 {{- else -}}
 {{- fail "Set backend.secrets.databaseUrl when postgres.enabled is false" -}}
 {{- end -}}
