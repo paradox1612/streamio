@@ -34,6 +34,7 @@ deployment/
 - For a homelab without an external image registry, use `imagePullPolicy: IfNotPresent` and import the built images into the K3s node container runtime.
 - If your cluster uses NGINX Ingress instead of Traefik, set `ingress.className=nginx`.
 - GitHub Actions can publish backend and frontend images to GHCR via `.github/workflows/build-images.yml`.
+- The same workflow can also deploy to a local K3s cluster by running a follow-up job on a self-hosted GitHub runner labeled `k3s`.
 
 ## Quick Start
 
@@ -112,6 +113,26 @@ For a GitHub-driven workflow, push to `main` or run the workflow manually to pub
 - `ghcr.io/paradox1612/streambridge-frontend`
 
 The frontend build reads `VITE_API_URL` from the GitHub Actions repository variable `VITE_API_URL`. If that variable is not set, it defaults to `https://streambridge.thekush.dev`.
+
+### Self-Hosted K3s Deploy Runner
+
+If you want GitHub to trigger the K3s deploy automatically after the image build:
+
+1. Install a self-hosted GitHub Actions runner on the machine that already has access to your K3s cluster.
+2. Give that runner the `k3s` label.
+3. Ensure the runner machine has:
+   - `kubectl` on `PATH`
+   - Helm available at the configured path
+   - a readable kubeconfig for the target cluster
+   - the secret-bearing values file staged locally outside the repo
+4. Configure these optional repository variables if your local paths differ:
+   - `K3S_KUBECONFIG_PATH`
+   - `K3S_HELM_BIN`
+   - `K3S_VALUES_FILE`
+   - `K3S_RELEASE_NAME`
+   - `K3S_NAMESPACE`
+
+The workflow deploys the exact image tags built for the current commit using the `sha-<short-commit>` tag, rather than relying on `latest`.
 
 If GHCR packages remain private, create a Kubernetes image pull secret and set `imagePullSecrets` in your Helm values.
 

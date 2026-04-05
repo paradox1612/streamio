@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: github-actions
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: streambridge-k3s-runner
+  namespace: github-actions
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: streambridge-k3s-runner-cluster-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: streambridge-k3s-runner
+    namespace: github-actions
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: streambridge-k3s-runner
+  namespace: github-actions
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: streambridge-k3s-runner
+  template:
+    metadata:
+      labels:
+        app: streambridge-k3s-runner
+    spec:
+      serviceAccountName: streambridge-k3s-runner
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: runner
+          image: docker.io/myoung34/github-runner:latest
+          imagePullPolicy: Always
+          env:
+            - name: REPO_URL
+              value: https://github.com/paradox1612/streamio
+            - name: RUNNER_SCOPE
+              value: repo
+            - name: LABELS
+              value: k3s
+            - name: RUNNER_NAME_PREFIX
+              value: streambridge-k3s
+            - name: RUNNER_WORKDIR
+              value: /runner/_work
+            - name: EPHEMERAL
+              value: "true"
+            - name: DISABLE_AUTO_UPDATE
+              value: "true"
+            - name: ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: github-runner-auth
+                  key: access_token
+            - name: VALUES_FILE
+              value: /runner-secrets/streambridge-values.yaml
+          volumeMounts:
+            - name: work
+              mountPath: /runner/_work
+            - name: deploy-values
+              mountPath: /runner-secrets
+              readOnly: true
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+      volumes:
+        - name: work
+          emptyDir: {}
+        - name: deploy-values
+          secret:
+            secretName: streambridge-k3s-deploy-values
