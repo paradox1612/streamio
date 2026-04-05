@@ -55,6 +55,8 @@ spec:
               value: {{ .Values.backend.env.nodeEnv | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.backend.env.logLevel | quote }}
+            - name: RESOLVER_DEBUG
+              value: {{ .Values.backend.env.resolverDebug | quote }}
             - name: FRONTEND_URL
               value: {{ .Values.backend.env.frontendUrl | quote }}
             - name: BASE_URL

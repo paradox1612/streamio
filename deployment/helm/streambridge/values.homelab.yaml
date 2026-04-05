@@ -22,6 +22,7 @@ backend:
   env:
     nodeEnv: production
     logLevel: info
+    resolverDebug: "false"
     frontendUrl: "https://streambridge.thekush.dev"
     baseUrl: "https://streambridge.thekush.dev"
     healthCheckEnabled: "true"

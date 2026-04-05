@@ -12,6 +12,7 @@ backend:
   env:
     nodeEnv: production
     logLevel: info
+    resolverDebug: "false"
     frontendUrl: "https://stream.example.com"
     baseUrl: "https://stream.example.com"
     healthCheckEnabled: "true"

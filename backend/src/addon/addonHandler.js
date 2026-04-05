@@ -12,6 +12,7 @@ const { beginAddonRequest, endAddonRequest } = require('../utils/loadManager');
 
 const TMDB_POSTER_BASE = 'https://image.tmdb.org/t/p/w500';
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
+const RESOLVER_DEBUG = ['1', 'true', 'yes', 'on'].includes(String(process.env.RESOLVER_DEBUG || '').toLowerCase());
 const pendingOnDemandMatches = new Map();
 const lookupMetrics = {
   cacheHits: 0,
@@ -23,6 +24,15 @@ const lookupMetrics = {
 
 function recordLookupMetric(metric, amount = 1) {
   lookupMetrics[metric] = (lookupMetrics[metric] || 0) + amount;
+}
+
+function logResolverDebug(message, details = null) {
+  if (!RESOLVER_DEBUG) return;
+  if (details) {
+    logger.debug(`[ResolverDebug] ${message} ${JSON.stringify(details)}`);
+    return;
+  }
+  logger.debug(`[ResolverDebug] ${message}`);
 }
 
 function buildLookupCacheKey(userId, baseId, mode = 'single') {
@@ -291,7 +301,10 @@ async function resolveFallbackVodItem(user, baseId, type) {
   if (!(baseId.startsWith('tt') || baseId.startsWith('tmdb:'))) return null;
 
   const target = await getTargetTmdbRecord(baseId, type);
-  if (!target) return null;
+  if (!target) {
+    logResolverDebug('fallback target not found', { userId: user.id, baseId, type });
+    return null;
+  }
 
   const candidates = await freeAccessService.resolveFallbackOnDemandCandidate(user.id, {
     vodType: target.tmdb_type === 'series' ? 'series' : 'movie',
@@ -299,6 +312,14 @@ async function resolveFallbackVodItem(user, baseId, type) {
     year: target.year || null,
     tmdbId: target.id,
     imdbId: target.imdb_id || (baseId.startsWith('tt') ? baseId : null),
+  });
+
+  logResolverDebug('fallback candidates fetched', {
+    userId: user.id,
+    baseId,
+    type,
+    targetTmdbId: target.id,
+    candidateCount: Array.isArray(candidates) ? candidates.length : 0,
   });
 
   if (!Array.isArray(candidates) || candidates.length === 0) return null;
@@ -392,7 +413,14 @@ async function getTargetTmdbRecord(baseId, type) {
         : 'SELECT id, original_title, normalized_title, release_year AS year, imdb_id, \'movie\' AS tmdb_type FROM tmdb_movies WHERE id = $1 LIMIT 1',
       [tmdbId]
     );
-    return rows[0] || null;
+    const result = rows[0] || null;
+    logResolverDebug('target lookup by tmdb id', {
+      baseId,
+      type,
+      found: Boolean(result),
+      targetTmdbId: result?.id || null,
+    });
+    return result;
   }
 
   if (baseId.startsWith('tt')) {
@@ -400,9 +428,20 @@ async function getTargetTmdbRecord(baseId, type) {
       'SELECT id, original_title, normalized_title, release_year AS year, imdb_id, \'movie\' AS tmdb_type FROM tmdb_movies WHERE imdb_id = $1 LIMIT 1',
       [baseId]
     );
-    if (rows[0]) return rows[0];
+    if (rows[0]) {
+      logResolverDebug('target lookup by imdb id from local tmdb table', {
+        baseId,
+        type,
+        found: true,
+        targetTmdbId: rows[0].id,
+      });
+      return rows[0];
+    }
 
-    if (!TMDB_API_KEY) return null;
+    if (!TMDB_API_KEY) {
+      logResolverDebug('target lookup skipped because tmdb api key missing', { baseId, type });
+      return null;
+    }
 
     try {
       const res = await fetch(
@@ -413,7 +452,7 @@ async function getTargetTmdbRecord(baseId, type) {
 
       if (type === 'series' && Array.isArray(data.tv_results) && data.tv_results[0]) {
         const item = data.tv_results[0];
-        return {
+        const result = {
           id: item.id,
           original_title: item.name || item.original_name || '',
           normalized_title: normalizeTitle(item.name || item.original_name || ''),
@@ -421,6 +460,14 @@ async function getTargetTmdbRecord(baseId, type) {
           imdb_id: baseId,
           tmdb_type: 'series',
         };
+        logResolverDebug('target lookup by imdb id from tmdb api', {
+          baseId,
+          type,
+          found: true,
+          targetTmdbId: result.id,
+          source: 'tmdb_api_tv',
+        });
+        return result;
       }
 
       if (Array.isArray(data.movie_results) && data.movie_results[0]) {
@@ -438,7 +485,7 @@ async function getTargetTmdbRecord(baseId, type) {
 
         await tmdbQueries.upsertMovie(movie);
 
-        return {
+        const result = {
           id: movie.id,
           original_title: movie.original_title,
           normalized_title: movie.normalized_title,
@@ -446,12 +493,22 @@ async function getTargetTmdbRecord(baseId, type) {
           imdb_id: movie.imdb_id,
           tmdb_type: 'movie',
         };
+        logResolverDebug('target lookup by imdb id from tmdb api', {
+          baseId,
+          type,
+          found: true,
+          targetTmdbId: result.id,
+          source: 'tmdb_api_movie',
+        });
+        return result;
       }
     } catch (err) {
       logger.warn(`TMDB find fallback failed for ${baseId}: ${err.message}`);
+      logResolverDebug('target lookup via tmdb api failed', { baseId, type, error: err.message });
     }
   }
 
+  logResolverDebug('target lookup not found', { baseId, type });
   return null;
 }
 
@@ -504,8 +561,10 @@ async function resolveCandidateMatch(candidate, target) {
 async function tryOnDemandMatch(userId, baseId, type) {
   const startedAt = Date.now();
   recordLookupMetric('slowPathCount');
+  logResolverDebug('on-demand match start', { userId, baseId, type });
   const target = await getTargetTmdbRecord(baseId, type);
   if (!target) {
+    logResolverDebug('on-demand match aborted because target missing', { userId, baseId, type });
     recordLookupMetric('slowPathMs', Date.now() - startedAt);
     return null;
   }
@@ -518,7 +577,22 @@ async function tryOnDemandMatch(userId, baseId, type) {
     imdbId: target.imdb_id || (baseId.startsWith('tt') ? baseId : null),
   });
 
+  logResolverDebug('on-demand candidates fetched', {
+    userId,
+    baseId,
+    type,
+    targetTmdbId: target.id,
+    targetNormalizedTitle: target.normalized_title || normalizeTitle(target.original_title || ''),
+    candidateCount: candidates.length,
+  });
+
   if (!candidates.length) {
+    logResolverDebug('on-demand match aborted because no candidates found', {
+      userId,
+      baseId,
+      type,
+      targetTmdbId: target.id,
+    });
     recordLookupMetric('slowPathMs', Date.now() - startedAt);
     return null;
   }
@@ -541,7 +615,17 @@ async function tryOnDemandMatch(userId, baseId, type) {
     }
 
     const result = await candidateMatchCache.get(cacheKey);
-    if (!result) continue;
+    if (!result) {
+      logResolverDebug('candidate rejected', {
+        userId,
+        baseId,
+        type,
+        candidateTitle: candidate.raw_title,
+        candidateTmdbId: candidate.tmdb_id || null,
+        candidateImdbId: candidate.imdb_id || null,
+      });
+      continue;
+    }
 
     await matchQueries.upsert({
       rawTitle: candidate.raw_title,
@@ -553,6 +637,14 @@ async function tryOnDemandMatch(userId, baseId, type) {
     matchedAny = true;
     if (!firstMatchedCandidate) firstMatchedCandidate = candidate;
     logger.info(`On-demand match resolved "${candidate.raw_title}" to ${baseId}`);
+    logResolverDebug('candidate matched', {
+      userId,
+      baseId,
+      type,
+      candidateTitle: candidate.raw_title,
+      targetTmdbId: target.id,
+      score: result.score,
+    });
   }
 
   if (matchedAny) {
@@ -566,6 +658,13 @@ async function tryOnDemandMatch(userId, baseId, type) {
   }
 
   logger.info(`On-demand match found no candidate for ${baseId} (${targetNormalized})`);
+  logResolverDebug('on-demand match completed without a match', {
+    userId,
+    baseId,
+    type,
+    targetTmdbId: target.id,
+    targetNormalized,
+  });
   recordLookupMetric('slowPathMs', Date.now() - startedAt);
   return null;
 }
@@ -621,6 +720,7 @@ async function handleMeta(token, type, id) {
       vodItem = await resolveFallbackVodItem(user, baseId, type);
     }
     if (!vodItem) {
+      logResolverDebug('meta lookup returned no item', { userId: user.id, baseId, type, id });
       if (user.free_access_status === 'expired' && type !== 'tv') {
         return buildExpiredMeta(baseId, type);
       }
@@ -757,6 +857,7 @@ async function handleStream(token, type, id) {
     vodItems = applyLanguagePreferences(vodItems, user);
 
     if (!vodItems.length) {
+      logResolverDebug('stream lookup returned no items', { userId: user.id, baseId, type, id });
       if (type !== 'tv' && user.free_access_status === 'expired') {
         return buildExpiredStreamResponse();
       }
