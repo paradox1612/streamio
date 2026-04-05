@@ -39,11 +39,41 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s-postgres" (include "streambridge.fullname" .) -}}
 {{- end -}}
 
+{{- define "streambridge.postgresAuthSecretName" -}}
+{{- if .Values.postgres.auth.existingSecret -}}
+{{- .Values.postgres.auth.existingSecret -}}
+{{- else -}}
+{{- printf "%s-auth" (include "streambridge.postgresName" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "streambridge.postgresAuthSecretChecksum" -}}
+{{- if .Values.postgres.auth.existingSecret -}}
+{{- $secret := lookup "v1" "Secret" .Release.Namespace (include "streambridge.postgresAuthSecretName" .) -}}
+{{- if $secret -}}
+{{- toYaml $secret.data | sha256sum -}}
+{{- else -}}
+missing-secret
+{{- end -}}
+{{- else -}}
+{{- include (print $.Template.BasePath "/postgres-secret.yaml") . | sha256sum -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "streambridge.databaseUrl" -}}
 {{- if .Values.backend.secrets.databaseUrl -}}
 {{- .Values.backend.secrets.databaseUrl -}}
 {{- else if .Values.postgres.enabled -}}
-{{- printf "postgresql://%s:%s@%s:5432/%s" (urlquery .Values.postgres.auth.username) (urlquery .Values.postgres.auth.password) (include "streambridge.postgresName" .) .Values.postgres.auth.database -}}
+{{- $secretName := include "streambridge.postgresAuthSecretName" . -}}
+{{- $secret := lookup "v1" "Secret" .Release.Namespace $secretName -}}
+{{- if not $secret -}}
+{{- fail (printf "postgres auth secret %s not found" $secretName) -}}
+{{- end -}}
+{{- $keys := .Values.postgres.auth.secretKeys -}}
+{{- $username := (index $secret.data $keys.username | b64dec) -}}
+{{- $password := (index $secret.data $keys.password | b64dec) -}}
+{{- $database := (index $secret.data $keys.database | b64dec) -}}
+{{- printf "postgresql://%s:%s@%s:5432/%s" (urlquery $username) (urlquery $password) (include "streambridge.postgresName" .) $database -}}
 {{- else -}}
 {{- fail "Set backend.secrets.databaseUrl when postgres.enabled is false" -}}
 {{- end -}}

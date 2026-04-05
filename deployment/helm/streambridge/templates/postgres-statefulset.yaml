@@ -16,7 +16,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/postgres-secret: {{ include (print $.Template.BasePath "/postgres-secret.yaml") . | sha256sum }}
+        checksum/postgres-secret: {{ include "streambridge.postgresAuthSecretChecksum" . }}
       labels:
         {{- include "streambridge.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: postgres
@@ -35,7 +35,7 @@ spec:
               protocol: TCP
           envFrom:
             - secretRef:
-                name: {{ include "streambridge.postgresName" . }}-auth
+                name: {{ include "streambridge.postgresAuthSecretName" . }}
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data

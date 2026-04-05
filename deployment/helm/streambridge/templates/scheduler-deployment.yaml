@@ -32,11 +32,14 @@ spec:
         - name: wait-for-postgres
           image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
           imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ include "streambridge.postgresAuthSecretName" . }}
           command:
             - sh
             - -c
             - >
-              until pg_isready -h {{ include "streambridge.postgresName" . }} -p 5432 -U {{ .Values.postgres.auth.username }} -d {{ .Values.postgres.auth.database }};
+              until pg_isready -h {{ include "streambridge.postgresName" . }} -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB";
               do echo "waiting for postgres"; sleep 2; done
       {{- end }}
       containers:

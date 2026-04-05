@@ -45,9 +45,14 @@ scheduler:
 postgres:
   enabled: true
   auth:
+    existingSecret: ""
     database: streambridge
     username: postgres
     password: "set-me-db-password"
+    secretKeys:
+      database: POSTGRES_DB
+      username: POSTGRES_USER
+      password: POSTGRES_PASSWORD
   persistence:
     enabled: true
     size: 20Gi
