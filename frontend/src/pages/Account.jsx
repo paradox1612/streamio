@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Seo from '../components/Seo';
 import { useAuth } from '../context/AuthContext';
 import { authAPI, userAPI } from '../utils/api';
 import { CheckIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
@@ -53,6 +54,7 @@ export default function Account() {
 
   return (
     <>
+    <Seo robots="noindex, nofollow" />
     <div className="mx-auto max-w-6xl space-y-8">
       <section className="panel overflow-hidden p-5 sm:p-7 lg:p-8">
         <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import Seo from '../components/Seo';
 import { motion } from 'framer-motion';
 import { providerAPI } from '../utils/api';
 import {
@@ -263,6 +264,7 @@ export default function Providers() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
+      <Seo robots="noindex, nofollow" />
       <motion.section
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { userAPI } from '../utils/api';
+import Seo from '../components/Seo';
 import {
   CheckIcon,
   DocumentDuplicateIcon,
@@ -121,6 +122,7 @@ export default function AddonSettings() {
 
   return (
     <>
+    <Seo robots="noindex, nofollow" />
     <div className="mx-auto max-w-5xl space-y-8">
       <section className="panel overflow-hidden p-5 sm:p-7 lg:p-8">
         <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">

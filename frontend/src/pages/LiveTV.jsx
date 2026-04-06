@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { providerAPI } from '../utils/api';
+import Seo from '../components/Seo';
 import { SparklesIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import EmptyState from '../components/EmptyState';
 import SkeletonCard from '../components/SkeletonCard';
@@ -93,6 +94,7 @@ export default function LiveTV() {
   if (loading) {
     return (
       <div className="mx-auto max-w-7xl space-y-8">
+        <Seo robots="noindex, nofollow" />
         <div className="panel p-8">
           <h1 className="hero-title">Loading Live TV...</h1>
         </div>
@@ -106,6 +108,7 @@ export default function LiveTV() {
   if (!user?.can_use_live_tv) {
     return (
       <div className="mx-auto max-w-7xl space-y-8">
+        <Seo robots="noindex, nofollow" />
         <section className="panel p-8">
           <div className="kicker mb-5">Live TV</div>
           <h1 className="hero-title">Live TV unlocks only after you add a BYO provider.</h1>
@@ -125,6 +128,7 @@ export default function LiveTV() {
   if (providers.length === 0) {
     return (
       <div className="mx-auto max-w-7xl space-y-8">
+        <Seo robots="noindex, nofollow" />
         <section className="panel p-8">
           <div className="kicker mb-5">Live TV</div>
           <h1 className="hero-title">Browse your live channel lineup.</h1>

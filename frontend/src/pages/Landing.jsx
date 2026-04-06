@@ -36,54 +36,54 @@ import {
 // ── Data ────────────────────────────────────────────────────────────────────
 const pillars = [
   {
-    title: 'IPTV for Stremio without a messy install process',
-    copy: 'Bring your IPTV provider into Stremio with one private addon link instead of juggling fragile configs and repeat setup steps.',
+    title: 'Your TV subscription, inside a Netflix-like app',
+    copy: 'If you pay for a live TV service, StreamBridge puts it inside Stremio — a clean, modern player that works on your TV, phone, and laptop. No extra apps, no complicated setup.',
     icon: Server,
   },
   {
-    title: 'A cleaner Stremio IPTV addon for real provider accounts',
-    copy: 'StreamBridge is built for people using Xtream, M3U, or portal-based IPTV services who want a simpler way to watch through Stremio.',
+    title: 'Live sports, news, and movies — all in one place',
+    copy: 'Get live channels AND a full on-demand library, organised and browsable like Netflix. Proper titles, artwork, and descriptions — everything looking exactly how it should.',
     icon: Film,
   },
   {
-    title: 'Test, repair, and keep one install link',
-    copy: 'Check your provider before signup, repair metadata where needed, and keep one install URL that is easier to trust and reuse.',
+    title: 'Set it up once and it keeps working',
+    copy: 'Test your TV service for free before signing up. Connect it in under 5 minutes. If anything ever changes on your provider\'s end, StreamBridge handles it automatically.',
     icon: ShieldCheck,
   },
 ];
 
 const workflow = [
-  ['Create your account', 'Start with one workspace built for IPTV users who want to use Stremio.'],
-  ['Connect your IPTV provider',   'Paste your IPTV details once and let StreamBridge check that your Stremio setup will work.'],
-  ['Install one addon in Stremio',   'Use one private install link instead of juggling separate configs, apps, and repeat setup steps.'],
+  ['Create your free account', 'Takes 30 seconds. No credit card needed — you can test your TV service before you pay anything.'],
+  ['Connect your TV service', 'Paste your login details once. StreamBridge checks everything works and shows you your channels before you commit.'],
+  ['Start watching in Stremio', 'Copy one link into Stremio and you\'re done. All your live channels, sports, and on-demand content — in one clean app.'],
 ];
 
 const proofPoints = [
-  'Use IPTV in Stremio with one private addon link',
-  'Check whether your IPTV provider works before full setup',
-  'Keep provider setup, health checks, and install in one place',
+  'Live TV, sports, and movies — all in one Netflix-style app',
+  'Try your TV service for free before paying anything',
+  'One setup that keeps working — no maintenance required',
 ];
 
 const providers = [
-  { label: 'Xtream Codes', meta: 'Primary auth', mark: 'XC' },
-  { label: 'M3U Plus', meta: 'Playlist ingest', mark: 'M3' },
-  { label: 'MAC Portal', meta: 'Device routing', mark: 'MP' },
-  { label: 'Stremio', meta: 'Addon target', mark: 'ST' },
-  { label: 'TMDB', meta: 'Metadata graph', mark: 'TM' },
-  { label: 'XML EPG', meta: 'Guide sync', mark: 'EP' },
-  { label: 'HLS', meta: 'Adaptive stream', mark: 'HL' },
-  { label: 'Catch-up TV', meta: 'Replay windows', mark: 'CU' },
+  { label: 'Xtream Codes', meta: 'Most TV services', mark: 'XC' },
+  { label: 'M3U Playlist', meta: 'Playlist link', mark: 'M3' },
+  { label: 'MAC Portal', meta: 'Portal login', mark: 'MP' },
+  { label: 'Stremio', meta: 'Your player', mark: 'ST' },
+  { label: 'TMDB', meta: 'Show artwork', mark: 'TM' },
+  { label: 'XML EPG', meta: 'TV guide', mark: 'EP' },
+  { label: 'HLS', meta: 'Live streams', mark: 'HL' },
+  { label: 'Catch-up TV', meta: 'Watch back', mark: 'CU' },
 ];
 
 const lineupPoints = [
   {
-    title: 'Show what IPTV in Stremio actually looks like',
-    copy: 'Search traffic will care about the outcome, so the page should show the cleaner Stremio viewing surface before it explains the plumbing.',
+    title: 'Looks like Netflix — but it\'s your own TV service',
+    copy: 'Stremio gives your live channels and on-demand content a clean, modern interface with real artwork, descriptions, and ratings. It\'s what watching TV should feel like.',
     icon: MonitorPlay,
   },
   {
-    title: 'Make the promise explicit for both audiences',
-    copy: 'The pitch is simple: IPTV users get a better player, and Stremio users get a straightforward way to add IPTV.',
+    title: 'Already paying for a TV service? This is how you watch it properly',
+    copy: 'If you have a TV subscription and don\'t love the app it came with, StreamBridge moves it into Stremio in minutes — no tech knowledge needed.',
     icon: Signal,
   },
 ];
@@ -91,42 +91,42 @@ const lineupPoints = [
 const pricingPlans = [
   {
     name: 'Starter',
-    info: 'For one personal setup',
+    info: 'Perfect for one person',
     price: { monthly: 9, yearly: 90 },
     features: [
-      '1 private addon URL',
-      'Up to 2 provider connections',
-      'Provider preview and health checks',
-      'Metadata repair for live and VOD',
+      'One Stremio setup for yourself',
+      'Connect up to 2 TV services',
+      'Test your service free before paying',
+      'Correct titles, artwork & descriptions',
     ],
-    cta: 'Start starter plan',
+    cta: 'Start free trial',
     href: '/signup',
   },
   {
     name: 'Power',
-    info: 'For people juggling multiple sources',
+    info: 'For households or heavy users',
     price: { monthly: 19, yearly: 190 },
     features: [
-      '5 provider connections with failover',
-      'Priority metadata matching queue',
-      'Expiry tracking and provider alerts',
-      'Faster reinstall and rotation flow',
+      '5 TV services with automatic backup',
+      'Switches sources automatically if one drops',
+      'Alerts before your TV service expires',
+      'Priority content matching',
     ],
-    cta: 'Create power account',
+    cta: 'Start free trial',
     href: '/signup',
     highlighted: true,
   },
   {
     name: 'Operator',
-    info: 'For reseller or household bundles',
+    info: 'For families or shared setups',
     price: { monthly: 39, yearly: 390 },
     features: [
-      '10 provider connections',
-      'Multiple install environments',
-      'Shared support and account controls',
-      'Early access to routing improvements',
+      '10 TV service connections',
+      'Multiple Stremio setups',
+      'Shared account with easy handoff',
+      'Early access to new features',
     ],
-    cta: 'Talk to operator',
+    cta: 'Talk to us',
     href: '/signup',
   },
 ];
@@ -178,39 +178,39 @@ const createLineupCardUri = ({ title, genre, toneA, toneB, badge }) => createSvg
 const testimonials = [
   {
     name: 'Damon Reed',
-    designation: 'Runs a three-provider sports stack',
-    quote: 'The addon stopped feeling fragile. I swap providers, keep one private install URL, and my lineup still looks deliberate instead of patched together.',
-    metric: '41% fewer manual reinstall steps',
-    context: 'Moved from separate live and VOD fixes into one account workspace.',
+    designation: 'Sports fan, manages 3 TV services',
+    quote: 'I used to spend ages fixing things whenever my provider changed. Now I just sit down and watch. The channels are all there, everything looks right, and I haven\'t had to touch it in months.',
+    metric: 'Hasn\'t reconfigured anything in 4 months',
+    context: 'Switched from juggling separate apps for live TV and on-demand.',
     src: createPortraitDataUri({
       name: 'Damon Reed',
-      role: 'Sports stack operator',
+      role: 'Sports fan',
       accentFrom: '#0f4c81',
       accentTo: '#3ca6ff',
     }),
   },
   {
     name: 'Maya Sullivan',
-    designation: 'Maintains family IPTV access',
-    quote: 'The preview flow sold it. I could test credentials, see the channels, and trust the install before touching the final addon URL.',
-    metric: '10 second provider preview',
-    context: 'Used provider preview to validate latency and metadata before signup.',
+    designation: 'Parent, manages TV for the whole family',
+    quote: 'I\'m not technical at all, so I was nervous. But I tested it before paying, saw all the channels were there, and was watching within about 5 minutes. My kids use it every day now.',
+    metric: 'Up and running in under 5 minutes',
+    context: 'Set up the whole family\'s TV without any technical help.',
     src: createPortraitDataUri({
       name: 'Maya Sullivan',
-      role: 'Household organizer',
+      role: 'Parent',
       accentFrom: '#074b5c',
       accentTo: '#10b0d8',
     }),
   },
   {
     name: 'Ibrahim Khan',
-    designation: 'Reseller managing provider rotation',
-    quote: 'The routing and health checks are the difference. When a host goes sideways, I can recover without rebuilding the experience for everyone downstream.',
-    metric: 'Auto failover kept playback online',
-    context: 'Uses account-level monitoring to catch expiring routes before users do.',
+    designation: 'Manages TV access for extended family',
+    quote: 'My parents and siblings all use it. When one service goes down it switches automatically — they don\'t even notice. I get an alert before anything expires. It just runs itself.',
+    metric: 'Zero complaints across 3 households',
+    context: 'Runs TV access for family members who aren\'t technical.',
     src: createPortraitDataUri({
       name: 'Ibrahim Khan',
-      role: 'Provider operator',
+      role: 'Family organiser',
       accentFrom: '#2e4d8f',
       accentTo: '#7bc2ff',
     }),
@@ -268,17 +268,100 @@ export default function Landing() {
 
   const landingSchema = {
     '@context': 'https://schema.org',
-    '@type': 'SoftwareApplication',
-    name: 'StreamBridge',
-    applicationCategory: 'MultimediaApplication',
-    operatingSystem: 'Web',
-    description: 'Private Stremio addon management for IPTV providers with provider routing, health checks, metadata repair, and install-ready account URLs.',
-    keywords: 'IPTV for Stremio, Stremio IPTV addon, IPTV in Stremio',
-    url: SITE_URL,
-    offers: [
-      { '@type': 'Offer', price: '9', priceCurrency: 'USD', name: 'Starter' },
-      { '@type': 'Offer', price: '19', priceCurrency: 'USD', name: 'Power' },
-      { '@type': 'Offer', price: '39', priceCurrency: 'USD', name: 'Operator' },
+    '@graph': [
+      {
+        '@type': 'SoftwareApplication',
+        name: 'StreamBridge',
+        applicationCategory: 'MultimediaApplication',
+        operatingSystem: 'Web',
+        description: 'StreamBridge is a web service that connects IPTV providers to Stremio by generating a private addon URL, routing between providers on failure, and fixing TMDB metadata automatically.',
+        url: SITE_URL,
+        offers: [
+          { '@type': 'Offer', price: '9', priceCurrency: 'USD', name: 'Starter', description: 'For one personal setup — 1 private addon URL, up to 2 provider connections, provider health checks, and metadata repair.' },
+          { '@type': 'Offer', price: '19', priceCurrency: 'USD', name: 'Power', description: 'For people juggling multiple sources — 5 provider connections with failover, priority metadata matching, and expiry tracking.' },
+          { '@type': 'Offer', price: '39', priceCurrency: 'USD', name: 'Operator', description: 'For reseller or household bundles — 10 provider connections, multiple install environments, and shared account controls.' },
+        ],
+      },
+      {
+        '@type': 'Organization',
+        name: 'StreamBridge',
+        url: SITE_URL,
+      },
+      {
+        '@type': 'WebSite',
+        name: 'StreamBridge',
+        url: SITE_URL,
+        potentialAction: {
+          '@type': 'SearchAction',
+          target: `${SITE_URL}/?q={search_term_string}`,
+          'query-input': 'required name=search_term_string',
+        },
+      },
+      {
+        '@type': 'HowTo',
+        name: 'How to add IPTV to Stremio with StreamBridge',
+        description: 'Connect your IPTV provider to Stremio in three steps using StreamBridge.',
+        totalTime: 'PT5M',
+        step: workflow.map(([name, text], i) => ({
+          '@type': 'HowToStep',
+          position: i + 1,
+          name,
+          text,
+        })),
+      },
+      {
+        '@type': 'FAQPage',
+        mainEntity: [
+          {
+            '@type': 'Question',
+            name: 'What is StreamBridge?',
+            acceptedAnswer: {
+              '@type': 'Answer',
+              text: 'StreamBridge is a web service that connects IPTV providers to Stremio by generating a private addon URL. It supports Xtream Codes, M3U, and MAC Portal providers, handles automatic failover between providers, and repairs TMDB metadata for movies and series.',
+            },
+          },
+          {
+            '@type': 'Question',
+            name: 'Does StreamBridge work with Xtream Codes?',
+            acceptedAnswer: {
+              '@type': 'Answer',
+              text: 'Yes. StreamBridge supports Xtream Codes as a primary authentication method. Paste your Xtream Codes credentials once and StreamBridge generates a private Stremio addon URL that connects your IPTV provider directly to Stremio.',
+            },
+          },
+          {
+            '@type': 'Question',
+            name: 'How do I install an IPTV addon in Stremio using StreamBridge?',
+            acceptedAnswer: {
+              '@type': 'Answer',
+              text: 'Create a StreamBridge account, connect your IPTV provider (Xtream Codes, M3U, or MAC Portal), then copy your private addon URL and paste it into Stremio\'s addon installer. The entire process takes under five minutes.',
+            },
+          },
+          {
+            '@type': 'Question',
+            name: 'What IPTV provider types does StreamBridge support?',
+            acceptedAnswer: {
+              '@type': 'Answer',
+              text: 'StreamBridge supports three provider types: Xtream Codes (the most common IPTV authentication standard), M3U Plus playlist URLs, and MAC Portal (device-based routing). You can connect multiple providers and configure automatic failover between them.',
+            },
+          },
+          {
+            '@type': 'Question',
+            name: 'Is StreamBridge free?',
+            acceptedAnswer: {
+              '@type': 'Answer',
+              text: 'StreamBridge offers a free provider preview so you can test your IPTV credentials before signing up. Paid plans start at $9/month for personal use, $19/month for multiple providers with failover, and $39/month for reseller or household setups.',
+            },
+          },
+          {
+            '@type': 'Question',
+            name: 'What happens if my IPTV provider goes down?',
+            acceptedAnswer: {
+              '@type': 'Answer',
+              text: 'StreamBridge automatically routes to your next available provider when the active one fails. Your Stremio addon URL stays the same — you never need to reinstall or reconfigure anything when providers change.',
+            },
+          },
+        ],
+      },
     ],
   };
 
@@ -365,7 +448,7 @@ export default function Landing() {
                       className="mb-6"
                     >
                       <AnnouncementBanner badge="New">
-                        IPTV for Stremio, without the usual mess
+                        Your TV subscription, inside a Netflix-style app
                       </AnnouncementBanner>
                     </motion.div>
 
@@ -379,27 +462,29 @@ export default function Landing() {
                       variants={fadeUp} initial="hidden" animate="visible" custom={2}
                       className="hero-display mt-2 max-w-[13ch]"
                     >
-                      <span className="block">Put IPTV</span>
+                      <span className="block">Watch your</span>
                       <span className="block">
+                        <span className="sr-only">TV service like Netflix.</span>
                         <TextRotate
-                          words={['into Stremio.', 'in one addon.', 'through a cleaner player.']}
+                          words={['TV like Netflix.', 'channels, clean.', 'live TV, your way.']}
                           className="bg-gradient-to-r from-white via-brand-200 to-cyan-200 bg-clip-text text-transparent"
+                          aria-hidden="true"
                         />
                       </span>
-                      <span className="block">Keep it simple.</span>
+                      <span className="block">Finally.</span>
                     </motion.h1>
                     <motion.p
                       variants={fadeUp} initial="hidden" animate="visible" custom={3}
                       className="hero-support mt-6 max-w-xl"
                     >
-                      StreamBridge helps you use IPTV in Stremio with one private addon link. Test your provider, connect it once, repair the messy metadata, and stop rebuilding your setup every time something changes.
+                      StreamBridge takes your TV subscription and puts it inside Stremio — a clean, modern app that works on your TV, phone, and laptop. Live sports, news, and movies on-demand, all browsable like Netflix. Set up in under 5 minutes.
                     </motion.p>
 
                     <motion.p
                       variants={fadeUp} initial="hidden" animate="visible" custom={4}
                       className="mt-4 text-sm font-medium leading-6 text-slate-200/78"
                     >
-                      Stremio IPTV addon setup for real provider accounts.
+                      Works with most TV subscriptions. No technical knowledge needed.
                     </motion.p>
 
                     <motion.div
@@ -408,13 +493,19 @@ export default function Landing() {
                     >
                       {/* Sera UI – Shimmer Button (primary hero CTA) */}
                       <ShimmerButton className="text-sm font-semibold" onClick={() => window.location.href = '/signup'}>
-                        Create Free Account <ArrowRight className="h-4 w-4 inline-block ml-1" />
+                        Start Watching Free <ArrowRight className="h-4 w-4 inline-block ml-1" />
                       </ShimmerButton>
                       {/* Sera UI – Glow Button (secondary hero CTA) */}
                       <GlowButton size="md" onClick={() => window.location.href = '/login'}>
                         I already have an account
                       </GlowButton>
                     </motion.div>
+                    <motion.p
+                      variants={fadeUp} initial="hidden" animate="visible" custom={5}
+                      className="mt-3 text-xs text-slate-400/55"
+                    >
+                      No credit card needed · Cancel anytime · Works on any device
+                    </motion.p>
 
                     {/* Proof metrics – Sera UI NumberTicker */}
                     <motion.div
@@ -422,9 +513,9 @@ export default function Landing() {
                       className="mt-10 flex items-center gap-6 border-t border-white/[0.08] pt-8"
                     >
                         {[
-                        { value: 1,   suffix: '',  label: 'Install link', isNum: true, valueTone: 'text-cyan-200' },
-                        { display: 'IPTV + Stremio', label: 'One setup flow' },
-                        { value: 91, suffix: '%', label: 'Catalogs matched', isNum: true },
+                        { display: 'Free', label: 'No card to try', valueTone: 'text-cyan-200' },
+                        { value: 5, suffix: ' min', label: 'Setup time', isNum: true },
+                        { display: 'Any device', label: 'TV, phone, laptop' },
                       ].map(({
                         value, suffix, label, display, isNum, valueTone = 'text-white',
                       }) => (
@@ -452,23 +543,25 @@ export default function Landing() {
                       <div className="relative overflow-hidden rounded-[34px] border border-white/[0.12] bg-[linear-gradient(180deg,rgba(8,16,31,0.74),rgba(8,16,31,0.92))] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.42)] backdrop-blur-2xl sm:p-7">
                         <div className="mb-5 flex items-start justify-between gap-4">
                           <div>
-                            <p className="metric-label mb-2">Your StreamBridge link</p>
-                            <h2 className="text-2xl font-bold text-white">One install for Stremio</h2>
+                            <p className="metric-label mb-2">Your streaming lineup</p>
+                            <h2 className="text-2xl font-bold text-white">Everything in one place</h2>
                           </div>
                           <Badge variant="success">
                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                            Active
+                            Live
                           </Badge>
                         </div>
 
-                        <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-surface-950/70 px-4 py-3 font-mono text-xs leading-7 text-brand-100/80 sm:text-sm">
-                          https://streambridge.app/addon/<wbr />
-                          <span className="text-brand-300">acc_x2f9c4f1</span>/manifest.json
+                        <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-surface-950/70 px-4 py-3 text-xs leading-7 text-brand-100/80 sm:text-sm">
+                          <span className="text-slate-400/70">Connected TV service  →  </span>
+                          <span className="text-brand-300 font-semibold">Stremio</span>
+                          <span className="text-slate-400/70">  ·  watching on </span>
+                          <span className="text-white font-semibold">any screen</span>
                         </div>
 
                         <div className="mt-6 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
                         <div className="rounded-[26px] border border-white/[0.08] bg-white/[0.03] p-5">
-                            <p className="metric-label mb-4">Why people search for this</p>
+                            <p className="metric-label mb-4">What you get</p>
                             <ul className="space-y-3" role="list">
                               {proofPoints.map((point) => (
                                 <li key={point} className="flex items-start gap-3 text-sm leading-6 text-slate-200/78">
@@ -479,12 +572,12 @@ export default function Landing() {
                             </ul>
                           </div>
                           <div className="rounded-[26px] border border-white/[0.08] bg-white/[0.03] p-5">
-                            <p className="metric-label mb-4">Route health</p>
+                            <p className="metric-label mb-4">Works on</p>
                             <div className="grid grid-cols-1 gap-4">
                               {[
-                                { label: 'Fallback host', value: 'Auto' },
-                                { label: 'Catalog recovery', value: '91%' },
-                                { label: 'Current mode', value: 'Online' },
+                                { label: 'Smart TV & laptop', value: '✓' },
+                                { label: 'iPhone & Android', value: '✓' },
+                                { label: 'Status', value: 'Online' },
                               ].map((item) => (
                                 <div key={item.label} className="rounded-2xl border border-white/[0.08] bg-surface-950/55 px-4 py-3">
                                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400/65">{item.label}</p>
@@ -498,14 +591,14 @@ export default function Landing() {
                         <div className="surface-divider mt-6 pt-6">
                           <div className="grid grid-cols-3 divide-x divide-white/[0.06]">
                             {[
-                              { value: 3,     label: 'Sources', tone: 'text-white',       isNum: true },
-                              { value: 57000, label: 'Titles',  tone: 'text-white',       isNum: true, formatFn: (n) => `${Math.round(n / 1000)}K` },
-                              { label: 'Routing', tone: 'text-emerald-300', display: 'Online' },
-                            ].map(({ value, label, tone, isNum, formatFn, display }) => (
+                              { value: 5, suffix: ' min', label: 'To set up', tone: 'text-white', isNum: true },
+                              { value: 57000, label: 'Titles',  tone: 'text-white', isNum: true, formatFn: (n) => `${Math.round(n / 1000)}K` },
+                              { label: 'Working', tone: 'text-emerald-300', display: '✓ Live' },
+                            ].map(({ value, suffix, label, tone, isNum, formatFn, display }) => (
                               <div key={label} className="px-4 text-center first:pl-0 last:pr-0">
                                 <p className={`text-xl font-bold ${tone}`}>
                                   {isNum
-                                    ? <NumberTicker value={value} formatFn={formatFn} duration={1600} delay={900} className={`text-xl font-bold ${tone}`} />
+                                    ? <NumberTicker value={value} suffix={suffix} formatFn={formatFn} duration={1600} delay={900} className={`text-xl font-bold ${tone}`} />
                                     : display}
                                 </p>
                                 <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300/55">{label}</p>
@@ -555,16 +648,42 @@ export default function Landing() {
               </Marquee>
             </section>
 
+            {/* ── Device compatibility strip ────────────────────────────────── */}
+            <section className="border-b border-white/[0.06] bg-white/[0.01] py-8" aria-label="Works on your devices">
+              <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                <p className="mb-6 text-center text-xs font-semibold uppercase tracking-[0.22em] text-slate-400/55">Works on every screen you own</p>
+                <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+                  {[
+                    { label: 'Smart TV', icon: '📺' },
+                    { label: 'iPhone', icon: '📱' },
+                    { label: 'Android', icon: '📱' },
+                    { label: 'iPad / Tablet', icon: '📱' },
+                    { label: 'Laptop', icon: '💻' },
+                    { label: 'Fire Stick', icon: '📺' },
+                    { label: 'Web Browser', icon: '🌐' },
+                  ].map(({ label, icon }) => (
+                    <div
+                      key={label}
+                      className="flex items-center gap-2 rounded-[16px] border border-white/[0.08] bg-white/[0.03] px-4 py-2.5 backdrop-blur-xl"
+                    >
+                      <span className="text-base leading-none">{icon}</span>
+                      <span className="text-sm font-medium text-slate-200/75">{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
             {/* ── Pillars ───────────────────────────────────────────────────── */}
             <section id="features" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24" aria-label="Features">
               <AnimatedSection>
                 <div className="mx-auto max-w-2xl text-center">
                   <p className="eyebrow mb-3">Why StreamBridge exists</p>
                   <h2 className="text-3xl font-bold text-white sm:text-4xl">
-                    IPTV users want Stremio. Stremio users want IPTV.
+                    You're already paying for TV. You deserve a better way to watch it.
                   </h2>
                   <p className="mt-4 text-base leading-7 text-slate-300/70">
-                    Most people looking for a Stremio IPTV addon are trying to bridge those two things without adding another clunky player or another fragile config workflow.
+                    Most TV subscriptions come with an app that feels clunky and outdated. StreamBridge moves your channels into Stremio — a modern, Netflix-style player — in minutes.
                   </p>
                 </div>
               </AnimatedSection>
@@ -599,12 +718,12 @@ export default function Landing() {
             <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24" aria-label="Channel lineup preview">
               <div className="grid gap-12 lg:grid-cols-[0.92fr_1.08fr] lg:items-center lg:gap-16">
                 <AnimatedSection>
-                  <p className="eyebrow mb-3">What the setup becomes</p>
+                  <p className="eyebrow mb-3">What it looks like</p>
                   <h2 className="text-3xl font-bold text-white sm:text-4xl">
-                    The goal is simple: IPTV inside a cleaner Stremio experience.
+                    Your TV channels — with the look and feel of Netflix.
                   </h2>
                   <p className="mt-4 max-w-xl text-base leading-7 text-slate-300/70">
-                    The technical work matters because the outcome matters: one Stremio IPTV addon, cleaner browsing, and less friction every time you need to reinstall or change providers.
+                    Instead of a clunky TV app, you get Stremio: a clean, modern interface with real artwork, descriptions, and ratings for everything you watch. Live TV and on-demand, all in one place.
                   </p>
                   <div className="mt-8 grid gap-4">
                     {lineupPoints.map(({ title, copy, icon: Icon }) => (
@@ -636,10 +755,10 @@ export default function Landing() {
                 <AnimatedSection>
                   <p className="eyebrow mb-3">How it works</p>
                   <h2 className="text-3xl font-bold text-white sm:text-4xl">
-                    Three steps from IPTV login to Stremio addon.
+                    Three steps and you're watching. Under 5 minutes.
                   </h2>
                   <p className="mt-4 text-base leading-7 text-slate-300/70">
-                    Create the account, check the provider, then install one addon in Stremio.
+                    No technical knowledge needed. Create an account, connect your TV service, and you're done.
                   </p>
                 </AnimatedSection>
 
@@ -676,12 +795,12 @@ export default function Landing() {
             <section id="preview" className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-16" aria-label="Try your provider">
               <AnimatedSection>
                 <div className="mx-auto max-w-3xl text-center mb-8">
-                  <p className="eyebrow mb-3">Test it before signing up</p>
+                  <p className="eyebrow mb-3">Try it before signing up</p>
                   <h2 className="text-3xl font-bold text-white sm:text-4xl">
-                    Check your IPTV provider before you install anything.
+                    See your channels before you pay a single penny.
                   </h2>
                   <p className="mt-4 text-base leading-7 text-slate-300/70">
-                    This is the fastest way to see whether your IPTV login will work as a Stremio IPTV addon before you commit to the full setup.
+                    Paste your TV service login below and StreamBridge shows you exactly what you'll get — live channels, your content library, everything — before you create an account. No card, no commitment.
                   </p>
                 </div>
                 <ProviderPreviewWidget />
@@ -696,12 +815,12 @@ export default function Landing() {
             <section id="social-proof" className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-16" aria-label="Testimonials">
               <AnimatedSection>
                 <div className="mx-auto max-w-3xl text-center">
-                  <p className="eyebrow mb-3">What users notice</p>
+                  <p className="eyebrow mb-3">What people say</p>
                   <h2 className="text-3xl font-bold text-white sm:text-4xl">
-                    The value lands when setup stops feeling fragile.
+                    Real people. Same TV service. Much better experience.
                   </h2>
                   <p className="mt-4 text-base leading-7 text-slate-300/70">
-                    The core pitch is not infrastructure. It is simple: use IPTV in Stremio without the usual mess.
+                    From parents managing family TV to sports fans who just want it to work — here's what they say after switching.
                   </p>
                 </div>
                 <AnimatedTestimonials testimonials={testimonials} autoplay className="mt-6" />
@@ -716,9 +835,121 @@ export default function Landing() {
               <AnimatedSection>
               <PricingSection
                 plans={pricingPlans}
-                  heading="Choose the plan that fits your IPTV and Stremio setup."
-                  description="Start simple if you just want IPTV in Stremio for yourself, then upgrade only if you manage more providers or more people."
+                  heading="Simple pricing. No contracts. Cancel anytime."
+                  description="Start for free — no credit card needed. Upgrade only if you want more TV services or need to set up multiple people."
               />
+              <p className="mt-6 text-center text-xs text-slate-400/50">No credit card needed to start · Cancel anytime in one click · All plans include a free provider preview</p>
+              </AnimatedSection>
+            </section>
+
+            {/* ── Definition + Crawlable testimonials ──────────────────────── */}
+            <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8" aria-label="About StreamBridge">
+              <AnimatedSection>
+                <div className="panel-soft p-6 sm:p-8">
+                  <h2 className="text-xl font-bold text-white mb-3">What is StreamBridge?</h2>
+                  <p className="text-base leading-7 text-slate-300/80">
+                    StreamBridge connects your TV subscription to Stremio — a clean, modern streaming app that works on your TV, phone, and laptop.
+                    Instead of using a clunky app from your TV provider, you get a Netflix-style interface with real artwork, descriptions, and a proper browsing experience.
+                    It works with most TV services, takes under 5 minutes to set up, and keeps working automatically even when your provider makes changes.
+                  </p>
+                  <div className="mt-8 grid gap-6 sm:grid-cols-3">
+                    {testimonials.map(({ name, designation, quote, metric, context }) => (
+                      <blockquote key={name} className="rounded-[20px] border border-white/[0.08] bg-white/[0.025] p-5">
+                        <p className="text-sm leading-6 text-slate-200/80 italic">&ldquo;{quote}&rdquo;</p>
+                        <footer className="mt-4">
+                          <p className="text-sm font-semibold text-white">{name}</p>
+                          <p className="text-xs text-slate-400/70">{designation}</p>
+                          {metric && <p className="mt-2 text-xs font-medium text-brand-300">{metric}</p>}
+                          {context && <p className="mt-1 text-xs text-slate-400/55">{context}</p>}
+                        </footer>
+                      </blockquote>
+                    ))}
+                  </div>
+                </div>
+              </AnimatedSection>
+            </section>
+
+            {/* ── FAQ ──────────────────────────────────────────────────────── */}
+            <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-16" aria-label="Frequently asked questions" id="faq">
+              <AnimatedSection>
+                <div className="mx-auto max-w-3xl">
+                  <h2 className="text-3xl font-bold text-white sm:text-4xl mb-10 text-center">
+                    Frequently asked questions
+                  </h2>
+                  <dl className="space-y-6">
+                    {[
+                      {
+                        q: 'What is StreamBridge?',
+                        a: 'StreamBridge takes your TV subscription and puts it inside Stremio — a clean, modern app that looks and feels like Netflix. Instead of using the app your TV provider gave you, you get a much better viewing experience with proper artwork, descriptions, and browsing. It works on your TV, phone, laptop, and most streaming devices.',
+                      },
+                      {
+                        q: 'Will it work on my TV / Fire Stick / iPhone / laptop?',
+                        a: 'Yes. Stremio works on Smart TVs, Amazon Fire Stick, iPhone, Android, iPad, Windows, Mac, and web browsers. Once StreamBridge connects your TV service, you can watch on any of these devices — all from the same account.',
+                      },
+                      {
+                        q: 'Do I need any technical knowledge to set this up?',
+                        a: 'No. You just need your TV service login details (the username and password you use to log in to your TV provider). StreamBridge walks you through the rest. Most people are up and watching in under 5 minutes.',
+                      },
+                      {
+                        q: 'Can I try it before paying?',
+                        a: 'Yes — you can test your TV service for free before creating an account. Just paste your login details into the preview tool above and StreamBridge shows you your channels and content. No credit card needed.',
+                      },
+                      {
+                        q: 'What if my TV service goes down or changes?',
+                        a: 'StreamBridge automatically switches to a backup source if your main one has a problem. Your setup stays the same — you don\'t need to reinstall anything or do anything manually. You\'ll also get an alert before your service expires.',
+                      },
+                      {
+                        q: 'Why do my shows look wrong or have missing artwork?',
+                        a: 'TV services often have poorly labelled content that doesn\'t match the standard TV databases. StreamBridge automatically fixes this — matching your shows and movies to the correct artwork, descriptions, and ratings so everything looks right in Stremio.',
+                      },
+                      {
+                        q: 'Can I cancel anytime?',
+                        a: 'Yes. There are no contracts and no lock-in. You can cancel your StreamBridge plan at any time with one click. Your TV service is unaffected — StreamBridge is just the bridge between it and Stremio.',
+                      },
+                    ].map(({ q, a }) => (
+                      <div key={q} className="panel-soft p-5 sm:p-6">
+                        <dt className="text-base font-bold text-white mb-2">{q}</dt>
+                        <dd className="text-sm leading-6 text-slate-300/75">{a}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              </AnimatedSection>
+            </section>
+
+            {/* ── Comparison ───────────────────────────────────────────────── */}
+            <section className="mx-auto max-w-7xl px-4 pb-10 sm:px-6 lg:px-8" aria-label="StreamBridge vs manual Stremio IPTV setup">
+              <AnimatedSection>
+                <div className="mx-auto max-w-3xl">
+                  <h2 className="text-2xl font-bold text-white mb-6 text-center">StreamBridge vs. your TV provider's own app</h2>
+                  <div className="overflow-x-auto rounded-[20px] border border-white/[0.08]">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-white/[0.08] bg-white/[0.03]">
+                          <th className="px-5 py-3 text-left font-semibold text-slate-300/70"> </th>
+                          <th className="px-5 py-3 text-left font-semibold text-brand-300">StreamBridge + Stremio</th>
+                          <th className="px-5 py-3 text-left font-semibold text-slate-400/70">Your provider's app</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/[0.06]">
+                        {[
+                          ['Interface', 'Clean, modern — like Netflix', 'Clunky, outdated'],
+                          ['Try before you pay', 'Free preview, no card needed', 'Pay first, hope for the best'],
+                          ['Show artwork & descriptions', 'Automatic, looks great', 'Often missing or wrong'],
+                          ['If service goes down', 'Switches automatically', 'You have to fix it yourself'],
+                          ['Works on your devices', 'TV, phone, laptop, tablet', 'Often limited devices'],
+                          ['Setup & maintenance', 'Once, then forget it', 'Breaks when anything changes'],
+                        ].map(([feat, sb, manual]) => (
+                          <tr key={feat} className="bg-white/[0.015]">
+                            <td className="px-5 py-3 font-medium text-slate-200/80">{feat}</td>
+                            <td className="px-5 py-3 text-slate-200/75">{sb}</td>
+                            <td className="px-5 py-3 text-slate-400/60">{manual}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </AnimatedSection>
             </section>
 
@@ -728,19 +959,22 @@ export default function Landing() {
                 <div className="panel overflow-hidden p-8 sm:p-10 lg:p-12">
                   <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
                     <div>
-                      <p className="eyebrow mb-3">Start now</p>
+                      <p className="eyebrow mb-3">Start watching today</p>
                       <h2 className="text-3xl font-bold text-white sm:text-4xl">
-                        Start with one StreamBridge link for IPTV in Stremio.
+                        Your TV subscription deserves a better app.
                       </h2>
                       <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300/70">
-                        Create an account, test your provider, and get one StreamBridge link that turns your IPTV service into a cleaner Stremio setup.
+                        Try your TV service for free, see your channels, and start watching in Stremio in under 5 minutes. No credit card. No commitment. Cancel anytime.
                       </p>
                     </div>
                     <div className="flex flex-col gap-3 sm:flex-row lg:flex-col xl:flex-row">
                       {/* Sera UI – Shimmer Button */}
-                      <ShimmerButton className="text-sm font-semibold" onClick={() => window.location.href = '/signup'}>
-                        Start Free <ArrowRight className="h-4 w-4 inline-block ml-1" />
-                      </ShimmerButton>
+                      <div className="flex flex-col gap-1">
+                        <ShimmerButton className="text-sm font-semibold" onClick={() => window.location.href = '/signup'}>
+                          Start Watching Free <ArrowRight className="h-4 w-4 inline-block ml-1" />
+                        </ShimmerButton>
+                        <p className="text-center text-[11px] text-slate-400/50">No card needed · Cancel anytime</p>
+                      </div>
                       {/* Sera UI – Glow Button */}
                       <GlowButton size="md" onClick={() => window.location.href = '/login'}>
                         Sign In
@@ -755,7 +989,7 @@ export default function Landing() {
           <footer className="border-t border-white/[0.08]">
             <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-6 text-sm text-slate-400/60 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
               <span>StreamBridge</span>
-              <span>Use IPTV in Stremio with one simpler addon setup</span>
+              <span>Your TV subscription, in a Netflix-style app. Works on any device.</span>
             </div>
           </footer>
         </div>

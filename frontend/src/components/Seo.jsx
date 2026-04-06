@@ -75,9 +75,9 @@ export default function Seo({
     upsertMeta('meta[name="twitter:image"]', { name: 'twitter:image', content: imageUrl });
     upsertLink('link[rel="canonical"]', { rel: 'canonical', href: canonicalUrl });
 
-    let schemaTag;
+    document.head.querySelectorAll('script[data-seo-schema]').forEach((s) => s.remove());
     if (jsonLd) {
-      schemaTag = document.createElement('script');
+      const schemaTag = document.createElement('script');
       schemaTag.type = 'application/ld+json';
       schemaTag.setAttribute('data-seo-schema', 'true');
       schemaTag.textContent = JSON.stringify(jsonLd);
@@ -87,9 +87,19 @@ export default function Seo({
     return () => {
       document.title = previousTitle;
 
-      if (schemaTag) {
-        schemaTag.remove();
-      }
+      upsertMeta('meta[name="description"]', { content: DEFAULT_DESCRIPTION });
+      upsertMeta('meta[name="robots"]', { content: 'index, follow' });
+      upsertMeta('meta[property="og:type"]', { content: 'website' });
+      upsertMeta('meta[property="og:title"]', { content: DEFAULT_TITLE });
+      upsertMeta('meta[property="og:description"]', { content: DEFAULT_DESCRIPTION });
+      upsertMeta('meta[property="og:url"]', { content: `${SITE_URL}/` });
+      upsertMeta('meta[property="og:image"]', { content: `${SITE_URL}${DEFAULT_IMAGE}` });
+      upsertMeta('meta[name="twitter:title"]', { content: DEFAULT_TITLE });
+      upsertMeta('meta[name="twitter:description"]', { content: DEFAULT_DESCRIPTION });
+      upsertMeta('meta[name="twitter:image"]', { content: `${SITE_URL}${DEFAULT_IMAGE}` });
+      upsertLink('link[rel="canonical"]', { href: `${SITE_URL}/` });
+
+      document.head.querySelectorAll('script[data-seo-schema]').forEach((s) => s.remove());
     };
   }, [description, image, jsonLd, path, robots, title, type]);
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import Seo from '../components/Seo';
 import { motion } from 'framer-motion';
 import {
   ArrowRight, Check, Clock, Film, Server, Sparkles, Copy, ExternalLink, Activity,
@@ -325,6 +326,7 @@ export default function Dashboard() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
+      <Seo robots="noindex, nofollow" />
 
       {/* Hero panel */}
       <motion.section
@@ -581,7 +583,7 @@ export default function Dashboard() {
                 <div key={`${item.raw_title}-${item.last_watched_at}`} className="flex items-center gap-3 rounded-[18px] border border-white/[0.07] bg-white/[0.025] p-3">
                   <div className="h-16 w-12 overflow-hidden rounded-[12px] border border-white/[0.08] bg-surface-950/70">
                     {item.poster_url ? (
-                      <img src={item.poster_url} alt={item.raw_title} className="h-full w-full object-cover" />
+                      <img src={item.poster_url} alt={item.raw_title} className="h-full w-full object-cover" loading="lazy" />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400/55">
                         {item.vod_type || 'vod'}

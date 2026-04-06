@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import Seo from '../components/Seo';
 import { providerAPI } from '../utils/api';
 import { ArrowLeftIcon, ArrowPathIcon, PencilSquareIcon, SignalIcon } from '@heroicons/react/24/outline';
 import StatusBadge from '../components/StatusBadge';
@@ -192,6 +193,7 @@ export default function ProviderDetail() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
+      <Seo robots="noindex, nofollow" />
       <Link to="/providers" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-300/[0.72] transition-colors hover:text-white">
         <ArrowLeftIcon className="h-4 w-4" />
         Back to Providers

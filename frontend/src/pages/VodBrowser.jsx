@@ -19,6 +19,7 @@ import {
   Search, X, ChevronLeft, ChevronRight, Play,
 } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
+import Seo from '../components/Seo';
 import toast from 'react-hot-toast';
 import { reportableError } from '../utils/reportableToast';
 import { useAuth } from '../context/AuthContext';
@@ -168,6 +169,7 @@ function FixMatchModal({ item, providerId, allItems, currentIndex, onClose, onSu
                   alt={item.raw_title}
                   className="w-full rounded-[18px] object-cover"
                   style={{ aspectRatio: '2/3' }}
+                  loading="lazy"
                 />
               ) : (
                 <div className="flex w-full items-center justify-center rounded-[18px] bg-surface-800/60" style={{ aspectRatio: '2/3' }}>
@@ -225,7 +227,7 @@ function FixMatchModal({ item, providerId, allItems, currentIndex, onClose, onSu
                       className="flex w-full items-center gap-3 rounded-[18px] border border-white/[0.08] bg-white/[0.03] p-3 text-left transition-all hover:border-white/[0.14] hover:bg-white/[0.06]"
                     >
                       {result.poster ? (
-                        <img src={result.poster} alt={result.title} className="h-16 w-11 flex-shrink-0 rounded-xl object-cover" />
+                        <img src={result.poster} alt={result.title} className="h-16 w-11 flex-shrink-0 rounded-xl object-cover" loading="lazy" />
                       ) : (
                         <div className="flex h-16 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-surface-800/80">
                           <FilmIcon className="h-4 w-4 text-slate-400/40" />
@@ -476,6 +478,7 @@ export default function VodBrowser() {
   if (loadingProviders) {
     return (
       <div className="mx-auto max-w-7xl space-y-8">
+        <Seo robots="noindex, nofollow" />
         <div className="panel p-8"><h1 className="hero-title">Loading VOD library…</h1></div>
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8">
           {Array.from({ length: 16 }).map((_, i) => <div key={i} className="skeleton aspect-[2/3]" />)}
@@ -487,6 +490,7 @@ export default function VodBrowser() {
   if (!hasByoProviders) {
     return (
       <div className="mx-auto max-w-7xl space-y-8">
+        <Seo robots="noindex, nofollow" />
         <section className="panel p-8">
           <div className="kicker mb-5">Browse VOD</div>
           <h1 className="hero-title">Add a provider to browse movies and series.</h1>

@@ -1,4 +1,10 @@
 User-agent: *
 Allow: /
+Disallow: /dashboard
+Disallow: /providers
+Disallow: /addon
+Disallow: /account
+Disallow: /live
+Disallow: /vod
 
 Sitemap: https://streambridge.thekush.dev/sitemap.xml
