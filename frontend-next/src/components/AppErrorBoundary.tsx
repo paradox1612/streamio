@@ -38,7 +38,7 @@ export default class AppErrorBoundary extends React.Component<Props, State> {
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-red-200/80">Application error</p>
           <h1 className="mt-4 text-3xl font-bold">This screen crashed.</h1>
           <p className="mt-4 text-sm leading-6 text-red-50/75">
-            A report prompt should already be available. You can retry this screen now or refresh the page if the issue persists.
+            A report prompt should appear so you can send the error details to the admin inbox. You can retry this screen now or refresh the page if the issue persists.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <button

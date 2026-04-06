@@ -8,7 +8,7 @@ import toast from 'react-hot-toast'
 import ConfirmDialog from '@/components/ConfirmDialog'
 
 export default function AccountPage() {
-  const { user, logout } = useAuthStore() as any
+  const { user, logout } = useAuthStore()
   const router = useRouter()
   const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' })
   const [changingPw, setChangingPw] = useState(false)
@@ -25,8 +25,8 @@ export default function AccountPage() {
       await authAPI.changePassword(passwords.current, passwords.new)
       toast.success('Password changed successfully')
       setPasswords({ current: '', new: '', confirm: '' })
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Failed to change password')
+    } catch (err: unknown) {
+      toast.error((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to change password')
     } finally {
       setChangingPw(false)
     }

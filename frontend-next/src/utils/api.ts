@@ -1,4 +1,6 @@
 import axios from 'axios'
+import { reportApplicationError } from '@/context/ErrorReportingContext'
+import { persistAdminToken, persistUserToken } from '@/lib/auth-cookies'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
@@ -26,7 +28,24 @@ api.interceptors.response.use(
     if (typeof window !== 'undefined' && err.response?.status === 401) {
       const isAdmin = window.location.pathname.startsWith('/admin')
       localStorage.removeItem(isAdmin ? 'sb_admin_token' : 'sb_token')
+      if (isAdmin) persistAdminToken(null)
+      else persistUserToken(null)
       window.location.href = isAdmin ? '/admin/login' : '/login'
+    } else if (
+      typeof window !== 'undefined' &&
+      !err.config?.skipErrorReport &&
+      (!err.response || err.response.status >= 500)
+    ) {
+      reportApplicationError(err, {
+        source: window.location.pathname.startsWith('/admin') ? 'admin' : 'frontend',
+        errorType: 'ApiError',
+        message: err.response?.data?.error || err.message || 'Request failed',
+        context: {
+          httpStatus: err.response?.status || null,
+          method: err.config?.method || null,
+          url: err.config?.url || null,
+        },
+      })
     }
     return Promise.reject(err)
   }

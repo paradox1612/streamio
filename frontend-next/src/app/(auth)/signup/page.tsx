@@ -58,8 +58,8 @@ export default function SignupPage() {
 
       toast.success(providerConnected ? 'Account created and provider connected!' : 'Account created! Welcome aboard')
       router.push('/dashboard')
-    } catch (err: any) {
-      const msg = err.response?.data?.error || 'Signup failed'
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Signup failed'
       setError(msg); toast.error(msg)
     } finally {
       setLoading(false)

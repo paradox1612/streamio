@@ -86,6 +86,7 @@ interface Provider {
   seriesCount: number
   matchedTitles: number
   accountInfo?: { expiresAt?: string } | null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   refreshJob?: any
 }
 
@@ -162,13 +163,16 @@ function ProviderRow({ provider }: { provider: Provider }) {
 
 export default function DashboardPage() {
   const router = useRouter()
-  const { user, setUser } = useAuthStore() as any
+  const { user, setUser } = useAuthStore()
   const [addonUrl, setAddonUrl] = useState('')
   const [providers, setProviders] = useState<Provider[]>([])
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [watchHistory, setWatchHistory] = useState<any[]>([])
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [freeAccess, setFreeAccess] = useState<any>({ status: 'inactive', canStart: true, canExtend: false })
   const [loading, setLoading] = useState(true)
   const [copying, setCopying] = useState(false)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [activeRefreshes, setActiveRefreshes] = useState<any[]>([])
   const [refreshNow, setRefreshNow] = useState(Date.now())
 
@@ -186,6 +190,7 @@ export default function DashboardPage() {
         const { data: activeJobs } = await providerAPI.listActiveRefreshes()
         setActiveRefreshes(Array.isArray(activeJobs) ? activeJobs : [])
         const providerStats = await Promise.all(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           provsRes.data.map(async (provider: any) => {
             try {
               const { data } = await providerAPI.getStats(provider.id)
@@ -212,6 +217,7 @@ export default function DashboardPage() {
             }
           })
         )
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const activeMap = new Map((activeJobs || []).map((job: any) => [job.providerId, job]))
         setProviders(providerStats.map((provider) => ({
           ...provider,
@@ -241,6 +247,7 @@ export default function DashboardPage() {
         setActiveRefreshes(jobs)
         setRefreshNow(Date.now())
         setProviders((prev) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const activeMap = new Map(jobs.map((job: any) => [job.providerId, job]))
           return prev.map((provider) => ({
             ...provider,
@@ -280,8 +287,8 @@ export default function DashboardPage() {
       toast.success(freeAccess.status === 'expired' ? 'Free access extended' : 'Free access started')
       const [{ data: freeStatus }] = await Promise.all([freeAccessAPI.getStatus(), refreshProfile()])
       setFreeAccess(freeStatus)
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Unable to update free access')
+    } catch (err: unknown) {
+      toast.error((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Unable to update free access')
     }
   }
 
@@ -564,6 +571,7 @@ export default function DashboardPage() {
                 <div key={`${item.raw_title}-${item.last_watched_at}`} className="flex items-center gap-3 rounded-[18px] border border-white/[0.07] bg-white/[0.025] p-3">
                   <div className="h-16 w-12 overflow-hidden rounded-[12px] border border-white/[0.08] bg-surface-950/70">
                     {item.poster_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img src={item.poster_url} alt={item.raw_title} className="h-full w-full object-cover" loading="lazy" />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400/55">

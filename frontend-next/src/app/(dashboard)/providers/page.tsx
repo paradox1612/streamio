@@ -43,8 +43,8 @@ function AddProviderModal({ open, onClose, onAdded }: { open: boolean; onClose: 
       toast.success('Provider added')
       onAdded(res.data)
       setForm({ name: '', hostsInput: '', username: '', password: '' })
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Failed to add provider')
+    } catch (err: unknown) {
+      toast.error((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to add provider')
     } finally {
       setLoading(false)
     }
@@ -137,7 +137,7 @@ function ProviderRow({ provider, onRefresh, onDelete }: { provider: Provider; on
       const res = await providerAPI.refresh(provider.id)
       toast.success(res.data.started ? 'Catalog refresh started in background' : 'Catalog refresh is already running')
       onRefresh()
-    } catch (err: any) { toast.error(err.response?.data?.error || 'Refresh failed') }
+    } catch (err: unknown) { toast.error((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Refresh failed') }
     finally { setLoading('') }
   }
 

@@ -57,6 +57,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const closeBtnRef = useRef<HTMLButtonElement>(null)
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setSidebarOpen(false) }, [pathname])
 
   useEffect(() => {
@@ -76,11 +77,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push('/login')
   }
 
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   const navItems = baseNavItems.filter((item) => {
     if (item.path === '/live') return Boolean((user as any)?.can_use_live_tv)
     if (item.path === '/vod') return Boolean((user as any)?.canBrowseWebCatalog ?? (user as any)?.can_browse_web_catalog ?? (user as any)?.has_byo_providers)
     return true
   })
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 
   return (
     <div className="flex min-h-screen">

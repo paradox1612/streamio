@@ -3,8 +3,8 @@
 import React, { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import type { Metadata } from 'next'
 import toast from 'react-hot-toast'
+import axios from 'axios'
 import { useAuthStore } from '@/store/auth'
 import { authAPI } from '@/utils/api'
 import { ModernStunningSignIn } from '@/components/ui/modern-stunning-sign-in'
@@ -35,8 +35,8 @@ export default function LoginPage() {
       login(res.data.user, res.data.token)
       toast.success('Welcome back!')
       router.push('/dashboard')
-    } catch (err: any) {
-      const msg = err.response?.data?.error || 'Login failed'
+    } catch (err: unknown) {
+      const msg = axios.isAxiosError(err) ? (err.response?.data?.error ?? 'Login failed') : 'Login failed'
       setError(msg)
       toast.error(msg)
     } finally {

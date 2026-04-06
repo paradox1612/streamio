@@ -1,6 +1,7 @@
 'use client'
 
 import { create } from 'zustand'
+import { clearAllAuthCookies, persistUserToken } from '@/lib/auth-cookies'
 
 export interface User {
   id: string
@@ -27,12 +28,16 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (typeof window !== 'undefined') {
       if (token) localStorage.setItem('sb_token', token)
       else localStorage.removeItem('sb_token')
+      persistUserToken(token)
     }
     set({ token })
   },
 
   login: (user, token) => {
-    if (typeof window !== 'undefined') localStorage.setItem('sb_token', token)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('sb_token', token)
+      persistUserToken(token)
+    }
     set({ user, token })
   },
 
@@ -40,6 +45,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (typeof window !== 'undefined') {
       localStorage.removeItem('sb_token')
       localStorage.removeItem('sb_admin_token')
+      clearAllAuthCookies()
     }
     set({ user: null, token: null })
   },
