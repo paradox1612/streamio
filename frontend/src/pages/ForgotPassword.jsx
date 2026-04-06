@@ -9,6 +9,7 @@ import BrandMark from '../components/BrandMark';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import Seo from '../components/Seo';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -29,14 +30,21 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="auth-shell">
-      <motion.div
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="w-full max-w-md"
-      >
-        <div className="panel p-7 sm:p-10">
+    <>
+      <Seo
+        title="Reset Password | StreamBridge"
+        description="Request a StreamBridge password reset link for your account."
+        path="/forgot-password"
+        robots="noindex, nofollow"
+      />
+      <div className="auth-shell">
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+          className="w-full max-w-md"
+        >
+          <div className="panel p-7 sm:p-10">
           <BrandMark />
 
           <div className="mt-8 mb-7">
@@ -112,8 +120,9 @@ export default function ForgotPassword() {
               </div>
             </form>
           )}
-        </div>
-      </motion.div>
-    </div>
+          </div>
+        </motion.div>
+      </div>
+    </>
   );
 }

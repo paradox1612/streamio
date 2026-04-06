@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import BrandMark from './BrandMark';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
+import Seo from './Seo';
 
 const baseNavItems = [
   { path: '/dashboard', label: 'Dashboard', mobileLabel: 'Home', icon: LayoutDashboard },
@@ -91,8 +92,15 @@ export default function Layout({ children }) {
   });
 
   return (
-    <div className="app-shell">
-      <div className="app-chrome flex min-h-screen">
+    <>
+      <Seo
+        title="App | StreamBridge"
+        description="Private StreamBridge workspace."
+        path={location.pathname}
+        robots="noindex, nofollow"
+      />
+      <div className="app-shell">
+        <div className="app-chrome flex min-h-screen">
 
         {/* ── Sidebar ── */}
         <aside
@@ -234,7 +242,8 @@ export default function Layout({ children }) {
             </ul>
           </nav>
         </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -19,6 +19,7 @@ import toast from 'react-hot-toast';
 import { adminAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { cn } from '../lib/utils';
+import Seo from '../components/Seo';
 
 const navItems = [
   { path: '/admin/dashboard', label: 'Overview', icon: LayoutDashboard, description: 'System posture' },
@@ -98,8 +99,15 @@ export default function AdminLayout({ children }) {
   };
 
   return (
-    <div className="app-shell">
-      <div className="app-chrome flex min-h-screen">
+    <>
+      <Seo
+        title="Admin | StreamBridge"
+        description="StreamBridge admin control plane."
+        path={location.pathname}
+        robots="noindex, nofollow"
+      />
+      <div className="app-shell">
+        <div className="app-chrome flex min-h-screen">
         <aside
           className={cn(
             'fixed inset-y-0 left-0 z-50 flex w-[20rem] flex-col border-r border-white/[0.08] bg-surface-900/88 px-4 py-4 backdrop-blur-2xl transition-transform duration-300 lg:static lg:translate-x-0',
@@ -184,7 +192,8 @@ export default function AdminLayout({ children }) {
             </div>
           </main>
         </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { providerAPI } from '../utils/api';
 import { PENDING_PROVIDER_KEY } from '../components/ProviderPreviewWidget';
 import { AuthComponent } from '../components/ui/sign-up';
+import Seo from '../components/Seo';
 
 export default function Signup() {
   const { signup } = useAuth();
@@ -77,31 +78,39 @@ export default function Signup() {
   };
 
   return (
-    <AuthComponent
-      logo={logo}
-      brandName="StreamBridge"
-      email={form.email}
-      password={form.password}
-      confirmPassword={form.confirmPassword}
-      acceptTerms={isChecked}
-      onEmailChange={(e) => setForm((current) => ({ ...current, email: e.target.value }))}
-      onPasswordChange={(e) => setForm((current) => ({ ...current, password: e.target.value }))}
-      onConfirmPasswordChange={(e) => setForm((current) => ({ ...current, confirmPassword: e.target.value }))}
-      onAcceptTermsChange={(e) => setIsChecked(e.target.checked)}
-      onSubmit={handleSubmit}
-      loading={loading}
-      error={error}
-      title="Create account"
-      subtitle=""
-      showFullName={false}
-      termsLabel="I agree to the terms."
-      footer={(
-        <p className="text-center text-sm text-slate-300/65">
-          <Link to="/login" className="font-semibold text-white transition-colors hover:text-brand-100">
-            Sign in
-          </Link>
-        </p>
-      )}
-    />
+    <>
+      <Seo
+        title="Create Account | StreamBridge"
+        description="Create a StreamBridge account to set up a private Stremio addon with provider routing, health checks, and metadata repair."
+        path="/signup"
+        robots="noindex, nofollow"
+      />
+      <AuthComponent
+        logo={logo}
+        brandName="StreamBridge"
+        email={form.email}
+        password={form.password}
+        confirmPassword={form.confirmPassword}
+        acceptTerms={isChecked}
+        onEmailChange={(e) => setForm((current) => ({ ...current, email: e.target.value }))}
+        onPasswordChange={(e) => setForm((current) => ({ ...current, password: e.target.value }))}
+        onConfirmPasswordChange={(e) => setForm((current) => ({ ...current, confirmPassword: e.target.value }))}
+        onAcceptTermsChange={(e) => setIsChecked(e.target.checked)}
+        onSubmit={handleSubmit}
+        loading={loading}
+        error={error}
+        title="Create account"
+        subtitle=""
+        showFullName={false}
+        termsLabel="I agree to the terms."
+        footer={(
+          <p className="text-center text-sm text-slate-300/65">
+            <Link to="/login" className="font-semibold text-white transition-colors hover:text-brand-100">
+              Sign in
+            </Link>
+          </p>
+        )}
+      />
+    </>
   );
 }

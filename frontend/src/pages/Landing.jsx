@@ -7,6 +7,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { Badge } from '../components/ui/badge';
 import BrandMark from '../components/BrandMark';
+import Seo, { SITE_URL } from '../components/Seo';
 
 // ── Sera UI components ──────────────────────────────────────────────────────
 import ShimmerButton         from '../components/sera/ShimmerButton';
@@ -35,32 +36,32 @@ import {
 // ── Data ────────────────────────────────────────────────────────────────────
 const pillars = [
   {
-    title: 'Route several IPTV sources through one install flow',
-    copy: 'Add providers once, keep them health-checked, and stop rebuilding Stremio every time a host changes.',
+    title: 'IPTV for Stremio without a messy install process',
+    copy: 'Bring your IPTV provider into Stremio with one private addon link instead of juggling fragile configs and repeat setup steps.',
     icon: Server,
   },
   {
-    title: 'Keep posters and titles usable without side tools',
-    copy: 'Matching, TMDB enrichment, and manual correction stay close to the catalog instead of becoming another workflow.',
+    title: 'A cleaner Stremio IPTV addon for real provider accounts',
+    copy: 'StreamBridge is built for people using Xtream, M3U, or portal-based IPTV services who want a simpler way to watch through Stremio.',
     icon: Film,
   },
   {
-    title: 'Deliver a private endpoint that feels production-ready',
-    copy: 'Every account keeps a scoped install URL that is simple to reinstall, rotate, and trust.',
+    title: 'Test, repair, and keep one install link',
+    copy: 'Check your provider before signup, repair metadata where needed, and keep one install URL that is easier to trust and reuse.',
     icon: ShieldCheck,
   },
 ];
 
 const workflow = [
-  ['Create your account', 'Start with one workspace built for your own provider stack.'],
-  ['Connect providers',   'Bring in credentials once and let StreamBridge monitor host health.'],
-  ['Install one addon',   'Use a single private URL in Stremio instead of juggling separate configs.'],
+  ['Create your account', 'Start with one workspace built for IPTV users who want to use Stremio.'],
+  ['Connect your IPTV provider',   'Paste your IPTV details once and let StreamBridge check that your Stremio setup will work.'],
+  ['Install one addon in Stremio',   'Use one private install link instead of juggling separate configs, apps, and repeat setup steps.'],
 ];
 
 const proofPoints = [
-  'Switch providers without rebuilding your Stremio addon',
-  'See provider health and account expiry in one workspace',
-  'Repair metadata where it matters instead of across multiple tools',
+  'Use IPTV in Stremio with one private addon link',
+  'Check whether your IPTV provider works before full setup',
+  'Keep provider setup, health checks, and install in one place',
 ];
 
 const providers = [
@@ -76,13 +77,13 @@ const providers = [
 
 const lineupPoints = [
   {
-    title: 'Visualize the install before the first credential save',
-    copy: 'Show the shape of a polished lineup instead of another config table.',
+    title: 'Show what IPTV in Stremio actually looks like',
+    copy: 'Search traffic will care about the outcome, so the page should show the cleaner Stremio viewing surface before it explains the plumbing.',
     icon: MonitorPlay,
   },
   {
-    title: 'Mix live, movies, and repaired metadata in one flow',
-    copy: 'The bridge feels premium when the catalog and channels look coherent together.',
+    title: 'Make the promise explicit for both audiences',
+    copy: 'The pitch is simple: IPTV users get a better player, and Stremio users get a straightforward way to add IPTV.',
     icon: Signal,
   },
 ];
@@ -265,469 +266,500 @@ export default function Landing() {
   const { user, loading } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
+  const landingSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'StreamBridge',
+    applicationCategory: 'MultimediaApplication',
+    operatingSystem: 'Web',
+    description: 'Private Stremio addon management for IPTV providers with provider routing, health checks, metadata repair, and install-ready account URLs.',
+    keywords: 'IPTV for Stremio, Stremio IPTV addon, IPTV in Stremio',
+    url: SITE_URL,
+    offers: [
+      { '@type': 'Offer', price: '9', priceCurrency: 'USD', name: 'Starter' },
+      { '@type': 'Offer', price: '19', priceCurrency: 'USD', name: 'Power' },
+      { '@type': 'Offer', price: '39', priceCurrency: 'USD', name: 'Operator' },
+    ],
+  };
+
   if (loading) return null;
   if (user) return <Navigate to="/dashboard" replace />;
 
   return (
-    <ParallaxCosmicBackground className="marketing-shell min-h-screen">
-      <div className="marketing-chrome">
-        <Navbar>
-          <NavBody>
-            <a href="/" className="min-w-0">
-              <BrandMark compact />
-            </a>
-            <NavItems items={marketingNavItems} />
-            <div className="hidden items-center gap-2 md:flex">
-              <NavbarButton as={Link} to="/login" variant="secondary">
-                Login
-              </NavbarButton>
-              <NavbarButton as={Link} to="/signup" variant="gradient">
-                Create account
-              </NavbarButton>
-            </div>
-          </NavBody>
-
-          <MobileNav>
-            <MobileNavHeader>
+    <>
+      <Seo
+        title="StreamBridge | IPTV for Stremio With One Private Addon"
+        description="Use IPTV in Stremio with one private addon link. StreamBridge tests providers, repairs metadata, and gives IPTV and Stremio users a simpler setup flow."
+        path="/"
+        jsonLd={landingSchema}
+      />
+      <ParallaxCosmicBackground className="marketing-shell min-h-screen">
+        <div className="marketing-chrome">
+          <Navbar>
+            <NavBody>
               <a href="/" className="min-w-0">
                 <BrandMark compact />
               </a>
-              <button
-                type="button"
-                onClick={() => setMobileMenuOpen((value) => !value)}
-                className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.12] bg-surface-900/80 text-white shadow-[0_10px_30px_rgba(0,0,0,0.28)] transition hover:bg-surface-800/90"
-                aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
-                aria-expanded={mobileMenuOpen}
-                aria-controls="mobile-nav-menu"
-              >
-                <MobileNavToggle isOpen={mobileMenuOpen} />
-              </button>
-            </MobileNavHeader>
-            <MobileNavMenu isOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} id="mobile-nav-menu">
-              {marketingNavItems.map((item) => (
-                <a
-                  key={item.name}
-                  href={item.link}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="w-full rounded-2xl px-4 py-3 text-sm font-medium text-slate-200/78 transition hover:bg-white/[0.06] hover:text-white"
-                >
-                  {item.name}
-                </a>
-              ))}
-              <div className="grid w-full gap-2 border-t border-white/[0.08] pt-3">
-                <NavbarButton as={Link} to="/login" variant="secondary" className="w-full justify-center">
+              <NavItems items={marketingNavItems} />
+              <div className="hidden items-center gap-2 md:flex">
+                <NavbarButton as={Link} to="/login" variant="secondary">
                   Login
                 </NavbarButton>
-                <NavbarButton as={Link} to="/signup" variant="gradient" className="w-full justify-center">
+                <NavbarButton as={Link} to="/signup" variant="gradient">
                   Create account
                 </NavbarButton>
               </div>
-            </MobileNavMenu>
-          </MobileNav>
-        </Navbar>
+            </NavBody>
 
-        <main>
-          <section className="relative overflow-hidden border-b border-white/[0.08] pt-24" aria-label="Hero">
-            <div className="absolute inset-0 bg-gradient-to-b from-white/[0.02] via-surface-950/5 to-surface-950/60" aria-hidden="true" />
-
-            <div className="relative mx-auto grid min-h-[calc(100svh-6rem)] max-w-7xl gap-12 px-4 py-12 sm:px-6 sm:py-16 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:gap-20 lg:px-8 lg:py-20">
-
-                <div className="max-w-2xl">
-                  {/* Sera UI – Announcement Banner replaces old Badge kicker */}
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.92 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                    className="mb-6"
+            <MobileNav>
+              <MobileNavHeader>
+                <a href="/" className="min-w-0">
+                  <BrandMark compact />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen((value) => !value)}
+                  className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.12] bg-surface-900/80 text-white shadow-[0_10px_30px_rgba(0,0,0,0.28)] transition hover:bg-surface-800/90"
+                  aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+                  aria-expanded={mobileMenuOpen}
+                  aria-controls="mobile-nav-menu"
+                >
+                  <MobileNavToggle isOpen={mobileMenuOpen} />
+                </button>
+              </MobileNavHeader>
+              <MobileNavMenu isOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} id="mobile-nav-menu">
+                {marketingNavItems.map((item) => (
+                  <a
+                    key={item.name}
+                    href={item.link}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="w-full rounded-2xl px-4 py-3 text-sm font-medium text-slate-200/78 transition hover:bg-white/[0.06] hover:text-white"
                   >
-                    <AnnouncementBanner badge="New">
-                      IPTV infrastructure, cleaned up for Stremio
-                    </AnnouncementBanner>
-                  </motion.div>
-
-                  <motion.p
-                    variants={fadeUp} initial="hidden" animate="visible" custom={1}
-                    className="text-[11px] font-semibold uppercase tracking-[0.26em] text-sky-100/45"
-                  >
-                    StreamBridge
-                  </motion.p>
-                  <motion.h1
-                    variants={fadeUp} initial="hidden" animate="visible" custom={2}
-                    className="hero-display mt-2 max-w-[12ch]"
-                  >
-                    <span className="block">Route.</span>
-                    <span className="block">
-                      <TextRotate
-                        words={['Repair.', 'Watch.', 'Install.']}
-                        className="bg-gradient-to-r from-white via-brand-200 to-cyan-200 bg-clip-text text-transparent"
-                      />
-                    </span>
-                    <span className="block">One private bridge.</span>
-                  </motion.h1>
-                  <motion.p
-                    variants={fadeUp} initial="hidden" animate="visible" custom={3}
-                    className="hero-support mt-6 max-w-xl"
-                  >
-                    StreamBridge turns a messy IPTV setup into one installable, account-scoped Stremio addon with provider routing, health visibility, and metadata repair built in.
-                  </motion.p>
-
-                  <motion.div
-                    variants={fadeUp} initial="hidden" animate="visible" custom={4}
-                    className="mt-8 flex flex-col gap-3 sm:flex-row"
-                  >
-                    {/* Sera UI – Shimmer Button (primary hero CTA) */}
-                    <ShimmerButton className="text-sm font-semibold" onClick={() => window.location.href = '/signup'}>
-                      Create Free Account <ArrowRight className="h-4 w-4 inline-block ml-1" />
-                    </ShimmerButton>
-                    {/* Sera UI – Glow Button (secondary hero CTA) */}
-                    <GlowButton size="md" onClick={() => window.location.href = '/login'}>
-                      I already have an account
-                    </GlowButton>
-                  </motion.div>
-
-                  {/* Proof metrics – Sera UI NumberTicker */}
-                  <motion.div
-                    variants={fadeUp} initial="hidden" animate="visible" custom={5}
-                    className="mt-10 flex items-center gap-6 border-t border-white/[0.08] pt-8"
-                  >
-                      {[
-                      { value: 1,   suffix: '',  label: 'Private install URL per account', isNum: true, valueTone: 'text-cyan-200' },
-                      { display: 'Auto', label: 'Host failover' },
-                      { value: 91, suffix: '%', label: 'Catalogs matched', isNum: true },
-                    ].map(({
-                      value, suffix, label, display, isNum, valueTone = 'text-white',
-                    }) => (
-                      <div key={label} className="min-w-0">
-                        <p className={`text-2xl font-bold ${valueTone}`}>
-                          {isNum
-                            ? <NumberTicker value={value} suffix={suffix} duration={1400} delay={700} className={`text-2xl font-bold ${valueTone}`} />
-                            : display}
-                        </p>
-                        <p className="mt-1 text-xs leading-5 text-slate-300/55">{label}</p>
-                      </div>
-                    ))}
-                  </motion.div>
+                    {item.name}
+                  </a>
+                ))}
+                <div className="grid w-full gap-2 border-t border-white/[0.08] pt-3">
+                  <NavbarButton as={Link} to="/login" variant="secondary" className="w-full justify-center">
+                    Login
+                  </NavbarButton>
+                  <NavbarButton as={Link} to="/signup" variant="gradient" className="w-full justify-center">
+                    Create account
+                  </NavbarButton>
                 </div>
+              </MobileNavMenu>
+            </MobileNav>
+          </Navbar>
 
-                  {/* Right: hero visual */}
-                  <motion.div
-                    initial={{ opacity: 0, y: 32, scale: 0.97 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={{ delay: 0.18, duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
-                    className="relative"
-                  >
-                    <div className="absolute inset-x-[8%] top-[8%] h-40 rounded-full bg-brand-500/18 blur-3xl" />
-                    <div className="absolute bottom-[8%] right-[4%] h-36 w-36 rounded-full bg-cyan-300/18 blur-3xl" />
-                    <div className="relative overflow-hidden rounded-[34px] border border-white/[0.12] bg-[linear-gradient(180deg,rgba(8,16,31,0.74),rgba(8,16,31,0.92))] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.42)] backdrop-blur-2xl sm:p-7">
-                      <div className="mb-5 flex items-start justify-between gap-4">
-                        <div>
-                          <p className="metric-label mb-2">Private addon endpoint</p>
-                          <h2 className="text-2xl font-bold text-white">Install-ready</h2>
+          <main>
+            <section className="relative overflow-hidden border-b border-white/[0.08] pt-24" aria-label="Hero">
+              <div className="absolute inset-0 bg-gradient-to-b from-white/[0.02] via-surface-950/5 to-surface-950/60" aria-hidden="true" />
+
+              <div className="relative mx-auto grid min-h-[calc(100svh-6rem)] max-w-7xl gap-12 px-4 py-12 sm:px-6 sm:py-16 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:gap-20 lg:px-8 lg:py-20">
+
+                  <div className="max-w-2xl">
+                    {/* Sera UI – Announcement Banner replaces old Badge kicker */}
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.92 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                      className="mb-6"
+                    >
+                      <AnnouncementBanner badge="New">
+                        IPTV for Stremio, without the usual mess
+                      </AnnouncementBanner>
+                    </motion.div>
+
+                    <motion.p
+                      variants={fadeUp} initial="hidden" animate="visible" custom={1}
+                      className="text-[11px] font-semibold uppercase tracking-[0.26em] text-sky-100/45"
+                    >
+                      StreamBridge
+                    </motion.p>
+                    <motion.h1
+                      variants={fadeUp} initial="hidden" animate="visible" custom={2}
+                      className="hero-display mt-2 max-w-[13ch]"
+                    >
+                      <span className="block">Put IPTV</span>
+                      <span className="block">
+                        <TextRotate
+                          words={['into Stremio.', 'in one addon.', 'through a cleaner player.']}
+                          className="bg-gradient-to-r from-white via-brand-200 to-cyan-200 bg-clip-text text-transparent"
+                        />
+                      </span>
+                      <span className="block">Keep it simple.</span>
+                    </motion.h1>
+                    <motion.p
+                      variants={fadeUp} initial="hidden" animate="visible" custom={3}
+                      className="hero-support mt-6 max-w-xl"
+                    >
+                      StreamBridge helps you use IPTV in Stremio with one private addon link. Test your provider, connect it once, repair the messy metadata, and stop rebuilding your setup every time something changes.
+                    </motion.p>
+
+                    <motion.p
+                      variants={fadeUp} initial="hidden" animate="visible" custom={4}
+                      className="mt-4 text-sm font-medium leading-6 text-slate-200/78"
+                    >
+                      Stremio IPTV addon setup for real provider accounts.
+                    </motion.p>
+
+                    <motion.div
+                      variants={fadeUp} initial="hidden" animate="visible" custom={5}
+                      className="mt-8 flex flex-col gap-3 sm:flex-row"
+                    >
+                      {/* Sera UI – Shimmer Button (primary hero CTA) */}
+                      <ShimmerButton className="text-sm font-semibold" onClick={() => window.location.href = '/signup'}>
+                        Create Free Account <ArrowRight className="h-4 w-4 inline-block ml-1" />
+                      </ShimmerButton>
+                      {/* Sera UI – Glow Button (secondary hero CTA) */}
+                      <GlowButton size="md" onClick={() => window.location.href = '/login'}>
+                        I already have an account
+                      </GlowButton>
+                    </motion.div>
+
+                    {/* Proof metrics – Sera UI NumberTicker */}
+                    <motion.div
+                      variants={fadeUp} initial="hidden" animate="visible" custom={6}
+                      className="mt-10 flex items-center gap-6 border-t border-white/[0.08] pt-8"
+                    >
+                        {[
+                        { value: 1,   suffix: '',  label: 'Install link', isNum: true, valueTone: 'text-cyan-200' },
+                        { display: 'IPTV + Stremio', label: 'One setup flow' },
+                        { value: 91, suffix: '%', label: 'Catalogs matched', isNum: true },
+                      ].map(({
+                        value, suffix, label, display, isNum, valueTone = 'text-white',
+                      }) => (
+                        <div key={label} className="min-w-0">
+                          <p className={`text-2xl font-bold ${valueTone}`}>
+                            {isNum
+                              ? <NumberTicker value={value} suffix={suffix} duration={1400} delay={700} className={`text-2xl font-bold ${valueTone}`} />
+                              : display}
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-slate-300/55">{label}</p>
                         </div>
-                        <Badge variant="success">
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                          Active
-                        </Badge>
-                      </div>
+                      ))}
+                    </motion.div>
+                  </div>
 
-                      <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-surface-950/70 px-4 py-3 font-mono text-xs leading-7 text-brand-100/80 sm:text-sm">
-                        https://streambridge.app/addon/<wbr />
-                        <span className="text-brand-300">acc_x2f9c4f1</span>/manifest.json
-                      </div>
-
-                      <div className="mt-6 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-                        <div className="rounded-[26px] border border-white/[0.08] bg-white/[0.03] p-5">
-                          <p className="metric-label mb-4">Why people keep this open</p>
-                          <ul className="space-y-3" role="list">
-                            {proofPoints.map((point) => (
-                              <li key={point} className="flex items-start gap-3 text-sm leading-6 text-slate-200/78">
-                                <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-brand-300" />
-                                <span>{point}</span>
-                              </li>
-                            ))}
-                          </ul>
+                    {/* Right: hero visual */}
+                    <motion.div
+                      initial={{ opacity: 0, y: 32, scale: 0.97 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={{ delay: 0.18, duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+                      className="relative"
+                    >
+                      <div className="absolute inset-x-[8%] top-[8%] h-40 rounded-full bg-brand-500/18 blur-3xl" />
+                      <div className="absolute bottom-[8%] right-[4%] h-36 w-36 rounded-full bg-cyan-300/18 blur-3xl" />
+                      <div className="relative overflow-hidden rounded-[34px] border border-white/[0.12] bg-[linear-gradient(180deg,rgba(8,16,31,0.74),rgba(8,16,31,0.92))] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.42)] backdrop-blur-2xl sm:p-7">
+                        <div className="mb-5 flex items-start justify-between gap-4">
+                          <div>
+                            <p className="metric-label mb-2">Your StreamBridge link</p>
+                            <h2 className="text-2xl font-bold text-white">One install for Stremio</h2>
+                          </div>
+                          <Badge variant="success">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                            Active
+                          </Badge>
                         </div>
+
+                        <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-surface-950/70 px-4 py-3 font-mono text-xs leading-7 text-brand-100/80 sm:text-sm">
+                          https://streambridge.app/addon/<wbr />
+                          <span className="text-brand-300">acc_x2f9c4f1</span>/manifest.json
+                        </div>
+
+                        <div className="mt-6 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
                         <div className="rounded-[26px] border border-white/[0.08] bg-white/[0.03] p-5">
-                          <p className="metric-label mb-4">Route health</p>
-                          <div className="grid grid-cols-1 gap-4">
+                            <p className="metric-label mb-4">Why people search for this</p>
+                            <ul className="space-y-3" role="list">
+                              {proofPoints.map((point) => (
+                                <li key={point} className="flex items-start gap-3 text-sm leading-6 text-slate-200/78">
+                                  <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-brand-300" />
+                                  <span>{point}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div className="rounded-[26px] border border-white/[0.08] bg-white/[0.03] p-5">
+                            <p className="metric-label mb-4">Route health</p>
+                            <div className="grid grid-cols-1 gap-4">
+                              {[
+                                { label: 'Fallback host', value: 'Auto' },
+                                { label: 'Catalog recovery', value: '91%' },
+                                { label: 'Current mode', value: 'Online' },
+                              ].map((item) => (
+                                <div key={item.label} className="rounded-2xl border border-white/[0.08] bg-surface-950/55 px-4 py-3">
+                                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400/65">{item.label}</p>
+                                  <p className="mt-1 text-lg font-bold text-white">{item.value}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="surface-divider mt-6 pt-6">
+                          <div className="grid grid-cols-3 divide-x divide-white/[0.06]">
                             {[
-                              { label: 'Fallback host', value: 'Auto' },
-                              { label: 'Catalog recovery', value: '91%' },
-                              { label: 'Current mode', value: 'Online' },
-                            ].map((item) => (
-                              <div key={item.label} className="rounded-2xl border border-white/[0.08] bg-surface-950/55 px-4 py-3">
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400/65">{item.label}</p>
-                                <p className="mt-1 text-lg font-bold text-white">{item.value}</p>
+                              { value: 3,     label: 'Sources', tone: 'text-white',       isNum: true },
+                              { value: 57000, label: 'Titles',  tone: 'text-white',       isNum: true, formatFn: (n) => `${Math.round(n / 1000)}K` },
+                              { label: 'Routing', tone: 'text-emerald-300', display: 'Online' },
+                            ].map(({ value, label, tone, isNum, formatFn, display }) => (
+                              <div key={label} className="px-4 text-center first:pl-0 last:pr-0">
+                                <p className={`text-xl font-bold ${tone}`}>
+                                  {isNum
+                                    ? <NumberTicker value={value} formatFn={formatFn} duration={1600} delay={900} className={`text-xl font-bold ${tone}`} />
+                                    : display}
+                                </p>
+                                <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300/55">{label}</p>
                               </div>
                             ))}
                           </div>
                         </div>
                       </div>
-
-                      <div className="surface-divider mt-6 pt-6">
-                        <div className="grid grid-cols-3 divide-x divide-white/[0.06]">
-                          {[
-                            { value: 3,     label: 'Sources', tone: 'text-white',       isNum: true },
-                            { value: 57000, label: 'Titles',  tone: 'text-white',       isNum: true, formatFn: (n) => `${Math.round(n / 1000)}K` },
-                            { label: 'Routing', tone: 'text-emerald-300', display: 'Online' },
-                          ].map(({ value, label, tone, isNum, formatFn, display }) => (
-                            <div key={label} className="px-4 text-center first:pl-0 last:pr-0">
-                              <p className={`text-xl font-bold ${tone}`}>
-                                {isNum
-                                  ? <NumberTicker value={value} formatFn={formatFn} duration={1600} delay={900} className={`text-xl font-bold ${tone}`} />
-                                  : display}
-                              </p>
-                              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300/55">{label}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-            </div>
-          </section>
-
-          <section className="overflow-hidden border-y border-white/[0.06] bg-white/[0.015] py-6" aria-label="Supported providers">
-            <div className="mx-auto mb-4 flex max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
-              <p className="eyebrow mb-0">Supported providers</p>
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-400/55">Pause on hover</p>
-            </div>
-            <Marquee pauseOnHover repeat={5} className="[--duration:30s]">
-              {providers.map((provider) => (
-                <div
-                  key={provider.label}
-                  className="flex min-w-[220px] items-center gap-4 rounded-[22px] border border-white/[0.08] bg-white/[0.04] px-4 py-3 backdrop-blur-xl"
-                >
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-surface-950/70 text-sm font-bold text-brand-200">
-                    {provider.mark}
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-white">{provider.label}</p>
-                    <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400/55">{provider.meta}</p>
-                  </div>
-                </div>
-              ))}
-            </Marquee>
-            <Marquee pauseOnHover reverse repeat={5} className="mt-3 [--duration:34s]">
-              {providers.slice().reverse().map((provider) => (
-                <div
-                  key={`${provider.label}-reverse`}
-                  className="flex min-w-[220px] items-center gap-4 rounded-[22px] border border-white/[0.08] bg-white/[0.025] px-4 py-3 backdrop-blur-xl"
-                >
-                  <div className="h-2.5 w-2.5 rounded-full bg-brand-300 shadow-[0_0_16px_rgba(123,194,255,0.9)]" />
-                  <div>
-                    <p className="text-sm font-semibold text-white">{provider.label}</p>
-                    <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400/55">{provider.meta}</p>
-                  </div>
-                </div>
-              ))}
-            </Marquee>
-          </section>
-
-          {/* ── Pillars ───────────────────────────────────────────────────── */}
-          <section id="features" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24" aria-label="Features">
-            <AnimatedSection>
-              <div className="mx-auto max-w-2xl text-center">
-                <p className="eyebrow mb-3">Built for people managing IPTV access</p>
-                <h2 className="text-3xl font-bold text-white sm:text-4xl">
-                  The value is obvious in under a minute.
-                </h2>
-                <p className="mt-4 text-base leading-7 text-slate-300/70">
-                  Users do not need a long onboarding sequence. They need routing, repair, and install in the same place.
-                </p>
+                    </motion.div>
               </div>
-            </AnimatedSection>
+            </section>
 
-            <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {pillars.map(({ title, copy, icon: Icon }, i) => (
-                <AnimatedSection key={title}>
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ delay: i * 0.1, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                    whileHover={{ y: -4, transition: { duration: 0.2 } }}
-                    className="panel-soft h-full p-6 cursor-default"
+            <section className="overflow-hidden border-y border-white/[0.06] bg-white/[0.015] py-6" aria-label="Supported providers">
+              <div className="mx-auto mb-4 flex max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+                <p className="eyebrow mb-0">Supported providers</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-400/55">Pause on hover</p>
+              </div>
+              <Marquee pauseOnHover repeat={5} className="[--duration:30s]">
+                {providers.map((provider) => (
+                  <div
+                    key={provider.label}
+                    className="flex min-w-[220px] items-center gap-4 rounded-[22px] border border-white/[0.08] bg-white/[0.04] px-4 py-3 backdrop-blur-xl"
                   >
-                    <div className="flex h-11 w-11 items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.04]">
-                      <Icon className="h-5 w-5 text-brand-300" />
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-surface-950/70 text-sm font-bold text-brand-200">
+                      {provider.mark}
                     </div>
-                    <h3 className="mt-5 text-lg font-bold text-white">{title}</h3>
-                    <p className="mt-3 text-sm leading-6 text-slate-300/70">{copy}</p>
-                  </motion.div>
-                </AnimatedSection>
-              ))}
-            </div>
-          </section>
+                    <div>
+                      <p className="text-sm font-semibold text-white">{provider.label}</p>
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400/55">{provider.meta}</p>
+                    </div>
+                  </div>
+                ))}
+              </Marquee>
+              <Marquee pauseOnHover reverse repeat={5} className="mt-3 [--duration:34s]">
+                {providers.slice().reverse().map((provider) => (
+                  <div
+                    key={`${provider.label}-reverse`}
+                    className="flex min-w-[220px] items-center gap-4 rounded-[22px] border border-white/[0.08] bg-white/[0.025] px-4 py-3 backdrop-blur-xl"
+                  >
+                    <div className="h-2.5 w-2.5 rounded-full bg-brand-300 shadow-[0_0_16px_rgba(123,194,255,0.9)]" />
+                    <div>
+                      <p className="text-sm font-semibold text-white">{provider.label}</p>
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400/55">{provider.meta}</p>
+                    </div>
+                  </div>
+                ))}
+              </Marquee>
+            </section>
 
-          {/* Sera UI – Section Divider */}
-          <div className="mx-auto max-w-7xl px-8">
-            <SectionDivider label="How it works" />
-          </div>
-
-          <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24" aria-label="Channel lineup preview">
-            <div className="grid gap-12 lg:grid-cols-[0.92fr_1.08fr] lg:items-center lg:gap-16">
+            {/* ── Pillars ───────────────────────────────────────────────────── */}
+            <section id="features" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24" aria-label="Features">
               <AnimatedSection>
-                <p className="eyebrow mb-3">Premium channel lineup</p>
-                <h2 className="text-3xl font-bold text-white sm:text-4xl">
-                  Show the finished viewing surface, not just the admin controls.
-                </h2>
-                <p className="mt-4 max-w-xl text-base leading-7 text-slate-300/70">
-                  The 3D marquee gives the page a proper showcase moment: a channel wall with depth, motion, and enough polish to imply the final addon experience.
-                </p>
-                <div className="mt-8 grid gap-4">
-                  {lineupPoints.map(({ title, copy, icon: Icon }) => (
-                    <div key={title} className="panel-soft flex items-start gap-4 p-5">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-[18px] border border-white/10 bg-white/[0.04]">
+                <div className="mx-auto max-w-2xl text-center">
+                  <p className="eyebrow mb-3">Why StreamBridge exists</p>
+                  <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                    IPTV users want Stremio. Stremio users want IPTV.
+                  </h2>
+                  <p className="mt-4 text-base leading-7 text-slate-300/70">
+                    Most people looking for a Stremio IPTV addon are trying to bridge those two things without adding another clunky player or another fragile config workflow.
+                  </p>
+                </div>
+              </AnimatedSection>
+
+              <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                {pillars.map(({ title, copy, icon: Icon }, i) => (
+                  <AnimatedSection key={title}>
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ delay: i * 0.1, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                      whileHover={{ y: -4, transition: { duration: 0.2 } }}
+                      className="panel-soft h-full p-6 cursor-default"
+                    >
+                      <div className="flex h-11 w-11 items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.04]">
                         <Icon className="h-5 w-5 text-brand-300" />
                       </div>
-                      <div>
-                        <h3 className="text-base font-bold text-white">{title}</h3>
-                        <p className="mt-2 text-sm leading-6 text-slate-300/68">{copy}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </AnimatedSection>
-
-              <AnimatedSection>
-                <div className="relative overflow-hidden rounded-[34px] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))] p-3 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
-                  <div className="pointer-events-none absolute inset-x-[18%] top-0 h-28 rounded-full bg-brand-400/14 blur-3xl" />
-                  <ThreeDMarquee images={channelShowcaseImages} className="h-[30rem] rounded-[28px] bg-surface-950/55" />
-                </div>
-              </AnimatedSection>
-            </div>
-          </section>
-
-          {/* ── How it works ──────────────────────────────────────────────── */}
-          <section id="workflow" className="bg-white/[0.015]" aria-label="How it works">
-            <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:grid lg:grid-cols-[0.75fr_1.25fr] lg:gap-16 lg:px-8 lg:py-24">
-              <AnimatedSection>
-                <p className="eyebrow mb-3">Three steps</p>
-                <h2 className="text-3xl font-bold text-white sm:text-4xl">
-                  Fast path from signup to playback.
-                </h2>
-                <p className="mt-4 text-base leading-7 text-slate-300/70">
-                  Get access, connect sources, install once.
-                </p>
-              </AnimatedSection>
-
-              <ol className="mt-10 grid gap-4 lg:mt-0" role="list">
-                {workflow.map(([title, copy], index) => (
-                  <AnimatedSection key={title}>
-                    <motion.li
-                      initial={{ opacity: 0, x: 20 }}
-                      whileInView={{ opacity: 1, x: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ delay: index * 0.12, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                      className="grid gap-4 rounded-[24px] border border-white/[0.08] bg-white/[0.03] p-5 sm:grid-cols-[auto_1fr] sm:items-start sm:p-6"
-                    >
-                      <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-sm font-bold text-white">
-                        0{index + 1}
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-bold text-white">{title}</h3>
-                        <p className="mt-2 text-sm leading-6 text-slate-300/70">{copy}</p>
-                      </div>
-                    </motion.li>
+                      <h3 className="mt-5 text-lg font-bold text-white">{title}</h3>
+                      <p className="mt-3 text-sm leading-6 text-slate-300/70">{copy}</p>
+                    </motion.div>
                   </AnimatedSection>
                 ))}
-              </ol>
+              </div>
+            </section>
+
+            {/* Sera UI – Section Divider */}
+            <div className="mx-auto max-w-7xl px-8">
+              <SectionDivider label="How it works" />
             </div>
-          </section>
 
-          {/* Sera UI – Section Divider */}
-          <div className="mx-auto max-w-7xl px-8">
-            <SectionDivider label="Try it now" />
-          </div>
+            <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24" aria-label="Channel lineup preview">
+              <div className="grid gap-12 lg:grid-cols-[0.92fr_1.08fr] lg:items-center lg:gap-16">
+                <AnimatedSection>
+                  <p className="eyebrow mb-3">What the setup becomes</p>
+                  <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                    The goal is simple: IPTV inside a cleaner Stremio experience.
+                  </h2>
+                  <p className="mt-4 max-w-xl text-base leading-7 text-slate-300/70">
+                    The technical work matters because the outcome matters: one Stremio IPTV addon, cleaner browsing, and less friction every time you need to reinstall or change providers.
+                  </p>
+                  <div className="mt-8 grid gap-4">
+                    {lineupPoints.map(({ title, copy, icon: Icon }) => (
+                      <div key={title} className="panel-soft flex items-start gap-4 p-5">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-[18px] border border-white/10 bg-white/[0.04]">
+                          <Icon className="h-5 w-5 text-brand-300" />
+                        </div>
+                        <div>
+                          <h3 className="text-base font-bold text-white">{title}</h3>
+                          <p className="mt-2 text-sm leading-6 text-slate-300/68">{copy}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </AnimatedSection>
 
-          {/* ── Provider Preview Widget ───────────────────────────────────── */}
-          <section id="preview" className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-16" aria-label="Try your provider">
-            <AnimatedSection>
-              <div className="mx-auto max-w-3xl text-center mb-8">
-                <p className="eyebrow mb-3">Test it before signing up</p>
-                <h2 className="text-3xl font-bold text-white sm:text-4xl">
-                  Check your provider in about 10 seconds.
-                </h2>
-                <p className="mt-4 text-base leading-7 text-slate-300/70">
-                  Enter your Xtream credentials and StreamBridge will test the connection, measure latency, and preview your channels, movies, and series before you create an account.
-                </p>
+                <AnimatedSection>
+                  <div className="relative overflow-hidden rounded-[34px] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))] p-3 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
+                    <div className="pointer-events-none absolute inset-x-[18%] top-0 h-28 rounded-full bg-brand-400/14 blur-3xl" />
+                    <ThreeDMarquee images={channelShowcaseImages} className="h-[30rem] rounded-[28px] bg-surface-950/55" />
+                  </div>
+                </AnimatedSection>
               </div>
-              <ProviderPreviewWidget />
-            </AnimatedSection>
-          </section>
+            </section>
 
-          {/* Sera UI – Section Divider */}
-          <div className="mx-auto max-w-7xl px-8">
-            <SectionDivider label="Get started" />
-          </div>
+            {/* ── How it works ──────────────────────────────────────────────── */}
+            <section id="workflow" className="bg-white/[0.015]" aria-label="How it works">
+              <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:grid lg:grid-cols-[0.75fr_1.25fr] lg:gap-16 lg:px-8 lg:py-24">
+                <AnimatedSection>
+                  <p className="eyebrow mb-3">How it works</p>
+                  <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                    Three steps from IPTV login to Stremio addon.
+                  </h2>
+                  <p className="mt-4 text-base leading-7 text-slate-300/70">
+                    Create the account, check the provider, then install one addon in Stremio.
+                  </p>
+                </AnimatedSection>
 
-          <section id="social-proof" className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-16" aria-label="Testimonials">
-            <AnimatedSection>
-              <div className="mx-auto max-w-3xl text-center">
-                <p className="eyebrow mb-3">Social proof</p>
-                <h2 className="text-3xl font-bold text-white sm:text-4xl">
-                  Operators notice the cleanup immediately.
-                </h2>
-                <p className="mt-4 text-base leading-7 text-slate-300/70">
-                  Rotating testimonials let the page breathe while still giving concrete reasons people keep StreamBridge open.
-                </p>
+                <ol className="mt-10 grid gap-4 lg:mt-0" role="list">
+                  {workflow.map(([title, copy], index) => (
+                    <AnimatedSection key={title}>
+                      <motion.li
+                        initial={{ opacity: 0, x: 20 }}
+                        whileInView={{ opacity: 1, x: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ delay: index * 0.12, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                        className="grid gap-4 rounded-[24px] border border-white/[0.08] bg-white/[0.03] p-5 sm:grid-cols-[auto_1fr] sm:items-start sm:p-6"
+                      >
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-sm font-bold text-white">
+                          0{index + 1}
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-bold text-white">{title}</h3>
+                          <p className="mt-2 text-sm leading-6 text-slate-300/70">{copy}</p>
+                        </div>
+                      </motion.li>
+                    </AnimatedSection>
+                  ))}
+                </ol>
               </div>
-              <AnimatedTestimonials testimonials={testimonials} autoplay className="mt-6" />
-            </AnimatedSection>
-          </section>
+            </section>
 
-          <div className="mx-auto max-w-7xl px-8">
-            <SectionDivider label="Pricing" />
-          </div>
+            {/* Sera UI – Section Divider */}
+            <div className="mx-auto max-w-7xl px-8">
+              <SectionDivider label="Try it now" />
+            </div>
 
-          <section id="pricing" className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-18" aria-label="Pricing">
-            <AnimatedSection>
+            {/* ── Provider Preview Widget ───────────────────────────────────── */}
+            <section id="preview" className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-16" aria-label="Try your provider">
+              <AnimatedSection>
+                <div className="mx-auto max-w-3xl text-center mb-8">
+                  <p className="eyebrow mb-3">Test it before signing up</p>
+                  <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                    Check your IPTV provider before you install anything.
+                  </h2>
+                  <p className="mt-4 text-base leading-7 text-slate-300/70">
+                    This is the fastest way to see whether your IPTV login will work as a Stremio IPTV addon before you commit to the full setup.
+                  </p>
+                </div>
+                <ProviderPreviewWidget />
+              </AnimatedSection>
+            </section>
+
+            {/* Sera UI – Section Divider */}
+            <div className="mx-auto max-w-7xl px-8">
+              <SectionDivider label="Get started" />
+            </div>
+
+            <section id="social-proof" className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-16" aria-label="Testimonials">
+              <AnimatedSection>
+                <div className="mx-auto max-w-3xl text-center">
+                  <p className="eyebrow mb-3">What users notice</p>
+                  <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                    The value lands when setup stops feeling fragile.
+                  </h2>
+                  <p className="mt-4 text-base leading-7 text-slate-300/70">
+                    The core pitch is not infrastructure. It is simple: use IPTV in Stremio without the usual mess.
+                  </p>
+                </div>
+                <AnimatedTestimonials testimonials={testimonials} autoplay className="mt-6" />
+              </AnimatedSection>
+            </section>
+
+            <div className="mx-auto max-w-7xl px-8">
+              <SectionDivider label="Pricing" />
+            </div>
+
+            <section id="pricing" className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-18" aria-label="Pricing">
+              <AnimatedSection>
               <PricingSection
                 plans={pricingPlans}
-                heading="Choose the plan that matches how many moving parts you manage."
-                description="The 21st-style pricing section adds a real plan comparison moment with monthly and yearly billing, highlighted tiers, and enough density to sell the subscription model without dragging the page down."
+                  heading="Choose the plan that fits your IPTV and Stremio setup."
+                  description="Start simple if you just want IPTV in Stremio for yourself, then upgrade only if you manage more providers or more people."
               />
-            </AnimatedSection>
-          </section>
+              </AnimatedSection>
+            </section>
 
-          {/* ── CTA ──────────────────────────────────────────────────────── */}
-          <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24" aria-label="Call to action">
-            <AnimatedSection>
-              <div className="panel overflow-hidden p-8 sm:p-10 lg:p-12">
-                <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
-                  <div>
-                    <p className="eyebrow mb-3">Start now</p>
-                    <h2 className="text-3xl font-bold text-white sm:text-4xl">
-                      Create the account, bring in providers, and ship one cleaner setup.
-                    </h2>
-                    <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300/70">
-                      StreamBridge is strongest when the first session ends with a working addon URL.
-                    </p>
-                  </div>
-                  <div className="flex flex-col gap-3 sm:flex-row lg:flex-col xl:flex-row">
-                    {/* Sera UI – Shimmer Button */}
-                    <ShimmerButton className="text-sm font-semibold" onClick={() => window.location.href = '/signup'}>
-                      Start Free <ArrowRight className="h-4 w-4 inline-block ml-1" />
-                    </ShimmerButton>
-                    {/* Sera UI – Glow Button */}
-                    <GlowButton size="md" onClick={() => window.location.href = '/login'}>
-                      Sign In
-                    </GlowButton>
+            {/* ── CTA ──────────────────────────────────────────────────────── */}
+            <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24" aria-label="Call to action">
+              <AnimatedSection>
+                <div className="panel overflow-hidden p-8 sm:p-10 lg:p-12">
+                  <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
+                    <div>
+                      <p className="eyebrow mb-3">Start now</p>
+                      <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                        Start with one StreamBridge link for IPTV in Stremio.
+                      </h2>
+                      <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300/70">
+                        Create an account, test your provider, and get one StreamBridge link that turns your IPTV service into a cleaner Stremio setup.
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-3 sm:flex-row lg:flex-col xl:flex-row">
+                      {/* Sera UI – Shimmer Button */}
+                      <ShimmerButton className="text-sm font-semibold" onClick={() => window.location.href = '/signup'}>
+                        Start Free <ArrowRight className="h-4 w-4 inline-block ml-1" />
+                      </ShimmerButton>
+                      {/* Sera UI – Glow Button */}
+                      <GlowButton size="md" onClick={() => window.location.href = '/login'}>
+                        Sign In
+                      </GlowButton>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </AnimatedSection>
-          </section>
-        </main>
+              </AnimatedSection>
+            </section>
+          </main>
 
-        <footer className="border-t border-white/[0.08]">
-          <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-6 text-sm text-slate-400/60 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-            <span>StreamBridge</span>
-            <span>Private Stremio addon delivery for real IPTV accounts</span>
-          </div>
-        </footer>
-      </div>
-    </ParallaxCosmicBackground>
+          <footer className="border-t border-white/[0.08]">
+            <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-6 text-sm text-slate-400/60 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+              <span>StreamBridge</span>
+              <span>Use IPTV in Stremio with one simpler addon setup</span>
+            </div>
+          </footer>
+        </div>
+      </ParallaxCosmicBackground>
+    </>
   );
 }

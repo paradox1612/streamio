@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { reportableError } from '../utils/reportableToast';
 import { useAuth } from '../context/AuthContext';
 import { ModernStunningSignIn } from '../components/ui/modern-stunning-sign-in';
+import Seo from '../components/Seo';
 
 export default function Login() {
   const { login } = useAuth();
@@ -40,30 +41,38 @@ export default function Login() {
   };
 
   return (
-    <ModernStunningSignIn
-      brandName="StreamBridge"
-      logo={logo}
-      title="Sign in"
-      subtitle=""
-      identifierMode="email"
-      identifierValue={form.email}
-      passwordValue={form.password}
-      onIdentifierChange={(e) => setForm((current) => ({ ...current, email: e.target.value }))}
-      onPasswordChange={(e) => setForm((current) => ({ ...current, password: e.target.value }))}
-      onSubmit={handleSubmit}
-      loading={loading}
-      loadingLabel="Signing in..."
-      error={error}
-      footer={(
-        <div className="flex items-center justify-between gap-3 text-sm text-slate-300/65">
-          <Link to="/forgot-password" className="transition-colors hover:text-white">
-            Forgot password?
-          </Link>
-          <Link to="/signup" className="font-semibold text-white transition-colors hover:text-brand-100">
-            Create account
-          </Link>
-        </div>
-      )}
-    />
+    <>
+      <Seo
+        title="Sign In | StreamBridge"
+        description="Sign in to your StreamBridge workspace to manage providers, addon installs, routing health, and metadata repair."
+        path="/login"
+        robots="noindex, nofollow"
+      />
+      <ModernStunningSignIn
+        brandName="StreamBridge"
+        logo={logo}
+        title="Sign in"
+        subtitle=""
+        identifierMode="email"
+        identifierValue={form.email}
+        passwordValue={form.password}
+        onIdentifierChange={(e) => setForm((current) => ({ ...current, email: e.target.value }))}
+        onPasswordChange={(e) => setForm((current) => ({ ...current, password: e.target.value }))}
+        onSubmit={handleSubmit}
+        loading={loading}
+        loadingLabel="Signing in..."
+        error={error}
+        footer={(
+          <div className="flex items-center justify-between gap-3 text-sm text-slate-300/65">
+            <Link to="/forgot-password" className="transition-colors hover:text-white">
+              Forgot password?
+            </Link>
+            <Link to="/signup" className="font-semibold text-white transition-colors hover:text-brand-100">
+              Create account
+            </Link>
+          </div>
+        )}
+      />
+    </>
   );
 }
