@@ -88,7 +88,7 @@ export default function AdminUserDetailPage() {
       localStorage.setItem('sb_token', token)
       persistUserToken(token)
       toast.success(`Signed in as ${user.email}`)
-      router.push('/dashboard')
+      window.location.href = '/dashboard'
     } catch {
       toast.error('Impersonation failed')
     } finally {

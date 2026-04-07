@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '@/store/auth'
-import { authAPI } from '@/utils/api'
+import { authAPI, userAPI } from '@/utils/api'
 import { LayoutDashboard, Server, Film, Tv2, Settings, User, Menu, X, LogOut } from 'lucide-react'
 import toast from 'react-hot-toast'
 import BrandMark from './BrandMark'
@@ -51,11 +51,25 @@ function SidebarNavItem({ to, icon: Icon, label, onClick }: { to: string; icon: 
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuthStore()
+  const { user, token, login, logout } = useAuthStore()
   const router = useRouter()
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const closeBtnRef = useRef<HTMLButtonElement>(null)
+
+  // Bootstrap user profile when a token exists in the store but user hasn't been hydrated
+  // (happens after page refresh, or after admin impersonation via hard navigation)
+  useEffect(() => {
+    if (token && !user) {
+      userAPI.getProfile()
+        .then((res) => { login(res.data.user, token) })
+        .catch(() => {
+          // Token is invalid — clear it and redirect to login
+          logout()
+          router.push('/login')
+        })
+    }
+  }, [token, user, login, logout, router])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setSidebarOpen(false) }, [pathname])

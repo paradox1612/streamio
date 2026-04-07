@@ -3,7 +3,6 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { Clock3, Gift, LogIn, Shield, UserRoundCog, UserRoundX, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { adminAPI } from '@/utils/api'
@@ -53,7 +52,6 @@ function MetricCard({
 }
 
 export default function AdminUsersPage() {
-  const router = useRouter()
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -115,7 +113,7 @@ export default function AdminUsersPage() {
       localStorage.setItem('sb_token', token)
       persistUserToken(token)
       toast.success(`Signed in as ${user.email}`)
-      router.push('/dashboard')
+      window.location.href = '/dashboard'
     } catch {
       toast.error('Impersonation failed')
     }
