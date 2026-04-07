@@ -13,6 +13,7 @@ env:
   FRONTEND_IMAGE: ghcr.io/paradox1612/streambridge-frontend
   BACKEND_IMAGE: ghcr.io/paradox1612/streambridge-backend
   DEFAULT_FRONTEND_URL: https://streambridge.thekush.dev
+  DEFAULT_API_URL: https://streambridge.thekush.dev
 
 jobs:
   build-and-push:
@@ -69,13 +70,13 @@ jobs:
       - name: Build and push frontend
         uses: docker/build-push-action@v6
         with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
+          context: ./frontend-next
+          file: ./frontend-next/Dockerfile
           push: true
           tags: ${{ steps.frontend-meta.outputs.tags }}
           labels: ${{ steps.frontend-meta.outputs.labels }}
           build-args: |
-            VITE_API_URL=${{ vars.VITE_API_URL || env.DEFAULT_FRONTEND_URL }}
+            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL || env.DEFAULT_API_URL }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
