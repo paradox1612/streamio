@@ -7,6 +7,14 @@ export interface User {
   id: string
   email: string
   createdAt?: string
+  created_at?: string
+  last_seen?: string
+  is_active?: boolean
+  preferred_languages?: string[]
+  excluded_languages?: string[]
+  has_byo_providers?: boolean
+  free_access_status?: string
+  provider_count?: number
 }
 
 interface AuthState {

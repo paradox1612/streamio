@@ -40,7 +40,7 @@ function AddProviderModal({ open, onClose, onAdded }: { open: boolean; onClose: 
     setLoading(true)
     try {
       const res = await providerAPI.create({ name: form.name, hosts, username: form.username, password: form.password })
-      toast.success('Provider added')
+      toast.success('IPTV provider added')
       onAdded(res.data)
       setForm({ name: '', hostsInput: '', username: '', password: '' })
     } catch (err: unknown) {
@@ -55,11 +55,11 @@ function AddProviderModal({ open, onClose, onAdded }: { open: boolean; onClose: 
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <div className="mb-1">
-            <Badge variant="brand" className="mb-3">New Source</Badge>
+            <Badge variant="brand" className="mb-3">New Provider</Badge>
           </div>
           <DialogTitle>Add IPTV provider</DialogTitle>
           <DialogDescription>
-            Paste one host per line. StreamBridge will track health and switch to the best host automatically.
+            Enter your IPTV login details. StreamBridge will connect automatically and keep everything working.
           </DialogDescription>
         </DialogHeader>
 
@@ -71,12 +71,12 @@ function AddProviderModal({ open, onClose, onAdded }: { open: boolean; onClose: 
             </div>
             <div className="space-y-2">
               <Label>Username</Label>
-              <Input required placeholder="xtream_username" value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} />
+              <Input required placeholder="your username" value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label>Host URLs</Label>
+            <Label>Server address</Label>
             <textarea
               className="flex min-h-[120px] w-full resize-y rounded-2xl border border-white/10 bg-surface-900/80 px-4 py-3 text-sm text-white placeholder:text-slate-400/55 transition-all duration-200 focus:outline-none focus:border-brand-500/40 focus:shadow-[0_0_0_3px_rgba(20,145,255,0.15)]"
               required
@@ -84,12 +84,12 @@ function AddProviderModal({ open, onClose, onAdded }: { open: boolean; onClose: 
               value={form.hostsInput}
               onChange={e => setForm(f => ({ ...f, hostsInput: e.target.value }))}
             />
-            <p className="text-xs text-slate-300/50">One URL per line. StreamBridge will automatically route to the healthiest host.</p>
+            <p className="text-xs text-slate-300/50">Paste one address per line. StreamBridge picks the best one automatically.</p>
           </div>
 
           <div className="space-y-2">
             <Label>Password</Label>
-            <Input type="password" required placeholder="xtream_password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
+            <Input type="password" required placeholder="your password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
           </div>
 
           <DialogFooter>
@@ -135,7 +135,7 @@ function ProviderRow({ provider, onRefresh, onDelete }: { provider: Provider; on
     setLoading('refresh')
     try {
       const res = await providerAPI.refresh(provider.id)
-      toast.success(res.data.started ? 'Catalog refresh started in background' : 'Catalog refresh is already running')
+      toast.success(res.data.started ? 'Updating your content in the background' : 'Content update is already running')
       onRefresh()
     } catch (err: unknown) { toast.error((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Refresh failed') }
     finally { setLoading('') }
@@ -154,15 +154,15 @@ function ProviderRow({ provider, onRefresh, onDelete }: { provider: Provider; on
               <h3 className="text-2xl font-bold text-white">{provider.name}</h3>
               <StatusBadge status={provider.status} pulse={online} />
             </div>
-            <p className="break-all text-sm text-slate-300/60">{provider.active_host || 'No active host available yet'}</p>
+            <p className="break-all text-sm text-slate-300/60">{provider.active_host || 'Not connected yet'}</p>
 
             <div className="mt-5 grid gap-4 sm:grid-cols-3">
               <div>
-                <p className="metric-label mb-1">Titles</p>
+                <p className="metric-label mb-1">Content</p>
                 <p className="text-2xl font-bold text-white">{parseInt(String(provider.vod_count || 0), 10).toLocaleString()}</p>
               </div>
               <div>
-                <p className="metric-label mb-1">Match rate</p>
+                <p className="metric-label mb-1">Ready to watch</p>
                 <p className="text-2xl font-bold text-brand-300">{matchRate}%</p>
               </div>
               <div>
@@ -197,7 +197,7 @@ function ProviderRow({ provider, onRefresh, onDelete }: { provider: Provider; on
         </div>
 
         <div className="mt-6 border-t border-white/[0.07] pt-5">
-          <p className="metric-label mb-3">Hosts</p>
+          <p className="metric-label mb-3">Servers</p>
           <div className="flex flex-wrap gap-2">
             {(provider.hosts || []).map(host => (
               <Badge
@@ -262,17 +262,17 @@ export default function ProvidersPage() {
         <Card className="overflow-hidden p-5 sm:p-7 lg:p-8">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <Badge variant="default" className="mb-4">Sources</Badge>
+              <Badge variant="default" className="mb-4">IPTV</Badge>
               <h1 className="text-3xl font-bold leading-tight text-white sm:text-4xl">
-                Manage the providers feeding your library.
+                Your IPTV providers.
               </h1>
               <p className="hero-copy mt-3">
-                Keep credentials current, monitor active hosts, test connectivity, and refresh catalogs without losing the operational view.
+                See what&apos;s working, add new services, and keep your channels up to date — all in one place.
               </p>
             </div>
             <Button onClick={() => setShowAdd(true)} size="lg" className="w-full flex-shrink-0 sm:w-auto">
               <Plus className="h-5 w-5" />
-              Add Provider
+              Add IPTV Provider
             </Button>
           </div>
         </Card>
@@ -281,10 +281,10 @@ export default function ProvidersPage() {
       {providers.length === 0 ? (
         <EmptyState
           icon={Plus}
-          heading="No providers connected"
-          description="Connect your first IPTV source to start loading VOD titles, live channels, and account-specific addon content."
+          heading="No IPTV providers added yet"
+          description="Add your IPTV provider to start watching live channels, movies, and on-demand content in Stremio."
           action={() => setShowAdd(true)}
-          actionLabel="Add Your First Provider"
+          actionLabel="Add Your First IPTV Provider"
         />
       ) : (
         <section className="space-y-4">

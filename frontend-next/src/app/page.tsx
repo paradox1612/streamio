@@ -60,14 +60,14 @@ const proofPoints = [
 ]
 
 const providers = [
-  { label: 'Xtream Codes', meta: 'Most TV services', mark: 'XC' },
-  { label: 'M3U Playlist', meta: 'Playlist link', mark: 'M3' },
-  { label: 'MAC Portal', meta: 'Portal login', mark: 'MP' },
+  { label: 'Live TV', meta: 'All your channels', mark: '📺' },
+  { label: 'Sports', meta: 'Every match live', mark: '⚽' },
+  { label: 'Movies', meta: 'On-demand library', mark: '🎬' },
   { label: 'Stremio', meta: 'Your player', mark: 'ST' },
-  { label: 'TMDB', meta: 'Show artwork', mark: 'TM' },
-  { label: 'XML EPG', meta: 'TV guide', mark: 'EP' },
-  { label: 'HLS', meta: 'Live streams', mark: 'HL' },
-  { label: 'Catch-up TV', meta: 'Watch back', mark: 'CU' },
+  { label: 'Smart TV', meta: 'Big screen ready', mark: '🖥' },
+  { label: 'TV Guide', meta: 'What\'s on now', mark: '📋' },
+  { label: 'Catch-up TV', meta: 'Watch back', mark: '⏪' },
+  { label: 'Any Device', meta: 'Phone, TV, laptop', mark: '📱' },
 ]
 
 const lineupPoints = [
@@ -204,7 +204,7 @@ const testimonials = [
 
 const channelShowcaseImages = [
   createLineupCardUri({ title: 'Horizon Sports', genre: '4K matchday feeds', toneA: '#102848', toneB: '#2857d1', badge: 'LIVE' }),
-  createLineupCardUri({ title: 'Cinema One', genre: 'Metadata repaired movies', toneA: '#31124c', toneB: '#7b2cbf', badge: 'VOD' }),
+  createLineupCardUri({ title: 'Cinema One', genre: 'Full on-demand library', toneA: '#31124c', toneB: '#7b2cbf', badge: 'VOD' }),
   createLineupCardUri({ title: 'Signal 24', genre: 'Always-on news lineup', toneA: '#15354a', toneB: '#1f9d8d', badge: 'NEWS' }),
   createLineupCardUri({ title: 'Kids Loop', genre: 'Family-safe rows', toneA: '#4d2910', toneB: '#d97706', badge: 'FAM' }),
   createLineupCardUri({ title: 'Fight Night', genre: 'Event channels and replay', toneA: '#3d1320', toneB: '#d43f5e', badge: 'PPV' }),
@@ -477,7 +477,7 @@ export default function LandingPage() {
           {/* ── Provider Marquee ───────────────────────────────────────── */}
           <section className="overflow-hidden border-y border-white/[0.06] bg-white/[0.015] py-6" aria-label="Supported providers">
             <div className="mx-auto mb-4 flex max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
-              <p className="eyebrow mb-0">Supported providers</p>
+              <p className="eyebrow mb-0">Everything included</p>
               <p className="text-xs uppercase tracking-[0.18em] text-slate-400/55">Pause on hover</p>
             </div>
             <Marquee pauseOnHover repeat={5} className="[--duration:30s]">
