@@ -1,13 +1,13 @@
 frontend:
   replicaCount: 2
   image:
-    repository: ghcr.io/your-org/streambridge-frontend
+    repository: ghcr.io/paradox1612/streambridge-frontend
     tag: latest
 
 backend:
   replicaCount: 2
   image:
-    repository: ghcr.io/your-org/streambridge-backend
+    repository: ghcr.io/paradox1612/streambridge-backend
     tag: latest
   env:
     nodeEnv: production
