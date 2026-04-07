@@ -3,9 +3,11 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Clock3, Gift, Shield, UserRoundCog, UserRoundX, Users } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Clock3, Gift, LogIn, Shield, UserRoundCog, UserRoundX, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { adminAPI } from '@/utils/api'
+import { persistUserToken } from '@/lib/auth-cookies'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -51,6 +53,7 @@ function MetricCard({
 }
 
 export default function AdminUsersPage() {
+  const router = useRouter()
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -101,6 +104,20 @@ export default function AdminUsersPage() {
       load(search)
     } catch {
       toast.error('Action failed')
+    }
+  }
+
+  const handleImpersonate = async (user: any) => {
+    if (!window.confirm(`Sign in as ${user.email}? This opens a user session in this tab.`)) return
+    try {
+      const res = await adminAPI.impersonateUser(user.id)
+      const token: string = res.data.token
+      localStorage.setItem('sb_token', token)
+      persistUserToken(token)
+      toast.success(`Signed in as ${user.email}`)
+      router.push('/dashboard')
+    } catch {
+      toast.error('Impersonation failed')
     }
   }
 
@@ -174,6 +191,18 @@ export default function AdminUsersPage() {
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline" size="sm" className="rounded-xl">
             <Link href={`/admin/users/${user.id}`}>View</Link>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="rounded-xl"
+            disabled={!user.is_active}
+            title={!user.is_active ? 'Cannot impersonate a suspended user' : 'Sign in as this user'}
+            onClick={() => handleImpersonate(user)}
+          >
+            <LogIn className="h-3.5 w-3.5" />
+            Sign in as
           </Button>
           <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => handleSuspend(user)}>
             {user.is_active ? 'Suspend' : 'Activate'}

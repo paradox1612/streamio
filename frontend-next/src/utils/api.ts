@@ -110,6 +110,7 @@ export const adminAPI = {
   getUser: (id: string) => api.get(`/api/admin/users/${id}`),
   deleteUser: (id: string) => api.delete(`/api/admin/users/${id}`),
   suspendUser: (id: string, suspend: boolean) => api.patch(`/api/admin/users/${id}/suspend`, { suspend }),
+  impersonateUser: (id: string) => api.post(`/api/admin/users/${id}/impersonate`),
   listProviders: (params?: Record<string, unknown>) => api.get('/api/admin/providers', { params }),
   getProvider: (id: string) => api.get(`/api/admin/providers/${id}`),
   deleteProvider: (id: string) => api.delete(`/api/admin/providers/${id}`),

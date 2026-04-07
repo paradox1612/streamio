@@ -69,6 +69,20 @@ router.patch('/users/:id/suspend', requireAdmin, async (req, res) => {
   res.json({ message: suspend ? 'User suspended' : 'User activated' });
 });
 
+// POST /admin/users/:id/impersonate
+router.post('/users/:id/impersonate', requireAdmin, async (req, res) => {
+  const user = await userQueries.findById(req.params.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (!user.is_active) return res.status(403).json({ error: 'Cannot impersonate a suspended user' });
+  const token = jwt.sign(
+    { userId: user.id, email: user.email, impersonatedBy: 'admin' },
+    process.env.JWT_SECRET,
+    { expiresIn: '2h' }
+  );
+  logger.info(`Admin impersonating user: ${user.email}`);
+  res.json({ token, user: { id: user.id, email: user.email } });
+});
+
 // ─── Providers ───────────────────────────────────────────────────────────────
 
 // GET /admin/providers
