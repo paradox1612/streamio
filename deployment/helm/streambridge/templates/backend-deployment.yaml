@@ -119,12 +119,12 @@ spec:
               value: "private internet access"
             - name: VPN_TYPE
               value: "openvpn"
-            - name: PRIVATE_INTERNET_ACCESS_USER
+            - name: OPENVPN_USER
               valueFrom:
                 secretKeyRef:
                   name: {{ include "streambridge.backendName" . }}-env
                   key: PIA_USERNAME
-            - name: PRIVATE_INTERNET_ACCESS_PASSWORD
+            - name: OPENVPN_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "streambridge.backendName" . }}-env
