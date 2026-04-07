@@ -88,6 +88,10 @@ vpn:
     pullPolicy: IfNotPresent
   serverRegions: "US East"
   rotationHours: "1"
+  # Subnets that bypass the VPN tunnel — must include cluster pod/service CIDRs
+  # so internal traffic (postgres, k8s services) is not routed through VPN.
+  # k3s defaults: pods=10.42.0.0/16, services=10.43.0.0/16
+  firewallOutboundSubnets: "10.42.0.0/16,10.43.0.0/16"
   resources:
     requests:
       cpu: 50m
