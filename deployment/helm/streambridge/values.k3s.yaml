@@ -23,6 +23,8 @@ backend:
     adminUsername: admin
     adminPassword: "set-me"
     jwtSecret: "set-me"
+    piaUsername: ""
+    piaPassword: ""
   resources:
     requests:
       cpu: 100m
@@ -59,6 +61,27 @@ postgres:
     limits:
       cpu: "1"
       memory: 1Gi
+
+vpn:
+  # Feature flag — set to true to inject gluetun sidecar into backend & scheduler pods
+  enabled: false
+  image:
+    repository: qmcgaw/gluetun
+    tag: latest
+    pullPolicy: IfNotPresent
+  # PIA server regions (comma-separated); gluetun picks randomly on each reconnect
+  serverRegions: "US East"
+  # How often the scheduler rotates to a new PIA IP (hours)
+  rotationHours: "1"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  # PIA credentials are read from the backend secret (keys: PIA_USERNAME, PIA_PASSWORD)
+  # Add them to backend.secrets or via external secret manager
 
 ingress:
   enabled: true

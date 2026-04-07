@@ -1,4 +1,5 @@
 const cron = require('node-cron');
+const { rotatePiaIp } = require('../utils/vpn');
 const { providerQueries } = require('../db/queries');
 const hostHealthService = require('../services/hostHealthService');
 const tmdbService = require('../services/tmdbService');
@@ -170,6 +171,29 @@ async function freeAccessExpiryJob() {
   });
 }
 
+async function vpnRotationJob() {
+  if (process.env.VPN_ENABLED !== 'true') return;
+  return withJobLock('vpnRotationJob', async () => {
+    logger.info('[Job] VPN IP rotation starting...');
+    const jobId = await jobQueries.start('vpnRotationJob');
+    try {
+      await rotatePiaIp();
+      await jobQueries.finish(jobId, {
+        status: 'success',
+        metadata: getJobRunnerMetadata(),
+      });
+      logger.info('[Job] VPN IP rotation complete — new PIA server assigned');
+    } catch (err) {
+      await jobQueries.finish(jobId, {
+        status: 'failed',
+        errorMessage: err.message,
+        metadata: getJobRunnerMetadata(),
+      });
+      logger.error('[Job] VPN IP rotation failed:', err.message);
+    }
+  });
+}
+
 async function freeAccessCatalogRefreshJob() {
   return withJobLock('freeAccessCatalogRefreshJob', async () => {
     logger.info('[Job] Free access catalog refresh starting...');
@@ -232,7 +256,16 @@ function startScheduler() {
   // Every day at 3 AM for managed free catalog refresh
   cron.schedule('0 3 * * *', freeAccessCatalogRefreshJob);
 
-  logger.info(`Scheduler started: health=${healthChecksEnabled ? 'hourly' : 'disabled'}, tmdb=2am, freeCatalog=3am, catalog=4am, matching=5am, epg=every4h, freeExpiry=hourly`);
+  // VPN IP rotation — only when VPN_ENABLED=true
+  const vpnEnabled = process.env.VPN_ENABLED === 'true';
+  if (vpnEnabled) {
+    const rotationHours = Math.max(1, parseInt(process.env.VPN_ROTATION_HOURS || '6', 10));
+    const rotationCron = `0 */${rotationHours} * * *`;
+    cron.schedule(rotationCron, vpnRotationJob);
+    logger.info(`[VPN] IP rotation scheduled every ${rotationHours}h (${rotationCron})`);
+  }
+
+  logger.info(`Scheduler started: health=${healthChecksEnabled ? 'hourly' : 'disabled'}, tmdb=2am, freeCatalog=3am, catalog=4am, matching=5am, epg=every4h, freeExpiry=hourly, vpn=${vpnEnabled ? `every ${process.env.VPN_ROTATION_HOURS || 6}h` : 'disabled'}`);
 
   if (healthChecksEnabled && startupHealthCheckEnabled) {
     setTimeout(healthCheckJob, 5000);
@@ -247,6 +280,7 @@ const jobs = {
   epgRefreshJob,
   freeAccessExpiryJob,
   freeAccessCatalogRefreshJob,
+  vpnRotationJob,
 };
 
 module.exports = { startScheduler, jobs };

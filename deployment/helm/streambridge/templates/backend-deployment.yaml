@@ -76,6 +76,20 @@ spec:
               value: {{ .Values.backend.env.accountLookupSuccessTtlSeconds | quote }}
             - name: ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS
               value: {{ .Values.backend.env.accountLookupFailureTtlSeconds | quote }}
+            - name: VPN_ENABLED
+              value: {{ .Values.vpn.enabled | quote }}
+            {{- if .Values.vpn.enabled }}
+            - name: GLOBAL_AGENT_HTTP_PROXY
+              value: "http://localhost:8888"
+            - name: GLOBAL_AGENT_HTTPS_PROXY
+              value: "http://localhost:8888"
+            - name: GLOBAL_AGENT_NO_PROXY
+              value: "localhost,127.0.0.1,postgres"
+            - name: GLUETUN_CONTROL_URL
+              value: "http://localhost:8000"
+            - name: VPN_ROTATION_HOURS
+              value: {{ .Values.vpn.rotationHours | quote }}
+            {{- end }}
           envFrom:
             - secretRef:
                 name: {{ include "streambridge.backendName" . }}-env
@@ -93,6 +107,54 @@ spec:
             periodSeconds: 10
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
+        {{- if .Values.vpn.enabled }}
+        - name: gluetun
+          image: "{{ .Values.vpn.image.repository }}:{{ .Values.vpn.image.tag }}"
+          imagePullPolicy: {{ .Values.vpn.image.pullPolicy }}
+          securityContext:
+            capabilities:
+              add: [NET_ADMIN]
+          env:
+            - name: VPN_SERVICE_PROVIDER
+              value: "private internet access"
+            - name: VPN_TYPE
+              value: "wireguard"
+            - name: PRIVATE_INTERNET_ACCESS_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "streambridge.backendName" . }}-env
+                  key: PIA_USERNAME
+            - name: PRIVATE_INTERNET_ACCESS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "streambridge.backendName" . }}-env
+                  key: PIA_PASSWORD
+            - name: SERVER_REGIONS
+              value: {{ .Values.vpn.serverRegions | quote }}
+            - name: HTTPPROXY
+              value: "on"
+            - name: HTTPPROXY_LOG
+              value: "off"
+            - name: HTTPPROXY_LISTENING_ADDRESS
+              value: ":8888"
+            - name: HTTP_CONTROL_SERVER_ADDRESS
+              value: ":8000"
+            - name: HTTP_CONTROL_SERVER_LOG
+              value: "off"
+            - name: UPDATER_PERIOD
+              value: "24h"
+          volumeMounts:
+            - name: tun-device
+              mountPath: /dev/net/tun
+          resources:
+            {{- toYaml .Values.vpn.resources | nindent 12 }}
+        {{- end }}
+      {{- if .Values.vpn.enabled }}
+      volumes:
+        - name: tun-device
+          hostPath:
+            path: /dev/net/tun
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

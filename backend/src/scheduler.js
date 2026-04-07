@@ -1,4 +1,5 @@
 require('dotenv').config();
+require('./utils/vpn').bootstrapVpnProxy();
 
 const { startScheduler } = require('./jobs/scheduler');
 const logger = require('./utils/logger');

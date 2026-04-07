@@ -1,4 +1,5 @@
 require('dotenv').config();
+require('./utils/vpn').bootstrapVpnProxy();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');

@@ -30,6 +30,7 @@
     "pg": "^8.11.5",
     "stremio-addon-sdk": "^1.6.10",
     "uuid": "^9.0.1",
+    "global-agent": "^3.0.0",
     "winston": "^3.13.0"
   },
   "devDependencies": {

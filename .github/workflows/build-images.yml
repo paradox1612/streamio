@@ -123,6 +123,9 @@ jobs:
 
       - name: Deploy Helm release with commit image tags
         shell: bash
+        env:
+          PIA_USERNAME: ${{ secrets.PIA_USERNAME }}
+          PIA_PASSWORD: ${{ secrets.PIA_PASSWORD }}
         run: |
           set -euo pipefail
           if [ -n "${KUBECONFIG_PATH:-}" ]; then
@@ -131,12 +134,20 @@ jobs:
           SHORT_SHA="${GITHUB_SHA::7}"
           IMAGE_TAG="sha-${SHORT_SHA}"
 
+          # Inject PIA credentials from GitHub secrets when present
+          PIA_ARGS=""
+          if [ -n "${PIA_USERNAME:-}" ] && [ -n "${PIA_PASSWORD:-}" ]; then
+            PIA_ARGS="--set-string backend.secrets.piaUsername=${PIA_USERNAME} --set-string backend.secrets.piaPassword=${PIA_PASSWORD}"
+          fi
+
           helm upgrade --install "$RELEASE_NAME" ./deployment/helm/streambridge \
             --namespace "$RELEASE_NAMESPACE" \
             --create-namespace \
             -f "$VALUES_FILE" \
             --set-string frontend.image.tag="$IMAGE_TAG" \
-            --set-string backend.image.tag="$IMAGE_TAG"
+            --set-string backend.image.tag="$IMAGE_TAG" \
+            --set vpn.enabled=true \
+            $PIA_ARGS
 
       - name: Wait for rollout
         shell: bash
