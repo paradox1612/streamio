@@ -41,6 +41,8 @@ backend:
     adminUsername: admin
     adminPassword: change-me
     jwtSecret: change-me-now
+    piaUsername: ""
+    piaPassword: ""
   resources: {}
 
 scheduler:
@@ -77,6 +79,22 @@ ingress:
   tls:
     enabled: false
     secretName: ""
+
+vpn:
+  enabled: false
+  image:
+    repository: qmcgaw/gluetun
+    tag: latest
+    pullPolicy: IfNotPresent
+  serverRegions: "US East"
+  rotationHours: "1"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
 
 podAnnotations: {}
 
