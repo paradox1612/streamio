@@ -47,8 +47,8 @@ function StarLayer({
       <div
         className="absolute left-0 top-0 rounded-full"
         style={{
-          width: size,
-          height: size,
+          width: `${size}px`,
+          height: `${size}px`,
           background: 'transparent',
           boxShadow: shadow,
           animation: `sb-cosmic-drift ${duration}s linear infinite`,
@@ -57,8 +57,8 @@ function StarLayer({
       <div
         className="absolute left-0 top-[2000px] rounded-full"
         style={{
-          width: size,
-          height: size,
+          width: `${size}px`,
+          height: `${size}px`,
           background: 'transparent',
           boxShadow: shadow,
           animation: `sb-cosmic-drift ${duration}s linear infinite`,
@@ -77,9 +77,15 @@ export default function ParallaxCosmicBackground({
 }) {
   const [pointer, setPointer] = useState({ x: 0, y: 0 })
   const frameRef = useRef<number | null>(null)
-  const [smallStars] = useState(() => createStarField(180, 2000, 2000, 0.8))
-  const [mediumStars] = useState(() => createStarField(90, 2000, 2000, 0.55))
-  const [largeStars] = useState(() => createStarField(45, 2000, 2000, 0.4))
+  const [smallStars, setSmallStars] = useState('')
+  const [mediumStars, setMediumStars] = useState('')
+  const [largeStars, setLargeStars] = useState('')
+
+  useEffect(() => {
+    setSmallStars(createStarField(180, 2000, 2000, 0.8))
+    setMediumStars(createStarField(90, 2000, 2000, 0.55))
+    setLargeStars(createStarField(45, 2000, 2000, 0.4))
+  }, [])
 
   useEffect(() => {
     const handleMove = (event: PointerEvent) => {

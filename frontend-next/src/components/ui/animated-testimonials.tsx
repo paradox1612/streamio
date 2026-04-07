@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
@@ -24,6 +24,7 @@ export function AnimatedTestimonials({
   className?: string
 }) {
   const [active, setActive] = useState(0)
+  const rotations = useRef<number[]>(testimonials.map((_, i) => ((i * 137) % 21) - 10))
   const activeTestimonial = testimonials?.[active]
 
   if (!testimonials?.length) return null
@@ -31,7 +32,7 @@ export function AnimatedTestimonials({
   const handleNext = () => setActive((prev) => (prev + 1) % testimonials.length)
   const handlePrev = () => setActive((prev) => (prev - 1 + testimonials.length) % testimonials.length)
   const isActive = (index: number) => index === active
-  const randomRotateY = () => Math.floor(Math.random() * 21) - 10
+  const getRotation = (index: number) => rotations.current[index % rotations.current.length]
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
@@ -50,16 +51,16 @@ export function AnimatedTestimonials({
               {testimonials.map((testimonial, index) => (
                 <motion.div
                   key={testimonial.src}
-                  initial={{ opacity: 0, scale: 0.9, z: -100, rotate: randomRotateY() }}
+                  initial={{ opacity: 0, scale: 0.9, z: -100, rotate: getRotation(index) }}
                   animate={{
                     opacity: isActive(index) ? 1 : 0.7,
                     scale: isActive(index) ? 1 : 0.95,
                     z: isActive(index) ? 0 : -100,
-                    rotate: isActive(index) ? 0 : randomRotateY(),
+                    rotate: isActive(index) ? 0 : getRotation(index),
                     zIndex: isActive(index) ? 999 : testimonials.length + 2 - index,
                     y: isActive(index) ? [0, -80, 0] : 0,
                   }}
-                  exit={{ opacity: 0, scale: 0.9, z: 100, rotate: randomRotateY() }}
+                  exit={{ opacity: 0, scale: 0.9, z: 100, rotate: getRotation(index) }}
                   transition={{ duration: 0.4, ease: 'easeInOut' }}
                   className="absolute inset-0 origin-bottom overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-[0_28px_80px_rgba(0,0,0,0.35)]"
                 >
