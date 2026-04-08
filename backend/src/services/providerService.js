@@ -455,31 +455,25 @@ const providerService = {
     }
 
     if (all.length > 0) {
-      const CHUNK = 500;
-      for (let i = 0; i < resolvedEntries.length; i += CHUNK) {
-        const chunk = resolvedEntries.slice(i, i + CHUNK);
-        await vodQueries.upsertBatch(chunk);
-        if (provider.network_id && !catalogVariant) {
-          await vodQueries.upsertNetworkBatch(chunk.map(entry => ({
-            ...entry,
-            providerNetworkId: provider.network_id,
-          })));
-        }
-        const persisted = Math.min(i + chunk.length, resolvedEntries.length);
-        const persistRatio = resolvedEntries.length === 0 ? 1 : persisted / resolvedEntries.length;
-        await progress({
-          stage: 'persisting_catalog',
-          progressPct: Math.min(96, Math.round(58 + persistRatio * 36)),
-          message: `Saving catalog entries ${persisted.toLocaleString()} / ${resolvedEntries.length.toLocaleString()}`,
-          counts: {
-            movies: vodMovies.length,
-            series: vodSeries.length,
-            live: liveStreams.length,
-            total: all.length,
-            persisted,
-          },
-        });
+      await vodQueries.upsertBatch(resolvedEntries);
+      if (provider.network_id && !catalogVariant) {
+        await vodQueries.upsertNetworkBatch(resolvedEntries.map(entry => ({
+          ...entry,
+          providerNetworkId: provider.network_id,
+        })));
       }
+      await progress({
+        stage: 'persisting_catalog',
+        progressPct: 96,
+        message: `Saved catalog entries ${resolvedEntries.length.toLocaleString()} / ${resolvedEntries.length.toLocaleString()}`,
+        counts: {
+          movies: vodMovies.length,
+          series: vodSeries.length,
+          live: liveStreams.length,
+          total: all.length,
+          persisted: resolvedEntries.length,
+        },
+      });
     }
 
     if (provider.network_id && !catalogVariant) {

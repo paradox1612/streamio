@@ -16,8 +16,10 @@ services:
     environment:
       VPN_SERVICE_PROVIDER: private internet access
       VPN_TYPE: wireguard
-      PRIVATE_INTERNET_ACCESS_USER: ${PIA_USERNAME:?PIA_USERNAME is required}
-      PRIVATE_INTERNET_ACCESS_PASSWORD: ${PIA_PASSWORD:?PIA_PASSWORD is required}
+      # Keep these optional so plain local `docker compose up` works without VPN creds.
+      # When the `vpn` profile is enabled, provide real values via env or `.env`.
+      PRIVATE_INTERNET_ACCESS_USER: ${PIA_USERNAME:-}
+      PRIVATE_INTERNET_ACCESS_PASSWORD: ${PIA_PASSWORD:-}
       SERVER_REGIONS: ${PIA_SERVER_REGIONS:-US East}
       HTTPPROXY: on
       HTTPPROXY_LOG: off

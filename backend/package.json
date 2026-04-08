@@ -21,6 +21,7 @@
     "express-rate-limit": "^7.2.0",
     "express-validator": "^7.1.0",
     "fast-xml-parser": "^5.5.9",
+    "global-agent": "^3.0.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "node-cache": "^5.1.2",
@@ -28,9 +29,9 @@
     "node-fetch": "^2.7.0",
     "parse-torrent-title": "^2.1.0",
     "pg": "^8.11.5",
+    "pg-copy-streams": "^7.0.0",
     "stremio-addon-sdk": "^1.6.10",
     "uuid": "^9.0.1",
-    "global-agent": "^3.0.0",
     "winston": "^3.13.0"
   },
   "devDependencies": {

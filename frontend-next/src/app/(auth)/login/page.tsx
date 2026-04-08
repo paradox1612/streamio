@@ -59,13 +59,23 @@ export default function LoginPage() {
       loadingLabel="Signing in..."
       error={error}
       footer={
-        <div className="flex items-center justify-between gap-3 text-sm text-slate-300/65">
-          <Link href="/forgot-password" className="transition-colors hover:text-white">
-            Forgot password?
-          </Link>
-          <Link href="/signup" className="font-semibold text-white transition-colors hover:text-brand-100">
-            Create account
-          </Link>
+        <div className="space-y-3 text-sm text-slate-300/65">
+          <div className="flex items-center justify-between gap-3">
+            <Link href="/forgot-password" className="transition-colors hover:text-white">
+              Forgot password?
+            </Link>
+            <Link href="/signup" className="font-semibold text-white transition-colors hover:text-brand-100">
+              Create account
+            </Link>
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-3">
+            <Link href="/" className="transition-colors hover:text-white">
+              Back to main page
+            </Link>
+            <Link href="/how-it-works" className="transition-colors hover:text-white">
+              Setup guide
+            </Link>
+          </div>
         </div>
       }
     />

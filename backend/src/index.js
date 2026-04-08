@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 const { buildManifest, handleCatalog, handleMeta, handleStream } = require('./addon/addonHandler');
 const authRoutes = require('./api/authRoutes');
 const errorReportRoutes = require('./api/errorReportRoutes');
+const blogRoutes = require('./api/blogRoutes');
 const userRoutes = require('./api/userRoutes');
 const providerRoutes = require('./api/providerRoutes');
 const freeAccessRoutes = require('./api/freeAccessRoutes');
@@ -21,6 +22,8 @@ const { getAppRole, shouldRunHttpServer, shouldRunScheduler } = require('./utils
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+app.set('trust proxy', true);
 
 function parseAddonCatalogExtra(req) {
   const extra = { ...req.query };
@@ -170,6 +173,7 @@ app.get('/addon/:token/stream/:type/:id.json', addonCors, async (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/error-reports', errorReportRoutes);
+app.use('/api/blog', blogRoutes);
 app.use('/api/preview', previewLimiter, previewRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/providers', providerRoutes);

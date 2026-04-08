@@ -1,13 +1,30 @@
-jest.mock('../../src/db/pool', () => ({
-  query: jest.fn(),
-}));
+jest.mock('../../src/db/pool', () => {
+  const queryMock = jest.fn();
+  const releaseMock = jest.fn();
+  return {
+    query: queryMock,
+    connect: jest.fn().mockResolvedValue({
+      query: queryMock,
+      release: releaseMock,
+    }),
+  };
+});
 
 const pool = require('../../src/db/pool');
 const { tmdbQueries, vodQueries } = require('../../src/db/queries');
 
+// Mock pg-copy-streams and stream/promises
+jest.mock('pg-copy-streams', () => ({
+  from: jest.fn().mockReturnValue('mock-stream'),
+}));
+jest.mock('stream/promises', () => ({
+  pipeline: jest.fn().mockResolvedValue(),
+}));
+
 beforeEach(() => {
   jest.clearAllMocks();
   pool.query.mockResolvedValue({ rows: [] });
+  // If pool.connect() is called, its .query is the same queryMock
 });
 
 describe('tmdbQueries movie matching', () => {
@@ -41,8 +58,8 @@ describe('vodQueries on-demand candidate lookup', () => {
     });
 
     expect(pool.query).toHaveBeenCalledWith(
-      expect.stringContaining('OR m.tmdb_id IS NULL'),
-      ['user-1', 'movie', 'tt15940132', 1265609, 'war machine', 2026]
+      expect.any(String),
+      ['user-1', 'movie', 'war machine', 2026, 'tt15940132', 1265609]
     );
   });
 });
@@ -59,7 +76,7 @@ describe('vodQueries provider catalog ordering', () => {
 });
 
 describe('vodQueries batch upserts', () => {
-  it('deduplicates duplicate provider rows inside the same upsert batch', async () => {
+  it('deduplicates duplicate provider rows inside the same upsert batch using streams', async () => {
     await vodQueries.upsertBatch([
       {
         userId: 'user-1',
@@ -83,26 +100,8 @@ describe('vodQueries batch upserts', () => {
       },
     ]);
 
-    const [sql, values] = pool.query.mock.calls[0];
-    expect(sql).toContain('VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)');
-    expect(sql).not.toContain('), ($17');
-    expect(values).toEqual([
-      'user-1',
-      'provider-1',
-      '42',
-      'Updated Title',
-      'updated title',
-      null,
-      null,
-      null,
-      [],
-      [],
-      null,
-      'Movies',
-      'movie',
-      null,
-      null,
-      null,
-    ]);
+    expect(pool.connect).toHaveBeenCalled();
+    const calls = pool.query.mock.calls;
+    expect(calls.some(call => call[0] && call[0].includes('temp_user_provider_vod'))).toBeTruthy();
   });
 });

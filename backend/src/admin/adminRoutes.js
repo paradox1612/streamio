@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const jwt = require('jsonwebtoken');
 const { requireAdmin } = require('../middleware/auth');
-const { userQueries, providerQueries, vodQueries, tmdbQueries, matchQueries, hostHealthQueries, jobQueries, errorReportQueries, freeAccessQueries, pool } = require('../db/queries');
+const { userQueries, blogPostQueries, providerQueries, vodQueries, tmdbQueries, matchQueries, hostHealthQueries, jobQueries, errorReportQueries, freeAccessQueries, pool } = require('../db/queries');
 const tmdbService = require('../services/tmdbService');
 const providerService = require('../services/providerService');
 const hostHealthService = require('../services/hostHealthService');
@@ -9,6 +9,15 @@ const freeAccessService = require('../services/freeAccessService');
 const { jobs } = require('../jobs/scheduler');
 const logger = require('../utils/logger');
 const { getRuntimeInfo } = require('../utils/runtimeInfo');
+
+function slugify(value = '') {
+  return String(value)
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
 
 // ─── Admin Auth ───────────────────────────────────────────────────────────────
 
@@ -36,6 +45,59 @@ router.post('/auth/login', async (req, res) => {
 router.post('/auth/logout', requireAdmin, (req, res) => {
   req.app.locals.adminToken = null;
   res.json({ message: 'Admin logged out' });
+});
+
+// ─── Blog ───────────────────────────────────────────────────────────────────
+
+router.get('/blog-posts', requireAdmin, async (_req, res) => {
+  const posts = await blogPostQueries.listAll();
+  res.json(posts);
+});
+
+router.post('/blog-posts', requireAdmin, async (req, res) => {
+  const title = String(req.body.title || '').trim();
+  const description = String(req.body.description || '').trim();
+  const content = String(req.body.content || '').trim();
+  const author = String(req.body.author || 'StreamBridge Team').trim();
+  const requestedSlug = String(req.body.slug || '').trim();
+  const publishedAt = String(req.body.publishedAt || '').trim();
+  const readTime = String(req.body.readTime || '').trim();
+  const featured = req.body.featured === true;
+  const isPublished = req.body.isPublished !== false;
+  const tags = Array.isArray(req.body.tags)
+    ? req.body.tags.map((tag) => String(tag).trim()).filter(Boolean)
+    : String(req.body.tags || '')
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+
+  if (!title || !description || !content || !publishedAt) {
+    return res.status(400).json({ error: 'Title, description, content, and published date are required.' });
+  }
+
+  const slug = slugify(requestedSlug || title);
+  if (!slug) {
+    return res.status(400).json({ error: 'A valid slug is required.' });
+  }
+
+  const existing = await blogPostQueries.findBySlug(slug, { includeDrafts: true });
+  if (existing) {
+    return res.status(409).json({ error: `A post with slug "${slug}" already exists.` });
+  }
+
+  const post = await blogPostQueries.create({
+    slug,
+    title,
+    description,
+    content: readTime ? `<!-- readTime:${readTime} -->\n${content}` : content,
+    author: author || 'StreamBridge Team',
+    tags,
+    featured,
+    isPublished,
+    publishedAt,
+  });
+
+  res.status(201).json(post);
 });
 
 // ─── Users ───────────────────────────────────────────────────────────────────

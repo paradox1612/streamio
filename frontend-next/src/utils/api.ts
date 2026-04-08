@@ -139,6 +139,14 @@ export const adminAPI = {
   deleteFreeAccessAccount: (groupId: string, accountId: string) => api.delete(`/api/admin/free-access/groups/${groupId}/accounts/${accountId}`),
   refreshFreeAccessGroup: (id: string) => api.post(`/api/admin/free-access/groups/${id}/refresh`),
   listFreeAccessAssignments: (params?: Record<string, unknown>) => api.get('/api/admin/free-access/assignments', { params }),
+  listBlogPosts: () => api.get('/api/admin/blog-posts'),
+  createBlogPost: (data: Record<string, unknown>) => api.post('/api/admin/blog-posts', data),
+}
+
+export const blogAPI = {
+  list: () => api.get('/api/blog'),
+  listFeatured: (limit = 3) => api.get('/api/blog/featured', { params: { limit } }),
+  getBySlug: (slug: string) => api.get(`/api/blog/${slug}`),
 }
 
 // ─── Public Preview ───────────────────────────────────────────────────────────

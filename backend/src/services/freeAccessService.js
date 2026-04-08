@@ -226,10 +226,7 @@ async function ensureCatalogFresh(providerGroupId, account) {
   const result = await providerService.fetchManagedCatalog(selectedHost, account.username, account.password, providerGroupId);
   await freeAccessQueries.deleteCatalogByGroup(providerGroupId);
   const entries = [...result.movies, ...result.series];
-  const chunkSize = 500;
-  for (let i = 0; i < entries.length; i += chunkSize) {
-    await freeAccessQueries.upsertCatalogBatch(entries.slice(i, i + chunkSize));
-  }
+  await freeAccessQueries.upsertCatalogBatch(entries);
   await freeAccessQueries.setCatalogRefreshed(providerGroupId);
 }
 

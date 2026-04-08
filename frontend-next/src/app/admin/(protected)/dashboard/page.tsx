@@ -1,9 +1,10 @@
 'use client'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Activity, ArrowRight, Database, Server, Shield, Users } from 'lucide-react'
+import { Activity, ArrowRight, Database, FileText, Server, Shield, Users } from 'lucide-react'
 import { adminAPI } from '@/utils/api'
 import toast from 'react-hot-toast'
 import { Badge } from '@/components/ui/badge'
@@ -152,6 +153,26 @@ export default function AdminDashboardPage() {
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {metrics.map((metric) => <StatCard key={metric.label} {...metric} />)}
       </section>
+
+      <Card className="overflow-hidden">
+        <CardContent className="p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="inline-flex items-center gap-2 text-sm font-semibold text-brand-200">
+                <FileText className="h-4 w-4" />
+                Blog manager
+              </div>
+              <h2 className="mt-3 text-2xl font-bold text-white">Manage blog posts from the admin area.</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300/65">
+                The public blog is now file-based MDX. Use the admin blog page to review the publishing path and current slugs before adding more posts.
+              </p>
+            </div>
+            <Link href="/admin/blog" className="btn-secondary justify-center lg:w-auto">
+              Open blog manager
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="overflow-hidden">
         <CardHeader className="border-b border-white/[0.08] pb-5">

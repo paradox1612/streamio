@@ -1,4 +1,7 @@
 const pool = require('./pool');
+const { from } = require('pg-copy-streams');
+const { pipeline } = require('stream/promises');
+const { Transform } = require('stream');
 
 function pickFirstDefined(entry, ...keys) {
   for (const key of keys) {
@@ -181,6 +184,65 @@ const userQueries = {
   async count() {
     const { rows } = await pool.query('SELECT COUNT(*) FROM users');
     return parseInt(rows[0].count);
+  },
+};
+
+// ─── Blog Posts ─────────────────────────────────────────────────────────────
+
+const blogPostQueries = {
+  async listPublished() {
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM blog_posts
+       WHERE is_published = true
+       ORDER BY published_at DESC, created_at DESC`
+    );
+    return rows;
+  },
+
+  async listAll() {
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM blog_posts
+       ORDER BY published_at DESC, created_at DESC`
+    );
+    return rows;
+  },
+
+  async listFeatured(limit = 3) {
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM blog_posts
+       WHERE is_published = true
+       ORDER BY featured DESC, published_at DESC, created_at DESC
+       LIMIT $1`,
+      [limit]
+    );
+    return rows;
+  },
+
+  async findBySlug(slug, { includeDrafts = false } = {}) {
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM blog_posts
+       WHERE slug = $1
+         AND ($2::boolean = true OR is_published = true)
+       LIMIT 1`,
+      [slug, includeDrafts]
+    );
+    return rows[0];
+  },
+
+  async create({ slug, title, description, content, author, tags = [], featured = false, isPublished = true, publishedAt }) {
+    const { rows } = await pool.query(
+      `INSERT INTO blog_posts (
+        slug, title, description, content, author, tags, featured, is_published, published_at, updated_at
+      )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+       RETURNING *`,
+      [slug, title, description, content, author, tags, featured, isPublished, publishedAt]
+    );
+    return rows[0];
   },
 };
 
@@ -426,50 +488,73 @@ const vodQueries = {
         ])
       ).values()
     );
-    const values = [];
-    const placeholders = dedupedEntries.map((e, i) => {
-      const base = i * 16;
-      const titleYear = pickFirstDefined(e, 'titleYear', 'title_year', 'year');
-      const contentLanguages = pickFirstDefined(e, 'contentLanguages', 'content_languages', 'languages');
-      const qualityTags = pickFirstDefined(e, 'qualityTags', 'quality_tags');
-      values.push(
-        e.userId,
-        e.providerId,
-        e.streamId,
-        e.rawTitle,
-        e.normalizedTitle || null,
-        e.canonicalTitle || null,
-        e.canonicalNormalizedTitle || null,
-        titleYear || null,
-        contentLanguages || [],
-        qualityTags || [],
-        e.posterUrl,
-        e.category,
-        e.vodType,
-        e.containerExtension || null,
-        e.epgChannelId || null,
-        e.canonicalContentId || null
-      );
-      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}, $${base + 12}, $${base + 13}, $${base + 14}, $${base + 15}, $${base + 16})`;
-    });
-    await pool.query(
-      `INSERT INTO user_provider_vod (user_id, provider_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension, epg_channel_id, canonical_content_id)
-       VALUES ${placeholders.join(', ')}
-       ON CONFLICT (provider_id, stream_id, vod_type) DO UPDATE
-       SET raw_title = EXCLUDED.raw_title,
-           normalized_title = EXCLUDED.normalized_title,
-           canonical_title = EXCLUDED.canonical_title,
-           canonical_normalized_title = EXCLUDED.canonical_normalized_title,
-           title_year = EXCLUDED.title_year,
-           content_languages = EXCLUDED.content_languages,
-           quality_tags = EXCLUDED.quality_tags,
-           poster_url = EXCLUDED.poster_url,
-           category = EXCLUDED.category,
-           container_extension = EXCLUDED.container_extension,
-           epg_channel_id = EXCLUDED.epg_channel_id,
-           canonical_content_id = EXCLUDED.canonical_content_id`,
-      values
-    );
+    
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`
+        CREATE TEMP TABLE temp_user_provider_vod (LIKE user_provider_vod INCLUDING DEFAULTS) ON COMMIT DROP;
+      `);
+
+      const stream = client.query(from(`COPY temp_user_provider_vod (user_id, provider_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension, epg_channel_id, canonical_content_id) FROM STDIN WITH (FORMAT text, DELIMITER E'\\t', NULL '\\N')`));
+
+      const transformStream = new Transform({
+        objectMode: true,
+        transform(chunk, encoding, callback) {
+          const titleYear = pickFirstDefined(chunk, 'titleYear', 'title_year', 'year');
+          const contentLanguages = pickFirstDefined(chunk, 'contentLanguages', 'content_languages', 'languages');
+          const qualityTags = pickFirstDefined(chunk, 'qualityTags', 'quality_tags');
+
+          const formatArray = (arr) => {
+            if (!arr || arr.length === 0) return '{}';
+            return '{' + arr.map(a => `"${String(a).replace(/"/g, '""')}"`).join(',') + '}';
+          };
+
+          const escape = (val) => {
+            if (val === null || val === undefined) return '\\N';
+            return String(val).replace(/[\t\n\r\\]/g, (c) => ({ '\t': '\\t', '\n': '\\n', '\r': '\\r', '\\': '\\\\' }[c] || c));
+          };
+
+          const row = [
+            escape(chunk.userId), escape(chunk.providerId), escape(chunk.streamId), escape(chunk.rawTitle),
+            escape(chunk.normalizedTitle || null), escape(chunk.canonicalTitle || null), escape(chunk.canonicalNormalizedTitle || null),
+            escape(titleYear || null), escape(formatArray(contentLanguages || [])), escape(formatArray(qualityTags || [])),
+            escape(chunk.posterUrl || null), escape(chunk.category || null), escape(chunk.vodType),
+            escape(chunk.containerExtension || null), escape(chunk.epgChannelId || null), escape(chunk.canonicalContentId || null)
+          ].join('\t') + '\n';
+          
+          callback(null, row);
+        }
+      });
+
+      const sourceStream = require('stream').Readable.from(dedupedEntries);
+      await pipeline(sourceStream, transformStream, stream);
+
+      await client.query(`
+        INSERT INTO user_provider_vod (user_id, provider_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension, epg_channel_id, canonical_content_id)
+        SELECT user_id, provider_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension, epg_channel_id, canonical_content_id
+        FROM temp_user_provider_vod
+        ON CONFLICT (provider_id, stream_id, vod_type) DO UPDATE
+        SET raw_title = EXCLUDED.raw_title,
+            normalized_title = EXCLUDED.normalized_title,
+            canonical_title = EXCLUDED.canonical_title,
+            canonical_normalized_title = EXCLUDED.canonical_normalized_title,
+            title_year = EXCLUDED.title_year,
+            content_languages = EXCLUDED.content_languages,
+            quality_tags = EXCLUDED.quality_tags,
+            poster_url = EXCLUDED.poster_url,
+            category = EXCLUDED.category,
+            container_extension = EXCLUDED.container_extension,
+            epg_channel_id = EXCLUDED.epg_channel_id,
+            canonical_content_id = EXCLUDED.canonical_content_id
+      `);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   async upsertNetworkBatch(entries) {
@@ -486,49 +571,73 @@ const vodQueries = {
         ])
       ).values()
     );
-    const values = [];
-    const placeholders = dedupedEntries.map((e, i) => {
-      const base = i * 15;
-      const titleYear = pickFirstDefined(e, 'titleYear', 'title_year', 'year');
-      const contentLanguages = pickFirstDefined(e, 'contentLanguages', 'content_languages', 'languages');
-      const qualityTags = pickFirstDefined(e, 'qualityTags', 'quality_tags');
-      values.push(
-        e.providerNetworkId,
-        e.streamId,
-        e.rawTitle,
-        e.normalizedTitle || null,
-        e.canonicalTitle || null,
-        e.canonicalNormalizedTitle || null,
-        titleYear || null,
-        contentLanguages || [],
-        qualityTags || [],
-        e.posterUrl,
-        e.category,
-        e.vodType,
-        e.containerExtension || null,
-        e.epgChannelId || null,
-        e.canonicalContentId || null
-      );
-      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}, $${base + 12}, $${base + 13}, $${base + 14}, $${base + 15})`;
-    });
-    await pool.query(
-      `INSERT INTO network_vod (provider_network_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension, epg_channel_id, canonical_content_id)
-       VALUES ${placeholders.join(', ')}
-       ON CONFLICT (provider_network_id, stream_id, vod_type) DO UPDATE
-       SET raw_title = EXCLUDED.raw_title,
-           normalized_title = EXCLUDED.normalized_title,
-           canonical_title = EXCLUDED.canonical_title,
-           canonical_normalized_title = EXCLUDED.canonical_normalized_title,
-           title_year = EXCLUDED.title_year,
-           content_languages = EXCLUDED.content_languages,
-           quality_tags = EXCLUDED.quality_tags,
-           poster_url = EXCLUDED.poster_url,
-           category = EXCLUDED.category,
-           container_extension = EXCLUDED.container_extension,
-           epg_channel_id = EXCLUDED.epg_channel_id,
-           canonical_content_id = EXCLUDED.canonical_content_id`,
-      values
-    );
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`
+        CREATE TEMP TABLE temp_network_vod (LIKE network_vod INCLUDING DEFAULTS) ON COMMIT DROP;
+      `);
+
+      const stream = client.query(from(`COPY temp_network_vod (provider_network_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension, epg_channel_id, canonical_content_id) FROM STDIN WITH (FORMAT text, DELIMITER E'\\t', NULL '\\N')`));
+
+      const transformStream = new Transform({
+        objectMode: true,
+        transform(chunk, encoding, callback) {
+          const titleYear = pickFirstDefined(chunk, 'titleYear', 'title_year', 'year');
+          const contentLanguages = pickFirstDefined(chunk, 'contentLanguages', 'content_languages', 'languages');
+          const qualityTags = pickFirstDefined(chunk, 'qualityTags', 'quality_tags');
+
+          const formatArray = (arr) => {
+            if (!arr || arr.length === 0) return '{}';
+            return '{' + arr.map(a => `"${String(a).replace(/"/g, '""')}"`).join(',') + '}';
+          };
+
+          const escape = (val) => {
+            if (val === null || val === undefined) return '\\N';
+            return String(val).replace(/[\t\n\r\\]/g, (c) => ({ '\t': '\\t', '\n': '\\n', '\r': '\\r', '\\': '\\\\' }[c] || c));
+          };
+
+          const row = [
+            escape(chunk.providerNetworkId), escape(chunk.streamId), escape(chunk.rawTitle),
+            escape(chunk.normalizedTitle || null), escape(chunk.canonicalTitle || null), escape(chunk.canonicalNormalizedTitle || null),
+            escape(titleYear || null), escape(formatArray(contentLanguages || [])), escape(formatArray(qualityTags || [])),
+            escape(chunk.posterUrl || null), escape(chunk.category || null), escape(chunk.vodType),
+            escape(chunk.containerExtension || null), escape(chunk.epgChannelId || null), escape(chunk.canonicalContentId || null)
+          ].join('\t') + '\n';
+          
+          callback(null, row);
+        }
+      });
+
+      const sourceStream = require('stream').Readable.from(dedupedEntries);
+      await pipeline(sourceStream, transformStream, stream);
+
+      await client.query(`
+        INSERT INTO network_vod (provider_network_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension, epg_channel_id, canonical_content_id)
+        SELECT provider_network_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension, epg_channel_id, canonical_content_id
+        FROM temp_network_vod
+        ON CONFLICT (provider_network_id, stream_id, vod_type) DO UPDATE
+        SET raw_title = EXCLUDED.raw_title,
+            normalized_title = EXCLUDED.normalized_title,
+            canonical_title = EXCLUDED.canonical_title,
+            canonical_normalized_title = EXCLUDED.canonical_normalized_title,
+            title_year = EXCLUDED.title_year,
+            content_languages = EXCLUDED.content_languages,
+            quality_tags = EXCLUDED.quality_tags,
+            poster_url = EXCLUDED.poster_url,
+            category = EXCLUDED.category,
+            container_extension = EXCLUDED.container_extension,
+            epg_channel_id = EXCLUDED.epg_channel_id,
+            canonical_content_id = EXCLUDED.canonical_content_id
+      `);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   async deleteByProvider(providerId) {
@@ -1929,46 +2038,84 @@ const freeAccessQueries = {
 
   async upsertCatalogBatch(entries) {
     if (!entries.length) return;
-    const values = [];
-    const placeholders = entries.map((e, i) => {
-      const base = i * 13;
-      const titleYear = pickFirstDefined(e, 'titleYear', 'title_year', 'year');
-      const contentLanguages = pickFirstDefined(e, 'contentLanguages', 'content_languages', 'languages');
-      const qualityTags = pickFirstDefined(e, 'qualityTags', 'quality_tags');
-      values.push(
-        e.providerGroupId,
-        e.streamId,
-        e.rawTitle,
-        e.normalizedTitle || null,
-        e.canonicalTitle || null,
-        e.canonicalNormalizedTitle || null,
-        titleYear || null,
-        contentLanguages || [],
-        qualityTags || [],
-        e.posterUrl || null,
-        e.category || null,
-        e.vodType,
-        e.containerExtension || null
-      );
-      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}, $${base + 12}, $${base + 13})`;
-    });
 
-    await pool.query(
-      `INSERT INTO free_access_catalog (provider_group_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension)
-       VALUES ${placeholders.join(', ')}
-       ON CONFLICT (provider_group_id, stream_id, vod_type) DO UPDATE SET
-         raw_title = EXCLUDED.raw_title,
-         normalized_title = EXCLUDED.normalized_title,
-         canonical_title = EXCLUDED.canonical_title,
-         canonical_normalized_title = EXCLUDED.canonical_normalized_title,
-         title_year = EXCLUDED.title_year,
-         content_languages = EXCLUDED.content_languages,
-         quality_tags = EXCLUDED.quality_tags,
-         poster_url = EXCLUDED.poster_url,
-         category = EXCLUDED.category,
-         container_extension = EXCLUDED.container_extension`,
-      values
+    const dedupedEntries = Array.from(
+      new Map(
+        entries.map((entry) => [
+          [
+            entry.providerGroupId,
+            entry.streamId,
+            entry.vodType,
+          ].join('::'),
+          entry,
+        ])
+      ).values()
     );
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`
+        CREATE TEMP TABLE temp_free_access_catalog (LIKE free_access_catalog INCLUDING DEFAULTS) ON COMMIT DROP;
+      `);
+
+      const stream = client.query(from(`COPY temp_free_access_catalog (provider_group_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension) FROM STDIN WITH (FORMAT text, DELIMITER E'\\t', NULL '\\N')`));
+
+      const transformStream = new Transform({
+        objectMode: true,
+        transform(chunk, encoding, callback) {
+          const titleYear = pickFirstDefined(chunk, 'titleYear', 'title_year', 'year');
+          const contentLanguages = pickFirstDefined(chunk, 'contentLanguages', 'content_languages', 'languages');
+          const qualityTags = pickFirstDefined(chunk, 'qualityTags', 'quality_tags');
+
+          const formatArray = (arr) => {
+            if (!arr || arr.length === 0) return '{}';
+            return '{' + arr.map(a => `"${String(a).replace(/"/g, '""')}"`).join(',') + '}';
+          };
+
+          const escape = (val) => {
+            if (val === null || val === undefined) return '\\N';
+            return String(val).replace(/[\t\n\r\\]/g, (c) => ({ '\t': '\\t', '\n': '\\n', '\r': '\\r', '\\': '\\\\' }[c] || c));
+          };
+
+          const row = [
+            escape(chunk.providerGroupId), escape(chunk.streamId), escape(chunk.rawTitle),
+            escape(chunk.normalizedTitle || null), escape(chunk.canonicalTitle || null), escape(chunk.canonicalNormalizedTitle || null),
+            escape(titleYear || null), escape(formatArray(contentLanguages || [])), escape(formatArray(qualityTags || [])),
+            escape(chunk.posterUrl || null), escape(chunk.category || null), escape(chunk.vodType),
+            escape(chunk.containerExtension || null)
+          ].join('\t') + '\n';
+          
+          callback(null, row);
+        }
+      });
+
+      const sourceStream = require('stream').Readable.from(dedupedEntries);
+      await pipeline(sourceStream, transformStream, stream);
+
+      await client.query(`
+        INSERT INTO free_access_catalog (provider_group_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension)
+        SELECT provider_group_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension
+        FROM temp_free_access_catalog
+        ON CONFLICT (provider_group_id, stream_id, vod_type) DO UPDATE SET
+          raw_title = EXCLUDED.raw_title,
+          normalized_title = EXCLUDED.normalized_title,
+          canonical_title = EXCLUDED.canonical_title,
+          canonical_normalized_title = EXCLUDED.canonical_normalized_title,
+          title_year = EXCLUDED.title_year,
+          content_languages = EXCLUDED.content_languages,
+          quality_tags = EXCLUDED.quality_tags,
+          poster_url = EXCLUDED.poster_url,
+          category = EXCLUDED.category,
+          container_extension = EXCLUDED.container_extension
+      `);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   async findCatalogItemsByTmdbId(providerGroupId, tmdbId) {
@@ -2050,6 +2197,7 @@ const freeAccessQueries = {
 
 module.exports = {
   userQueries,
+  blogPostQueries,
   providerNetworkQueries,
   providerQueries,
   vodQueries,

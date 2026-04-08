@@ -39,6 +39,37 @@ CREATE TABLE IF NOT EXISTS admin_users (
 );
 
 -- ─────────────────────────────────────────
+-- Blog Posts
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS blog_posts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug VARCHAR UNIQUE NOT NULL,
+  title VARCHAR NOT NULL,
+  description TEXT NOT NULL,
+  content TEXT NOT NULL,
+  author VARCHAR NOT NULL DEFAULT 'StreamBridge Team',
+  tags TEXT[] DEFAULT ARRAY[]::TEXT[],
+  featured BOOLEAN DEFAULT false,
+  is_published BOOLEAN DEFAULT true,
+  published_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+ALTER TABLE blog_posts ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE blog_posts ADD COLUMN IF NOT EXISTS content TEXT;
+ALTER TABLE blog_posts ADD COLUMN IF NOT EXISTS author VARCHAR NOT NULL DEFAULT 'StreamBridge Team';
+ALTER TABLE blog_posts ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE blog_posts ADD COLUMN IF NOT EXISTS featured BOOLEAN DEFAULT false;
+ALTER TABLE blog_posts ADD COLUMN IF NOT EXISTS is_published BOOLEAN DEFAULT true;
+ALTER TABLE blog_posts ADD COLUMN IF NOT EXISTS published_at TIMESTAMP DEFAULT NOW();
+ALTER TABLE blog_posts ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+ALTER TABLE blog_posts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS blog_posts_published_at_idx ON blog_posts (published_at DESC);
+CREATE INDEX IF NOT EXISTS blog_posts_is_published_idx ON blog_posts (is_published, published_at DESC);
+
+-- ─────────────────────────────────────────
 -- User Providers (Xtream Codes)
 -- ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS user_providers (

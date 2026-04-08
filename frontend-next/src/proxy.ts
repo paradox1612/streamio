@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 const PROTECTED_PREFIXES = ['/dashboard', '/providers', '/vod', '/live', '/addon', '/account']
-const ADMIN_PREFIXES = ['/admin/dashboard', '/admin/users', '/admin/providers', '/admin/free-access', '/admin/health', '/admin/errors', '/admin/tmdb', '/admin/system']
+const ADMIN_PREFIXES = ['/admin/dashboard', '/admin/blog', '/admin/users', '/admin/providers', '/admin/free-access', '/admin/health', '/admin/errors', '/admin/tmdb', '/admin/system']
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -37,6 +37,7 @@ export const config = {
     '/addon/:path*',
     '/account/:path*',
     '/admin/dashboard/:path*',
+    '/admin/blog/:path*',
     '/admin/users/:path*',
     '/admin/providers/:path*',
     '/admin/free-access/:path*',
