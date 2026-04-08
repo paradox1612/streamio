@@ -103,5 +103,7 @@ describe('vodQueries batch upserts', () => {
     expect(pool.connect).toHaveBeenCalled();
     const calls = pool.query.mock.calls;
     expect(calls.some(call => call[0] && call[0].includes('temp_user_provider_vod'))).toBeTruthy();
+    expect(calls.some(call => call[0] && call[0].includes('WHERE user_provider_vod.user_id IS DISTINCT FROM EXCLUDED.user_id'))).toBeTruthy();
+    expect(calls.some(call => call[0] && call[0].includes('DELETE FROM user_provider_vod existing'))).toBeTruthy();
   });
 });

@@ -24,6 +24,8 @@ jest.mock('../../src/db/queries', () => ({
   vodQueries: {
     upsertBatch: jest.fn().mockResolvedValue(),
     upsertNetworkBatch: jest.fn().mockResolvedValue(),
+    deleteByProvider: jest.fn().mockResolvedValue(),
+    deleteByNetwork: jest.fn().mockResolvedValue(),
   },
   pool: {
     query: jest.fn().mockResolvedValue({ rows: [] }),
@@ -298,6 +300,37 @@ describe('providerService', () => {
           vodType: 'live',
         }),
       ]);
+    });
+  });
+
+  describe('refreshCatalog', () => {
+    it('deletes stale provider rows when a refresh returns no titles', async () => {
+      providerQueries.findByIdAndUser.mockResolvedValue({
+        id: 'provider-1',
+        user_id: 'user-1',
+        name: 'Provider One',
+        hosts: ['http://host.com'],
+        active_host: 'http://host.com',
+        username: 'user',
+        password: 'pass',
+        network_id: null,
+        catalog_variant: false,
+      });
+
+      fetch
+        .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }));
+
+      jest.spyOn(providerService, 'getLiveStreams').mockResolvedValueOnce([]);
+
+      const result = await providerService.refreshCatalog('provider-1', 'user-1');
+
+      expect(vodQueries.deleteByProvider).toHaveBeenCalledWith('provider-1');
+      expect(vodQueries.deleteByNetwork).not.toHaveBeenCalled();
+      expect(vodQueries.upsertBatch).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ movies: 0, series: 0, live: 0, total: 0 });
     });
   });
 });

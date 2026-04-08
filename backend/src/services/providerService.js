@@ -474,6 +474,11 @@ const providerService = {
           persisted: resolvedEntries.length,
         },
       });
+    } else {
+      await vodQueries.deleteByProvider(providerId);
+      if (provider.network_id && !catalogVariant) {
+        await vodQueries.deleteByNetwork(provider.network_id);
+      }
     }
 
     if (provider.network_id && !catalogVariant) {

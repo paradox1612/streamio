@@ -10,6 +10,12 @@ function pickFirstDefined(entry, ...keys) {
   return undefined;
 }
 
+function buildIsDistinctClause(targetAlias, sourceAlias, columns) {
+  return columns
+    .map((column) => `${targetAlias}.${column} IS DISTINCT FROM ${sourceAlias}.${column}`)
+    .join('\n            OR ');
+}
+
 const USER_PUBLIC_SELECT = `
   SELECT
     u.id,
@@ -530,12 +536,29 @@ const vodQueries = {
       const sourceStream = require('stream').Readable.from(dedupedEntries);
       await pipeline(sourceStream, transformStream, stream);
 
+      const changedColumns = [
+        'user_id',
+        'raw_title',
+        'normalized_title',
+        'canonical_title',
+        'canonical_normalized_title',
+        'title_year',
+        'content_languages',
+        'quality_tags',
+        'poster_url',
+        'category',
+        'container_extension',
+        'epg_channel_id',
+        'canonical_content_id',
+      ];
+
       await client.query(`
         INSERT INTO user_provider_vod (user_id, provider_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension, epg_channel_id, canonical_content_id)
         SELECT user_id, provider_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension, epg_channel_id, canonical_content_id
         FROM temp_user_provider_vod
         ON CONFLICT (provider_id, stream_id, vod_type) DO UPDATE
-        SET raw_title = EXCLUDED.raw_title,
+        SET user_id = EXCLUDED.user_id,
+            raw_title = EXCLUDED.raw_title,
             normalized_title = EXCLUDED.normalized_title,
             canonical_title = EXCLUDED.canonical_title,
             canonical_normalized_title = EXCLUDED.canonical_normalized_title,
@@ -547,6 +570,21 @@ const vodQueries = {
             container_extension = EXCLUDED.container_extension,
             epg_channel_id = EXCLUDED.epg_channel_id,
             canonical_content_id = EXCLUDED.canonical_content_id
+        WHERE ${buildIsDistinctClause('user_provider_vod', 'EXCLUDED', changedColumns)}
+      `);
+      await client.query(`
+        DELETE FROM user_provider_vod existing
+        WHERE existing.provider_id IN (
+          SELECT DISTINCT provider_id
+          FROM temp_user_provider_vod
+        )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM temp_user_provider_vod incoming
+            WHERE incoming.provider_id = existing.provider_id
+              AND incoming.stream_id = existing.stream_id
+              AND incoming.vod_type = existing.vod_type
+          )
       `);
       await client.query('COMMIT');
     } catch (err) {
@@ -613,6 +651,21 @@ const vodQueries = {
       const sourceStream = require('stream').Readable.from(dedupedEntries);
       await pipeline(sourceStream, transformStream, stream);
 
+      const changedColumns = [
+        'raw_title',
+        'normalized_title',
+        'canonical_title',
+        'canonical_normalized_title',
+        'title_year',
+        'content_languages',
+        'quality_tags',
+        'poster_url',
+        'category',
+        'container_extension',
+        'epg_channel_id',
+        'canonical_content_id',
+      ];
+
       await client.query(`
         INSERT INTO network_vod (provider_network_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension, epg_channel_id, canonical_content_id)
         SELECT provider_network_id, stream_id, raw_title, normalized_title, canonical_title, canonical_normalized_title, title_year, content_languages, quality_tags, poster_url, category, vod_type, container_extension, epg_channel_id, canonical_content_id
@@ -630,6 +683,21 @@ const vodQueries = {
             container_extension = EXCLUDED.container_extension,
             epg_channel_id = EXCLUDED.epg_channel_id,
             canonical_content_id = EXCLUDED.canonical_content_id
+        WHERE ${buildIsDistinctClause('network_vod', 'EXCLUDED', changedColumns)}
+      `);
+      await client.query(`
+        DELETE FROM network_vod existing
+        WHERE existing.provider_network_id IN (
+          SELECT DISTINCT provider_network_id
+          FROM temp_network_vod
+        )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM temp_network_vod incoming
+            WHERE incoming.provider_network_id = existing.provider_network_id
+              AND incoming.stream_id = existing.stream_id
+              AND incoming.vod_type = existing.vod_type
+          )
       `);
       await client.query('COMMIT');
     } catch (err) {
@@ -642,6 +710,10 @@ const vodQueries = {
 
   async deleteByProvider(providerId) {
     await pool.query('DELETE FROM user_provider_vod WHERE provider_id = $1', [providerId]);
+  },
+
+  async deleteByNetwork(providerNetworkId) {
+    await pool.query('DELETE FROM network_vod WHERE provider_network_id = $1', [providerNetworkId]);
   },
 
   async resolveByExternalIdForUser(userId, externalId, { single = true, onlyOnline = false } = {}) {

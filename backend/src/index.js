@@ -61,16 +61,40 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limiting — split into auth, preview, and general
-const authLimiter = rateLimit({
+// ─── Rate Limiters ────────────────────────────────────────────────────────────
+
+// Login: only counts FAILED attempts — brute-force protection
+const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20,
+  max: 10,
+  skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.ip,
+  message: { error: 'Too many failed login attempts. Please try again in 15 minutes.' },
 });
 
-// Strict limiter for the unauthenticated preview endpoint
+// Signup: prevent mass account creation
+const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
+  message: { error: 'Too many account creation attempts. Please try again in an hour.' },
+});
+
+// Password reset: prevent email flooding
+const passwordResetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
+  message: { error: 'Too many password reset requests. Please try again in an hour.' },
+});
+
+// Preview: strict — unauthenticated endpoint
 const previewLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5,
@@ -80,17 +104,28 @@ const previewLimiter = rateLimit({
   message: { error: 'Too many preview requests. Please try again in a few minutes.' },
 });
 
-const generalLimiter = rateLimit({
+// Addon routes: Stremio polls stream/catalog/meta — allow reasonable burst
+const addonLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 300,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.ip,
+  message: { error: 'Too many addon requests. Please slow down.' },
 });
 
-// Apply auth limiter only to auth routes
-app.use('/api/auth', authLimiter);
-// Apply general limiter to everything else
+// General: catch-all for all other routes
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
+  skip: (req) => req.path === '/health',
+  message: { error: 'Too many requests. Please slow down.' },
+});
+
+// Apply general limiter to all routes; specific limiters are applied per-route below
 app.use(generalLimiter);
 
 // Request logging
@@ -110,7 +145,7 @@ app.get('/health', (req, res) => {
 // CORS required by Stremio
 const addonCors = cors({ origin: '*' });
 
-app.get('/addon/:token/manifest.json', addonCors, async (req, res) => {
+app.get('/addon/:token/manifest.json', addonCors, addonLimiter, async (req, res) => {
   try {
     const token = req.params.token;
     // Check cache first
@@ -142,10 +177,10 @@ async function catalogHandler(req, res) {
   }
 }
 
-app.get('/addon/:token/catalog/:type/:id.json', addonCors, catalogHandler);
-app.get('/addon/:token/catalog/:type/:id/:extra(*)?.json', addonCors, catalogHandler);
+app.get('/addon/:token/catalog/:type/:id.json', addonCors, addonLimiter, catalogHandler);
+app.get('/addon/:token/catalog/:type/:id/:extra(*)?.json', addonCors, addonLimiter, catalogHandler);
 
-app.get('/addon/:token/meta/:type/:id.json', addonCors, async (req, res) => {
+app.get('/addon/:token/meta/:type/:id.json', addonCors, addonLimiter, async (req, res) => {
   try {
     const { token, type, id } = req.params;
     const result = await handleMeta(token, type, id);
@@ -157,7 +192,7 @@ app.get('/addon/:token/meta/:type/:id.json', addonCors, async (req, res) => {
   }
 });
 
-app.get('/addon/:token/stream/:type/:id.json', addonCors, async (req, res) => {
+app.get('/addon/:token/stream/:type/:id.json', addonCors, addonLimiter, async (req, res) => {
   try {
     const { token, type, id } = req.params;
     const result = await handleStream(token, type, id);
@@ -171,6 +206,10 @@ app.get('/addon/:token/stream/:type/:id.json', addonCors, async (req, res) => {
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
 
+app.use('/api/auth/login', loginLimiter);
+app.use('/api/auth/signup', signupLimiter);
+app.use('/api/auth/forgot-password', passwordResetLimiter);
+app.use('/api/auth/reset-password', passwordResetLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/error-reports', errorReportRoutes);
 app.use('/api/blog', blogRoutes);
