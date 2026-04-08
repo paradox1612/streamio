@@ -102,6 +102,22 @@ export const providerAPI = {
   manualMatch: (id: string, data: Record<string, unknown>) => api.post(`/api/providers/${id}/manual-match`, data),
 }
 
+// ─── Home / Trending / Favorites ─────────────────────────────────────────────
+export const homeAPI = {
+  getSections: () => api.get('/api/home/sections'),
+  getTrending: (type: 'movie' | 'tv') => api.get('/api/home/trending', { params: { type } }),
+  getFavorites: (type?: string) => api.get('/api/home/favorites', { params: type ? { type } : {} }),
+  addFavorite: (data: {
+    itemType: string
+    itemId: string
+    itemName: string
+    posterUrl?: string
+    providerId?: string
+    metadata?: Record<string, unknown>
+  }) => api.post('/api/home/favorites', data),
+  removeFavorite: (id: string) => api.delete(`/api/home/favorites/${id}`),
+}
+
 // ─── Admin ────────────────────────────────────────────────────────────────────
 export const adminAPI = {
   login: (username: string, password: string) => api.post('/api/admin/auth/login', { username, password }),

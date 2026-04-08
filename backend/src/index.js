@@ -15,6 +15,7 @@ const freeAccessRoutes = require('./api/freeAccessRoutes');
 const previewRoutes = require('./api/previewRoutes');
 const adminRoutes = require('./admin/adminRoutes');
 const cloudstreamRoutes = require('./api/cloudstreamRoutes');
+const homeRoutes = require('./api/homeRoutes');
 const errorHandler = require('./middleware/errorHandler');
 const { startScheduler } = require('./jobs/scheduler');
 const logger = require('./utils/logger');
@@ -240,6 +241,7 @@ app.use('/api/preview', previewLimiter, previewRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/providers', providerRoutes);
 app.use('/api/free-access', freeAccessRoutes);
+app.use('/api/home', homeRoutes);
 app.use('/api/admin', adminRoutes);
 
 // ─── Error Handler ────────────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
 
 const baseNavItems = [
-  { path: '/dashboard',  label: 'Dashboard',  mobileLabel: 'Home',    icon: LayoutDashboard },
+  { path: '/dashboard',  label: 'Home',       mobileLabel: 'Home',    icon: LayoutDashboard },
   { path: '/providers',  label: 'Providers',   mobileLabel: 'Sources', icon: Server },
   { path: '/vod',        label: 'Browse VOD',  mobileLabel: 'VOD',     icon: Film },
   { path: '/live',       label: 'Live TV',     mobileLabel: 'Live',    icon: Tv2 },

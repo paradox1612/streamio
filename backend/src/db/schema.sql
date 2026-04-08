@@ -616,6 +616,23 @@ CREATE TABLE IF NOT EXISTS watch_history (
 );
 CREATE INDEX IF NOT EXISTS idx_watch_history_user ON watch_history(user_id, last_watched_at DESC);
 
+-- ─────────────────────────────────────────
+-- User Favorites (channels, categories, VOD)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS user_favorites (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  item_type VARCHAR NOT NULL,   -- 'channel' | 'category' | 'movie' | 'series'
+  item_id TEXT NOT NULL,        -- stream_id for channels, tmdb_id for VOD, category name for category
+  item_name TEXT NOT NULL,
+  poster_url TEXT,
+  provider_id UUID REFERENCES user_providers(id) ON DELETE CASCADE,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, item_type, item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_favorites_user ON user_favorites(user_id, item_type);
+
 -- manually_matched flag to prevent auto-job from overwriting user corrections
 ALTER TABLE matched_content ADD COLUMN IF NOT EXISTS manually_matched BOOLEAN DEFAULT FALSE;
 

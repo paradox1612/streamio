@@ -1,1 +1,2 @@
-rootProject.name = "StreamBridgePlugin"
+rootProject.name = "StreamBridgePlugins"
+include("StreamBridgePlugin")

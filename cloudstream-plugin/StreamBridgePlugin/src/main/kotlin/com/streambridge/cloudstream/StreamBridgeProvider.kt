@@ -20,7 +20,7 @@ data class CSItem(
     val name: String,
     val url: String,
     val posterUrl: String?,
-    val type: String,           // "Movie" | "TvSeries" | "Live"
+    val type: String,
     val year: Int?,
     val tags: List<String> = emptyList(),
 )
@@ -68,11 +68,19 @@ data class CSStreamResponse(val streams: List<CSStream> = emptyList())
 /**
  * StreamBridgeProvider
  *
- * Bridges CloudStream to a StreamBridge backend instance.
- * The user provides their addon token (from StreamBridge dashboard →
- * "Your Addon URL") in the plugin settings dialog.
+ * Main page sections are built dynamically from the user's providers:
  *
- * All content logic lives in the backend — this class is a thin HTTP client.
+ *   Provider A – Movies  │  fetched from /cloudstream/catalog?providerId=A&type=Movie
+ *   Provider A – Series  │  fetched from /cloudstream/catalog?providerId=A&type=TvSeries
+ *   Provider A – Live    │  fetched from /cloudstream/catalog?providerId=A&type=Live
+ *   Provider B – Movies  │  ...
+ *   ...
+ *
+ * The MainPageData.data field encodes "TYPE|PROVIDER_ID" so getMainPage() knows
+ * exactly which provider and type to fetch without any extra state.
+ *
+ * Quick search is enabled so CloudStream shows instant suggestions as the user
+ * types — backed by /cloudstream/search on the backend.
  */
 class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
 
@@ -80,7 +88,10 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
     override var lang = "en"
 
     override val hasMainPage = true
-    override val hasQuickSearch = false
+
+    // Enables the instant suggestion dropdown as the user types in the search bar
+    override val hasQuickSearch = true
+
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Live)
 
     // ── Settings helpers ──────────────────────────────────────────────────────
@@ -94,24 +105,83 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
 
     private fun apiUrl(path: String) = "${getBaseUrl()}$path"
 
-    // ── Homepage sections ─────────────────────────────────────────────────────
+    // ── Dynamic main page ─────────────────────────────────────────────────────
 
     /**
-     * mainPage defines the tabs/sections shown on the CloudStream home screen.
-     * Each entry becomes one paginated call to getMainPage().
-     * We expose Movies, Series, and Live TV as three separate tabs.
+     * mainPage is built lazily on first access.
+     *
+     * Each IPTV provider the user has added gets three rows:
+     *   "{Provider Name} – Movies"
+     *   "{Provider Name} – Series"
+     *   "{Provider Name} – Live TV"
+     *
+     * If the token isn't set yet or the fetch fails, fall back to three generic
+     * rows that aggregate content across all providers (providerId = "all").
+     *
+     * The data field encodes "TYPE|PROVIDER_ID" — parsed in getMainPage().
      */
-    override val mainPage = mainPageOf(
-        "Movie"    to "Movies",
-        "TvSeries" to "Series",
-        "Live"     to "Live TV",
-    )
+    override val mainPage: List<MainPageData> by lazy {
+        val token = getToken()
 
+        // No token set yet — show placeholder rows
+        if (token.isNullOrBlank()) {
+            return@lazy listOf(
+                MainPageData("Movies",   "Movie|all",    false),
+                MainPageData("Series",   "TvSeries|all", false),
+                MainPageData("Live TV",  "Live|all",     false),
+            )
+        }
+
+        try {
+            // Fetch providers synchronously (this runs once at plugin init)
+            val url = apiUrl("/cloudstream/providers?token=$token")
+            val response = kotlinx.coroutines.runBlocking { app.get(url) }
+            val data = parseJson<CSProvidersResponse>(response.text)
+
+            if (data.providers.isEmpty()) {
+                return@lazy listOf(
+                    MainPageData("Movies",  "Movie|all",    false),
+                    MainPageData("Series",  "TvSeries|all", false),
+                    MainPageData("Live TV", "Live|all",     false),
+                )
+            }
+
+            // One row per type per provider
+            data.providers.flatMap { provider ->
+                listOf(
+                    MainPageData("${provider.name} – Movies",   "Movie|${provider.id}",    false),
+                    MainPageData("${provider.name} – Series",   "TvSeries|${provider.id}", false),
+                    MainPageData("${provider.name} – Live TV",  "Live|${provider.id}",     false),
+                )
+            }
+        } catch (e: Exception) {
+            // Network failure at init — fall back to generic rows
+            listOf(
+                MainPageData("Movies",   "Movie|all",    false),
+                MainPageData("Series",   "TvSeries|all", false),
+                MainPageData("Live TV",  "Live|all",     false),
+            )
+        }
+    }
+
+    /**
+     * Fetches one page of content for a homepage section.
+     *
+     * request.data format: "TYPE|PROVIDER_ID"
+     *   e.g. "Movie|3f8a1c…"  or  "Live|all"
+     */
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val token = getToken() ?: return null
-        val csType = request.data  // "Movie" | "TvSeries" | "Live"
 
-        val url = apiUrl("/cloudstream/catalog?token=$token&type=$csType&page=$page&pageSize=50")
+        val parts = request.data.split("|", limit = 2)
+        val csType    = parts.getOrElse(0) { "Movie" }
+        val providerId = parts.getOrElse(1) { "all" }
+
+        val providerParam = if (providerId != "all") "&providerId=$providerId" else ""
+        val url = apiUrl(
+            "/cloudstream/catalog?token=$token&type=$csType&page=$page&pageSize=50$providerParam"
+        )
+
         val response = app.get(url)
         if (!response.isSuccessful) return null
 
@@ -121,42 +191,47 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
         return newHomePageResponse(request.name, items, data.hasNextPage)
     }
 
-    // ── Search ────────────────────────────────────────────────────────────────
+    // ── Full search ───────────────────────────────────────────────────────────
 
+    /**
+     * Full search — called when the user submits a search query.
+     * Searches across all providers on the backend and returns merged results.
+     */
     override suspend fun search(query: String): List<SearchResponse>? {
         val token = getToken() ?: return null
         val encoded = java.net.URLEncoder.encode(query, "UTF-8")
 
-        val url = apiUrl("/cloudstream/search?token=$token&query=$encoded&pageSize=50")
-        val response = app.get(url)
+        val response = app.get(apiUrl("/cloudstream/search?token=$token&query=$encoded&pageSize=50"))
         if (!response.isSuccessful) return null
 
-        val data = parseJson<CSCatalogResponse>(response.text)
-        return data.results.mapNotNull { it.toSearchResponse() }
+        return parseJson<CSCatalogResponse>(response.text).results.mapNotNull { it.toSearchResponse() }
+    }
+
+    /**
+     * Quick search — fires as the user types, showing instant suggestions.
+     * Uses a smaller page size (20) for speed.
+     * Searches all content types so suggestions aren't limited to one category.
+     */
+    override suspend fun quickSearch(query: String): List<SearchResponse>? {
+        val token = getToken() ?: return null
+        if (query.length < 2) return null   // wait for at least 2 chars
+
+        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+
+        val response = app.get(apiUrl("/cloudstream/search?token=$token&query=$encoded&pageSize=20"))
+        if (!response.isSuccessful) return null
+
+        return parseJson<CSCatalogResponse>(response.text).results.mapNotNull { it.toSearchResponse() }
     }
 
     // ── Detail / Load ─────────────────────────────────────────────────────────
 
-    /**
-     * Called when the user taps a title.
-     * Fetches full detail including episode list for series.
-     */
     override suspend fun load(url: String): LoadResponse? {
         val token = getToken() ?: return null
-
-        // url is the content ID: "tt1234567", "tmdb:123", or "sb_uuid"
-        // type is embedded in the SearchResponse data — recover it from the
-        // detail endpoint which echoes it back.
         val encoded = java.net.URLEncoder.encode(url, "UTF-8")
-
-        // We do not know the type yet at this point; the backend can infer it
-        // from the ID. Pass a broad default and let the backend handle it.
         val type = inferTypeFromUrl(url)
-        val apiEndpoint = apiUrl(
-            "/cloudstream/detail?token=$token&url=$encoded&type=$type"
-        )
 
-        val response = app.get(apiEndpoint)
+        val response = app.get(apiUrl("/cloudstream/detail?token=$token&url=$encoded&type=$type"))
         if (!response.isSuccessful) return null
 
         val detail = parseJson<CSDetailResponse>(response.text)
@@ -165,7 +240,7 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
             "TvSeries" -> {
                 val episodes = detail.episodes?.map { ep ->
                     Episode(
-                        data = ep.url,           // "baseId:season:episode"
+                        data = ep.url,
                         name = ep.name,
                         season = ep.season,
                         episode = ep.episode,
@@ -200,7 +275,7 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
                 }
             }
 
-            else -> { // "Movie" and anything else
+            else -> {
                 newMovieLoadResponse(
                     name = detail.name,
                     url = detail.url,
@@ -218,13 +293,6 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
 
     // ── Stream extraction ─────────────────────────────────────────────────────
 
-    /**
-     * Called when the user picks a title (movie/live) or episode (series).
-     * `data` is the content ID for movies and the episode ID for series.
-     *
-     * Returns one ExtractorLink per backend host — CloudStream lists them so
-     * the user can manually switch hosts if one is slow or offline.
-     */
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -232,21 +300,17 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
         val token = getToken() ?: return false
-
         val encoded = java.net.URLEncoder.encode(data, "UTF-8")
         val type = inferTypeFromUrl(data)
-        val url = apiUrl("/cloudstream/stream?token=$token&url=$encoded&type=$type")
 
-        val response = app.get(url)
+        val response = app.get(apiUrl("/cloudstream/stream?token=$token&url=$encoded&type=$type"))
         if (!response.isSuccessful) return false
 
         val streamResponse = parseJson<CSStreamResponse>(response.text)
         if (streamResponse.streams.isEmpty()) return false
 
         streamResponse.streams.forEach { stream ->
-            val isM3u8 = stream.url.contains(".m3u8", ignoreCase = true)
-                    || type == "Live"
-
+            val isM3u8 = stream.url.contains(".m3u8", ignoreCase = true) || type == "Live"
             callback(
                 newExtractorLink(
                     source = "StreamBridge",
@@ -265,9 +329,6 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
 
     // ─── Private helpers ──────────────────────────────────────────────────────
 
-    /**
-     * Convert a CSItem to the appropriate SearchResponse subtype.
-     */
     private fun CSItem.toSearchResponse(): SearchResponse? {
         if (name.isBlank() || url.isBlank()) return null
         return when (type) {
@@ -283,15 +344,8 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
         }
     }
 
-    /**
-     * Infer the CloudStream type string from a content URL/ID.
-     * Series episode IDs contain ":" separators (baseId:season:episode).
-     * Live stream IDs from the backend start with "live_".
-     * Everything else defaults to Movie.
-     */
     private fun inferTypeFromUrl(url: String): String {
         if (url.startsWith("live_")) return "Live"
-        // A series episode ID looks like "tt123:1:1" or "sb_uuid:1:1"
         val parts = url.split(":")
         return when {
             parts.size >= 3 && parts.last().all { it.isDigit() } -> "TvSeries"
@@ -299,9 +353,6 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
         }
     }
 
-    /**
-     * Build the human-readable label shown next to each stream in the player.
-     */
     private fun buildStreamLabel(stream: CSStream): String {
         val label = stream.name.ifBlank { "StreamBridge" }
         return if (!stream.quality.isNullOrBlank()) "$label (${stream.quality})" else label
