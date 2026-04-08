@@ -62,15 +62,15 @@ spec:
         - name: data
           emptyDir: {}
       {{- end }}
-      {{- with .Values.nodeSelector }}
+      {{- with .Values.postgres.nodeSelector | default .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.affinity }}
+      {{- with .Values.postgres.affinity | default .Values.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.tolerations }}
+      {{- with .Values.postgres.tolerations | default .Values.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}

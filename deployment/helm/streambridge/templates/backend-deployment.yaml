@@ -79,6 +79,12 @@ spec:
               value: {{ .Values.backend.env.accountLookupSuccessTtlSeconds | quote }}
             - name: ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS
               value: {{ .Values.backend.env.accountLookupFailureTtlSeconds | quote }}
+            - name: TMDB_MATCH_BATCH_SIZE
+              value: {{ .Values.backend.env.tmdbMatchBatchSize | quote }}
+            - name: TMDB_MATCH_CONCURRENCY
+              value: {{ .Values.backend.env.tmdbMatchConcurrency | quote }}
+            - name: TMDB_MATCH_BATCH_PAUSE_MS
+              value: {{ .Values.backend.env.tmdbMatchBatchPauseMs | quote }}
             - name: VPN_ENABLED
               value: {{ .Values.vpn.enabled | quote }}
             {{- if .Values.vpn.enabled }}
@@ -166,15 +172,15 @@ spec:
           hostPath:
             path: /dev/net/tun
       {{- end }}
-      {{- with .Values.nodeSelector }}
+      {{- with .Values.backend.nodeSelector | default .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.affinity }}
+      {{- with .Values.backend.affinity | default .Values.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.tolerations }}
+      {{- with .Values.backend.tolerations | default .Values.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}

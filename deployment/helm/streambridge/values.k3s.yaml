@@ -17,6 +17,9 @@ backend:
     baseUrl: "https://stream.example.com"
     healthCheckEnabled: "true"
     healthCheckStartupEnabled: "false"
+    tmdbMatchBatchSize: "1000"
+    tmdbMatchConcurrency: "2"
+    tmdbMatchBatchPauseMs: "250"
   secrets:
     databaseUrl: ""
     tmdbApiKey: "set-me"
@@ -32,6 +35,9 @@ backend:
     limits:
       cpu: 500m
       memory: 512Mi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 scheduler:
   enabled: true
@@ -43,6 +49,9 @@ scheduler:
     limits:
       cpu: "1"
       memory: 1Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 postgres:
   enabled: true
@@ -61,6 +70,9 @@ postgres:
     limits:
       cpu: "1"
       memory: 1Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 vpn:
   # Feature flag — set to true to inject gluetun sidecar into backend & scheduler pods

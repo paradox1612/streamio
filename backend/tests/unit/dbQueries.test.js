@@ -11,7 +11,7 @@ jest.mock('../../src/db/pool', () => {
 });
 
 const pool = require('../../src/db/pool');
-const { tmdbQueries, vodQueries } = require('../../src/db/queries');
+const { tmdbQueries, vodQueries, matchQueries } = require('../../src/db/queries');
 
 // Mock pg-copy-streams and stream/promises
 jest.mock('pg-copy-streams', () => ({
@@ -71,6 +71,23 @@ describe('vodQueries provider catalog ordering', () => {
     expect(pool.query).toHaveBeenCalledWith(
       expect.stringContaining('ORDER BY\n      v.canonical_normalized_title ASC NULLS LAST,\n      v.normalized_title ASC NULLS LAST,\n      v.raw_title ASC,\n      v.stream_id ASC'),
       ['provider-1', null, 'movie', 50, 0]
+    );
+  });
+});
+
+describe('matchQueries upsert', () => {
+  it('avoids rewriting identical rows to reduce WAL churn', async () => {
+    await matchQueries.upsert({
+      rawTitle: 'The Matrix',
+      tmdbId: 603,
+      tmdbType: 'movie',
+      imdbId: 'tt0133093',
+      confidenceScore: 1,
+    });
+
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE matched_content.tmdb_id IS DISTINCT FROM EXCLUDED.tmdb_id'),
+      ['The Matrix', 603, 'movie', 'tt0133093', 1]
     );
   });
 });

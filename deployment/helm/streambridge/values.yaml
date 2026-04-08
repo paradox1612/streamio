@@ -35,6 +35,9 @@ backend:
     healthCheckProviderMinIntervalMs: "3600000"
     accountLookupSuccessTtlSeconds: "600"
     accountLookupFailureTtlSeconds: "300"
+    tmdbMatchBatchSize: "1000"
+    tmdbMatchConcurrency: "2"
+    tmdbMatchBatchPauseMs: "250"
   secrets:
     databaseUrl: ""
     tmdbApiKey: ""
@@ -44,6 +47,9 @@ backend:
     piaUsername: ""
     piaPassword: ""
   resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 migrations:
   enabled: true
@@ -53,6 +59,9 @@ scheduler:
   enabled: true
   replicaCount: 1
   resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 postgres:
   enabled: true
@@ -74,6 +83,9 @@ postgres:
     size: 10Gi
     storageClassName: ""
   resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 ingress:
   enabled: true

@@ -176,4 +176,25 @@ describe('tmdbService – runMatching', () => {
     expect(mockMatchQueries.upsert).toHaveBeenCalledTimes(2);
     expect(result).toMatchObject({ matched: 1, enriched: 1, failed: 0, total: 2, batches: 2 });
   });
+
+  it('stops after a no-progress batch instead of retrying the same failed titles forever', async () => {
+    mockVodQueries.getUnmatchedForMatching.mockResolvedValue([
+      { raw_title: 'Unknown Movie', vod_type: 'movie', tmdb_id: null, imdb_id: null, confidence_score: null },
+    ]);
+
+    mockTmdbQueries.exactMatchMovie.mockResolvedValue(null);
+    mockTmdbQueries.fuzzyMatchMovie.mockResolvedValue(null);
+
+    const result = await runMatching(1, { enrichMissingImdb: false });
+
+    expect(mockVodQueries.getUnmatchedForMatching).toHaveBeenCalledTimes(1);
+    expect(mockMatchQueries.upsert).toHaveBeenCalledWith({
+      rawTitle: 'Unknown Movie',
+      tmdbId: null,
+      tmdbType: 'movie',
+      imdbId: null,
+      confidenceScore: 0,
+    });
+    expect(result).toMatchObject({ matched: 0, enriched: 0, failed: 1, total: 1, batches: 1 });
+  });
 });

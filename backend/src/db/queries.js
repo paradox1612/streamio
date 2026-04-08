@@ -1433,7 +1433,11 @@ const matchQueries = {
          tmdb_type = EXCLUDED.tmdb_type,
          imdb_id = EXCLUDED.imdb_id,
          confidence_score = EXCLUDED.confidence_score,
-         matched_at = NOW()`,
+         matched_at = NOW()
+       WHERE matched_content.tmdb_id IS DISTINCT FROM EXCLUDED.tmdb_id
+          OR matched_content.tmdb_type IS DISTINCT FROM EXCLUDED.tmdb_type
+          OR matched_content.imdb_id IS DISTINCT FROM EXCLUDED.imdb_id
+          OR matched_content.confidence_score IS DISTINCT FROM EXCLUDED.confidence_score`,
       [rawTitle, tmdbId, tmdbType, imdbId, confidenceScore]
     );
   },

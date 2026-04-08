@@ -14,8 +14,14 @@ try { ptn = require('parse-torrent-title'); } catch (_) { ptn = null; }
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const TMDB_POSTER_BASE = 'https://image.tmdb.org/t/p/w500';
 const CONFIDENCE_THRESHOLD = 0.6;
-const MATCH_CONCURRENCY = parseInt(process.env.TMDB_MATCH_CONCURRENCY || '4', 10);
-const MATCH_BATCH_SIZE = parseInt(process.env.TMDB_MATCH_BATCH_SIZE || '10000', 10);
+const MATCH_CONCURRENCY = parseInt(process.env.TMDB_MATCH_CONCURRENCY || '2', 10);
+const MATCH_BATCH_SIZE = parseInt(process.env.TMDB_MATCH_BATCH_SIZE || '1000', 10);
+const MATCH_BATCH_PAUSE_MS = parseInt(process.env.TMDB_MATCH_BATCH_PAUSE_MS || '250', 10);
+
+function sleep(ms) {
+  if (!ms || ms <= 0) return Promise.resolve();
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 function extractCleanTitle(rawTitle) {
   let title = cleanTitle(rawTitle);
@@ -376,6 +382,17 @@ const tmdbService = {
 
         if (getActiveAddonRequests() > 0) {
           logger.info(`Background matching yielded to ${getActiveAddonRequests()} active addon request(s)`);
+        }
+
+        if (batchResult.matched === 0 && batchResult.enriched === 0) {
+          logger.info(
+            `Stopping matching after batch ${batchNumber}: no new matches or IMDb enrichments were produced`
+          );
+          break;
+        }
+
+        if (MATCH_BATCH_PAUSE_MS > 0) {
+          await sleep(MATCH_BATCH_PAUSE_MS);
         }
 
         if (unmatched.length < limit) break;
