@@ -93,6 +93,12 @@ spec:
           envFrom:
             - secretRef:
                 name: {{ include "streambridge.backendName" . }}-env
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
           livenessProbe:
             httpGet:
               path: /health
