@@ -825,7 +825,8 @@ const vodQueries = {
        FROM ${sourceTable} v
        LEFT JOIN canonical_content cc ON cc.id = v.canonical_content_id
        LEFT JOIN matched_content m ON m.raw_title = v.raw_title AND m.tmdb_id IS NOT NULL
-       WHERE ${providerFilterColumn} = $1`,
+       WHERE ${providerFilterColumn} = $1
+         AND v.vod_type IN ('movie', 'series')`,
       [providerFilterValue]
     );
     return rows[0];
@@ -843,6 +844,7 @@ const vodQueries = {
        LEFT JOIN canonical_content cc ON cc.id = v.canonical_content_id
        LEFT JOIN matched_content m ON m.raw_title = v.raw_title
        WHERE ${providerFilterColumn} = $1
+         AND v.vod_type IN ('movie', 'series')
          AND (cc.tmdb_id IS NULL AND (m.id IS NULL OR m.tmdb_id IS NULL))
        ORDER BY v.raw_title ASC`,
       [providerFilterValue]

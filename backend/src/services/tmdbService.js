@@ -122,13 +122,27 @@ async function findBestMatch(rawTitle, vodType) {
 
   if (!normalized) return null;
 
-  if (vodType === 'series') {
-    const exact = await tmdbQueries.exactMatchSeries(normalized, year);
-    return exact || tmdbQueries.fuzzyMatchSeries(normalized, year);
+  const exactMatch = vodType === 'series'
+    ? tmdbQueries.exactMatchSeries.bind(tmdbQueries)
+    : tmdbQueries.exactMatchMovie.bind(tmdbQueries);
+  const fuzzyMatch = vodType === 'series'
+    ? tmdbQueries.fuzzyMatchSeries.bind(tmdbQueries)
+    : tmdbQueries.fuzzyMatchMovie.bind(tmdbQueries);
+
+  const exact = await exactMatch(normalized, year);
+  if (exact) return exact;
+
+  const fuzzy = await fuzzyMatch(normalized, year);
+  if (fuzzy) return fuzzy;
+
+  if (year) {
+    const exactWithoutYear = await exactMatch(normalized, null);
+    if (exactWithoutYear) return exactWithoutYear;
+
+    return fuzzyMatch(normalized, null);
   }
 
-  const exact = await tmdbQueries.exactMatchMovie(normalized, year);
-  return exact || tmdbQueries.fuzzyMatchMovie(normalized, year);
+  return null;
 }
 
 async function mapWithConcurrency(items, concurrency, worker) {
