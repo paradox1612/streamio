@@ -14,6 +14,7 @@ const providerRoutes = require('./api/providerRoutes');
 const freeAccessRoutes = require('./api/freeAccessRoutes');
 const previewRoutes = require('./api/previewRoutes');
 const adminRoutes = require('./admin/adminRoutes');
+const cloudstreamRoutes = require('./api/cloudstreamRoutes');
 const errorHandler = require('./middleware/errorHandler');
 const { startScheduler } = require('./jobs/scheduler');
 const logger = require('./utils/logger');
@@ -220,6 +221,11 @@ app.get('/addon/:token/stream/:type/:id.json', addonCors, addonLimiter, async (r
     res.json({ streams: [] });
   }
 });
+
+// ─── CloudStream Plugin Routes ────────────────────────────────────────────────
+
+// Open CORS (same as Stremio addon) — requests come from Android devices, not browsers
+app.use('/cloudstream', addonCors, addonLimiter, cloudstreamRoutes);
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
 

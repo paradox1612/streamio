@@ -123,6 +123,68 @@ jobs:
           rm -rf "${{ runner.temp }}/.buildx-cache-frontend-next"
           mv "${{ runner.temp }}/.buildx-cache-frontend-next-new" "${{ runner.temp }}/.buildx-cache-frontend-next"
 
+  build-cloudstream-plugin:
+    name: Build CloudStream Plugin
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # needed for paths-filter to diff against previous commit
+
+      - name: Check if plugin code changed
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            plugin:
+              - 'cloudstream-plugin/**'
+
+      - name: Set up JDK 17
+        if: steps.changes.outputs.plugin == 'true'
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Cache Gradle
+        if: steps.changes.outputs.plugin == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('cloudstream-plugin/**/*.gradle*', 'cloudstream-plugin/**/gradle-wrapper.properties') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
+      - name: Build .cs3 plugin
+        if: steps.changes.outputs.plugin == 'true'
+        run: |
+          cd cloudstream-plugin
+          chmod +x gradlew
+          ./gradlew StreamBridgePlugin:make makePluginsJson
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Copy artifacts into repo
+        if: steps.changes.outputs.plugin == 'true'
+        run: |
+          mkdir -p builds
+          cp cloudstream-plugin/build/outputs/cs3/*.cs3 builds/ 2>/dev/null || true
+          cp cloudstream-plugin/plugins.json builds/plugins.json
+
+      - name: Commit and push built artifacts
+        if: steps.changes.outputs.plugin == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add builds/
+          git diff --cached --quiet || git commit -m "chore: CloudStream plugin build ${{ github.sha }}"
+          git push
+
   deploy-k3s:
     name: Deploy To K3s
     needs: build-and-push
