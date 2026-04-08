@@ -17,6 +17,7 @@ deployment/
 
 - `frontend` Deployment + Service
 - `backend` Deployment + Service
+- pre-install/pre-upgrade `migrations` Job using the backend image
 - optional `scheduler` Deployment using the backend image
 - optional `postgres` StatefulSet + Service + PVC
 - optional Ingress for a single public host
@@ -28,6 +29,7 @@ deployment/
 - K3s usually provides the `local-path` storage class, which works for the bundled Postgres PVC.
 - For production, an external managed Postgres is safer than an in-cluster single-replica database.
 - The chart runs cron jobs in a separate scheduler pod, while web pods use `APP_ROLE=web`.
+- Database schema migrations run in a dedicated Helm hook Job so web pods do not block on large schema backfills during startup.
 - Scheduled jobs also use PostgreSQL advisory locks, so duplicate scheduler instances will skip a job instead of double-running it.
 - Ongoing K3s planning and session notes live in `deployment/k3s/`.
 - For a LAN-only homelab without public DNS, use a host like `streambridge.<node-ip>.nip.io` and disable TLS until you add local DNS or certificates.

@@ -45,6 +45,10 @@ backend:
     piaPassword: ""
   resources: {}
 
+migrations:
+  enabled: true
+  backoffLimit: 1
+
 scheduler:
   enabled: true
   replicaCount: 1
