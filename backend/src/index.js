@@ -51,7 +51,9 @@ if (process.env.NODE_ENV === 'production') {
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
 // Security and compression (before other middleware)
-app.use(helmet());
+app.use(helmet({
+  hsts: { maxAge: 31536000, includeSubDomains: true },
+}));
 app.use(compression());
 
 app.use(cors({
@@ -114,13 +116,28 @@ const addonLimiter = rateLimit({
   message: { error: 'Too many addon requests. Please slow down.' },
 });
 
-// General: catch-all for all other routes
+// General: catch-all for all other routes.
+// For authenticated requests, key by user ID so users behind shared IPs (corporate
+// NAT, VPN) don't consume each other's quota. Falls back to IP for unauthenticated.
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 200,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip,
+  keyGenerator: (req) => {
+    const auth = req.headers.authorization;
+    if (auth?.startsWith('Bearer ')) {
+      try {
+        // Decode without verifying — only used as a bucket key, not for access control
+        const token = auth.slice(7);
+        const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+        if (payload?.userId) return `user:${payload.userId}`;
+      } catch {
+        // Malformed token — fall through to IP
+      }
+    }
+    return req.ip;
+  },
   skip: (req) => req.path === '/health',
   message: { error: 'Too many requests. Please slow down.' },
 });

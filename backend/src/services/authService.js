@@ -88,7 +88,6 @@ const authService = {
     const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
     await userQueries.setResetToken(user.id, resetToken, expires);
     // TODO: Send reset link via email to user
-    logger.info(`[DEV] Reset token for ${email}: ${resetToken}`);
     return resetToken;
   },
 

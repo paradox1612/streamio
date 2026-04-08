@@ -1,6 +1,8 @@
 const router = require('express').Router();
 const jwt = require('jsonwebtoken');
-const { requireAdmin } = require('../middleware/auth');
+const { randomUUID } = require('crypto');
+const xss = require('xss');
+const { requireAdmin, revokeAdminToken } = require('../middleware/auth');
 const { userQueries, blogPostQueries, providerQueries, vodQueries, tmdbQueries, matchQueries, hostHealthQueries, jobQueries, errorReportQueries, freeAccessQueries, pool } = require('../db/queries');
 const tmdbService = require('../services/tmdbService');
 const providerService = require('../services/providerService');
@@ -31,19 +33,18 @@ router.post('/auth/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid admin credentials' });
   }
 
-  // Generate a short-lived admin token
+  // Generate a short-lived admin token with a unique JTI for revocation support
   const adminToken = jwt.sign(
-    { admin: true, username },
+    { admin: true, username, jti: randomUUID() },
     process.env.JWT_SECRET,
     { expiresIn: '8h' }
   );
-  req.app.locals.adminToken = adminToken;
   res.json({ adminToken });
 });
 
 // POST /admin/auth/logout
 router.post('/auth/logout', requireAdmin, (req, res) => {
-  req.app.locals.adminToken = null;
+  revokeAdminToken(req.headers['x-admin-token']);
   res.json({ message: 'Admin logged out' });
 });
 
@@ -57,7 +58,7 @@ router.get('/blog-posts', requireAdmin, async (_req, res) => {
 router.post('/blog-posts', requireAdmin, async (req, res) => {
   const title = String(req.body.title || '').trim();
   const description = String(req.body.description || '').trim();
-  const content = String(req.body.content || '').trim();
+  const content = xss(String(req.body.content || '').trim());
   const author = String(req.body.author || 'StreamBridge Team').trim();
   const requestedSlug = String(req.body.slug || '').trim();
   const publishedAt = String(req.body.publishedAt || '').trim();

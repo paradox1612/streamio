@@ -3,6 +3,23 @@ const { body, validationResult } = require('express-validator');
 const authService = require('../services/authService');
 const { requireAuth } = require('../middleware/auth');
 
+// Per-email rate limit for forgot-password: max 3 requests per hour per email.
+// This is complementary to the IP-based limiter — it prevents distributed probing
+// of a single target email across many IPs.
+const forgotPasswordByEmail = new Map(); // email -> { count, resetAt }
+
+function checkEmailRateLimit(email) {
+  const now = Date.now();
+  const entry = forgotPasswordByEmail.get(email);
+  if (entry && entry.resetAt > now) {
+    if (entry.count >= 3) return false;
+    entry.count++;
+  } else {
+    forgotPasswordByEmail.set(email, { count: 1, resetAt: now + 60 * 60 * 1000 });
+  }
+  return true;
+}
+
 const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -53,6 +70,9 @@ router.post('/forgot-password',
   body('email').isEmail().normalizeEmail(),
   validate,
   async (req, res) => {
+    if (!checkEmailRateLimit(req.body.email)) {
+      return res.status(429).json({ error: 'Too many reset requests for this email. Please try again later.' });
+    }
     try {
       const token = await authService.forgotPassword(req.body.email);
       // In production, send email. Dev: return token in response.
