@@ -1,3 +1,9 @@
+plugins {
+    id("com.android.library")
+    id("kotlin-android")
+    id("com.lagradost.cloudstream3.gradle")
+}
+
 version = 1
 
 cloudstream {
@@ -20,9 +26,34 @@ cloudstream {
     iconUrl = "https://raw.githubusercontent.com/YOUR_ORG/streambridge-cs/main/StreamBridgePlugin/icon.png"
 }
 
+android {
+    compileSdk = 33
+
+    defaultConfig {
+        minSdk = 24
+        targetSdk = 33
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = "11"
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+    mavenLocal()
+    maven("https://jitpack.io")
+}
+
 dependencies {
-    val cloudstream by configurations
-    cloudstream("com.lagradost:cloudstream3:pre-release")
+    apk("com.lagradost:cloudstream3:pre-release")
+    implementation(kotlin("stdlib", kotlin.coreLibrariesVersion))
 
     // HTTP client used by all CloudStream plugins
     implementation("com.github.Blatzar:NiceHttp:0.4.11")

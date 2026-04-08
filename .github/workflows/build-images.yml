@@ -150,6 +150,19 @@ jobs:
           java-version: "17"
           distribution: "temurin"
 
+      - name: Set up Android SDK
+        if: steps.changes.outputs.plugin == 'true'
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        if: steps.changes.outputs.plugin == 'true'
+        shell: bash
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-33" \
+            "build-tools;33.0.2"
+
       - name: Cache Gradle
         if: steps.changes.outputs.plugin == 'true'
         uses: actions/cache@v4
@@ -167,6 +180,8 @@ jobs:
           chmod +x gradlew
           ./gradlew StreamBridgePlugin:make makePluginsJson
         env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
           GITHUB_REPOSITORY: ${{ github.repository }}
 
       - name: Copy artifacts into repo
