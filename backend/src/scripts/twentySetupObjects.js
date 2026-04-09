@@ -227,6 +227,8 @@ async function main() {
       defaultValue: "'ACTIVE'",
     });
     await createField(personObjectId, { name: 'lastActiveAt', label: 'Last Active At', type: 'DATE_TIME', defaultValue: null });
+    
+    // Relation: ProviderAccess -> Person
     await createRelationField(providerAccessId, {
       name: 'personRecord',
       label: 'Person',
@@ -236,6 +238,34 @@ async function main() {
       targetFieldLabel: 'Provider Accesses',
       targetFieldIcon: 'IconPlugConnected',
     });
+
+    // Relation: Task -> Person
+    const taskId = objectsData?.objects?.edges?.find((e) => e.node.nameSingular === 'task')?.node?.id;
+    if (taskId) {
+      await createRelationField(taskId, {
+        name: 'personRecord',
+        label: 'Related Person',
+        icon: 'IconUser',
+        targetObjectId: personObjectId,
+        targetFieldName: 'tasks',
+        targetFieldLabel: 'Tasks',
+        targetFieldIcon: 'IconCheckbox',
+      });
+    }
+
+    // Relation: TaskTarget -> Person
+    const taskTargetId = objectsData?.objects?.edges?.find((e) => e.node.nameSingular === 'taskTarget')?.node?.id;
+    if (taskTargetId) {
+      await createRelationField(taskTargetId, {
+        name: 'person',
+        label: 'Person',
+        icon: 'IconUser',
+        targetObjectId: personObjectId,
+        targetFieldName: 'taskTargets',
+        targetFieldLabel: 'Task Targets',
+        targetFieldIcon: 'IconTarget',
+      });
+    }
   } else {
     console.warn('  Could not find Person object — skipping custom person fields');
   }
@@ -243,6 +273,8 @@ async function main() {
   if (companyObjectId) {
     console.log('\nAdding custom fields to Company object...');
     await createField(companyObjectId, { name: 'streamioNetworkId', label: 'Streamio Network ID', type: 'TEXT', defaultValue: null });
+    
+    // Relation: ProviderAccess -> Company
     await createRelationField(providerAccessId, {
       name: 'companyRecord',
       label: 'Company',
@@ -252,6 +284,20 @@ async function main() {
       targetFieldLabel: 'Provider Accesses',
       targetFieldIcon: 'IconPlugConnected',
     });
+
+    // Relation: Task -> Company
+    const taskId = objectsData?.objects?.edges?.find((e) => e.node.nameSingular === 'task')?.node?.id;
+    if (taskId) {
+      await createRelationField(taskId, {
+        name: 'companyRecord',
+        label: 'Related Company',
+        icon: 'IconBuildingSkyscraper',
+        targetObjectId: companyObjectId,
+        targetFieldName: 'tasks',
+        targetFieldLabel: 'Tasks',
+        targetFieldIcon: 'IconCheckbox',
+      });
+    }
   } else {
     console.warn('  Could not find Company object — skipping custom company fields');
   }

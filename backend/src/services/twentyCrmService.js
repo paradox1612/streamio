@@ -432,8 +432,7 @@ async function createTask(personId, title, dueAt) {
     await apiRequest('POST', '/tasks', {
       title,
       dueAt: dueAt ? dueAt.toISOString() : new Date().toISOString(),
-      assignees: [],
-      taskTargets: [{ personId }],
+      personRecordId: personId,
     });
   }, `createTask(${personId})`);
 }
@@ -448,8 +447,7 @@ async function createTaskIfMissing(personId, title, dueAt) {
     const result = await apiRequest('POST', '/tasks', {
       title,
       dueAt: dueAt ? dueAt.toISOString() : new Date().toISOString(),
-      assignees: [],
-      taskTargets: [{ personId }],
+      personRecordId: personId,
     });
     return result?.data?.id || null;
   }, `createTaskIfMissing(${personId}, ${title})`);
@@ -563,4 +561,5 @@ module.exports = {
   ensureProviderExpiryTask,
   testConnection,
   setupCustomObjects,
+  metaQuery,
 };

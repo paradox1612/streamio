@@ -87,6 +87,17 @@ const hostHealthService = {
     });
     cache.del('hostHealth', provider.id);
 
+    // After health check, refresh account info to ensure CRM sync and expiry tasks
+    if (bestHost) {
+      const providerService = require('./providerService');
+      const providerForAccount = await providerQueries.findById(provider.id);
+      if (providerForAccount) {
+        providerService.getProviderAccountInfo(providerForAccount, { forceRefresh: true }).catch(err => {
+          logger.warn(`Failed to refresh account info for provider ${provider.id} after health check: ${err.message}`);
+        });
+      }
+    }
+
     logger.info(
       `Provider ${provider.name} (${provider.id}): ${bestHost ? `online via ${bestHost}` : 'offline'}`
     );
