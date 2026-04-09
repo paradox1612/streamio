@@ -165,6 +165,8 @@ export const adminAPI = {
   // CRM
   getCrmStatus: () => api.get('/api/admin/crm/status'),
   syncAllToCrm: () => api.post('/api/admin/crm/sync-all'),
+  getCrmPeople: (params?: { limit?: number; cursor?: string }) => api.get('/api/admin/crm/people', { params }),
+  getCrmTasks: (params?: { limit?: number; cursor?: string }) => api.get('/api/admin/crm/tasks', { params }),
 }
 
 export const blogAPI = {

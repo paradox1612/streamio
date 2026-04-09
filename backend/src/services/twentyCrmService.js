@@ -191,6 +191,24 @@ async function createNote(personId, body) {
   }, `createNote(${personId})`);
 }
 
+// ─── List helpers (for admin UI) ─────────────────────────────────────────────
+
+async function listPeople({ limit = 20, cursor } = {}) {
+  return withRetry(async () => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cursor) params.set('after', cursor);
+    return apiRequest('GET', `/people?${params}`);
+  }, 'listPeople');
+}
+
+async function listTasks({ limit = 20, cursor } = {}) {
+  return withRetry(async () => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cursor) params.set('after', cursor);
+    return apiRequest('GET', `/tasks?${params}`);
+  }, 'listTasks');
+}
+
 // ─── Health ───────────────────────────────────────────────────────────────────
 
 async function testConnection() {
@@ -247,6 +265,8 @@ module.exports = {
   cancelSubscription,
   createTask,
   createNote,
+  listPeople,
+  listTasks,
   testConnection,
   setupCustomObjects,
 };

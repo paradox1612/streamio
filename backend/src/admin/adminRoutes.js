@@ -538,6 +538,34 @@ router.get('/crm/status', requireAdmin, async (req, res) => {
   }
 });
 
+// GET /api/admin/crm/people — list People from Twenty CRM
+router.get('/crm/people', requireAdmin, async (req, res) => {
+  try {
+    const crm = require('../services/twentyCrmService');
+    const limit = Math.min(Number(req.query.limit) || 20, 100);
+    const cursor = req.query.cursor || undefined;
+    const data = await crm.listPeople({ limit, cursor });
+    res.json(data ?? { data: [] });
+  } catch (err) {
+    logger.error('GET /admin/crm/people:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/crm/tasks — list Tasks from Twenty CRM
+router.get('/crm/tasks', requireAdmin, async (req, res) => {
+  try {
+    const crm = require('../services/twentyCrmService');
+    const limit = Math.min(Number(req.query.limit) || 20, 100);
+    const cursor = req.query.cursor || undefined;
+    const data = await crm.listTasks({ limit, cursor });
+    res.json(data ?? { data: [] });
+  } catch (err) {
+    logger.error('GET /admin/crm/tasks:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/admin/crm/sync-all — batch upsert all users + subscriptions
 router.post('/crm/sync-all', requireAdmin, async (req, res) => {
   res.json({ message: 'Full sync started in background' });
