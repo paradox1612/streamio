@@ -85,6 +85,7 @@ data class CSStreamResponse(val streams: List<CSStream> = emptyList())
  * types — backed by /cloudstream/search on the backend.
  */
 class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
+    private val setupUrl = "streambridge://setup"
 
     override var name = "StreamBridge"
     override var lang = "en"
@@ -135,7 +136,10 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
      *   e.g. "Movie|3f8a1c…"  or  "Live|all"
      */
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
-        val token = getToken() ?: return null
+        val token = getToken()
+        if (token.isNullOrBlank()) {
+            return newHomePageResponse(request.name, listOf(buildSetupCard()), false)
+        }
 
         val parts = request.data.split("|", limit = 2)
         val csType    = parts.getOrElse(0) { "Movie" }
@@ -146,10 +150,10 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
             "/cloudstream/catalog?token=$token&type=$csType&page=$page&pageSize=50$providerParam"
         )
 
-        val response = app.get(url)
-        if (!response.isSuccessful) return null
+        val body = fetchText(url) ?: return newHomePageResponse(request.name, emptyList(), false)
+        val data = runCatching { parseJson<CSCatalogResponse>(body) }
+            .getOrElse { return newHomePageResponse(request.name, emptyList(), false) }
 
-        val data = parseJson<CSCatalogResponse>(response.text)
         val items = data.results.mapNotNull { it.toSearchResponse() }
 
         return newHomePageResponse(request.name, items, data.hasNextPage)
@@ -162,13 +166,17 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
      * Searches across all providers on the backend and returns merged results.
      */
     override suspend fun search(query: String): List<SearchResponse>? {
-        val token = getToken() ?: return null
+        val token = getToken() ?: return listOf(buildSetupCard())
         val encoded = java.net.URLEncoder.encode(query, "UTF-8")
 
-        val response = app.get(apiUrl("/cloudstream/search?token=$token&query=$encoded&pageSize=50"))
-        if (!response.isSuccessful) return null
+        val body = fetchText(apiUrl("/cloudstream/search?token=$token&query=$encoded&pageSize=50"))
+            ?: return emptyList()
 
-        return parseJson<CSCatalogResponse>(response.text).results.mapNotNull { it.toSearchResponse() }
+        return runCatching { parseJson<CSCatalogResponse>(body) }
+            .getOrNull()
+            ?.results
+            ?.mapNotNull { it.toSearchResponse() }
+            ?: emptyList()
     }
 
     /**
@@ -177,28 +185,44 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
      * Searches all content types so suggestions aren't limited to one category.
      */
     override suspend fun quickSearch(query: String): List<SearchResponse>? {
-        val token = getToken() ?: return null
+        val token = getToken() ?: return listOf(buildSetupCard())
         if (query.length < 2) return null   // wait for at least 2 chars
 
         val encoded = java.net.URLEncoder.encode(query, "UTF-8")
 
-        val response = app.get(apiUrl("/cloudstream/search?token=$token&query=$encoded&pageSize=20"))
-        if (!response.isSuccessful) return null
+        val body = fetchText(apiUrl("/cloudstream/search?token=$token&query=$encoded&pageSize=20"))
+            ?: return emptyList()
 
-        return parseJson<CSCatalogResponse>(response.text).results.mapNotNull { it.toSearchResponse() }
+        return runCatching { parseJson<CSCatalogResponse>(body) }
+            .getOrNull()
+            ?.results
+            ?.mapNotNull { it.toSearchResponse() }
+            ?: emptyList()
     }
 
     // ── Detail / Load ─────────────────────────────────────────────────────────
 
     override suspend fun load(url: String): LoadResponse? {
+        if (url == setupUrl) {
+            return newMovieLoadResponse(
+                "StreamBridge setup required",
+                setupUrl,
+                TvType.Movie,
+                setupUrl,
+            ) {
+                this.plot =
+                    "Open plugin settings and paste either your StreamBridge addon token " +
+                    "or the full addon URL from your dashboard."
+            }
+        }
+
         val token = getToken() ?: return null
         val encoded = java.net.URLEncoder.encode(url, "UTF-8")
         val type = inferTypeFromUrl(url)
 
-        val response = app.get(apiUrl("/cloudstream/detail?token=$token&url=$encoded&type=$type"))
-        if (!response.isSuccessful) return null
-
-        val detail = parseJson<CSDetailResponse>(response.text)
+        val body = fetchText(apiUrl("/cloudstream/detail?token=$token&url=$encoded&type=$type"))
+            ?: return null
+        val detail = runCatching { parseJson<CSDetailResponse>(body) }.getOrNull() ?: return null
 
         return when (detail.type) {
             "TvSeries" -> {
@@ -252,14 +276,15 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
+        if (data == setupUrl) return false
+
         val token = getToken() ?: return false
         val encoded = java.net.URLEncoder.encode(data, "UTF-8")
         val type = inferTypeFromUrl(data)
 
-        val response = app.get(apiUrl("/cloudstream/stream?token=$token&url=$encoded&type=$type"))
-        if (!response.isSuccessful) return false
-
-        val streamResponse = parseJson<CSStreamResponse>(response.text)
+        val body = fetchText(apiUrl("/cloudstream/stream?token=$token&url=$encoded&type=$type"))
+            ?: return false
+        val streamResponse = runCatching { parseJson<CSStreamResponse>(body) }.getOrNull() ?: return false
         if (streamResponse.streams.isEmpty()) return false
 
         streamResponse.streams.forEach { stream ->
@@ -281,6 +306,19 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
     }
 
     // ─── Private helpers ──────────────────────────────────────────────────────
+
+    private suspend fun fetchText(url: String): String? {
+        return runCatching {
+            val response = app.get(url)
+            if (response.isSuccessful) response.text else null
+        }.getOrNull()
+    }
+
+    private fun buildSetupCard(): SearchResponse {
+        return newMovieSearchResponse("Configure StreamBridge", setupUrl, TvType.Movie) {
+            this.posterUrl = null
+        }
+    }
 
     private fun CSItem.toSearchResponse(): SearchResponse? {
         if (name.isBlank() || url.isBlank()) return null

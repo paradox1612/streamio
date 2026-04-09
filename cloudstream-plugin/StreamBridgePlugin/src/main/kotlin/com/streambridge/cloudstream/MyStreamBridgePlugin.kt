@@ -27,6 +27,29 @@ class StreamBridgePlugin : Plugin() {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
+    fun parseAddonToken(rawValue: String): String? {
+        val value = rawValue.trim()
+        if (value.isEmpty()) return null
+
+        val addonMatch = Regex(""".*/addon/([^/]+)/manifest\.json.*""", RegexOption.IGNORE_CASE)
+            .find(value)
+        if (addonMatch != null) return addonMatch.groupValues[1]
+
+        val tokenMatch = Regex("""^[A-Za-z0-9._-]{16,}$""").matchEntire(value)
+        return tokenMatch?.value
+    }
+
+    fun normalizeBaseUrl(rawValue: String): String? {
+        val value = rawValue.trim().trimEnd('/')
+        if (value.isEmpty()) return null
+
+        return if (value.startsWith("http://") || value.startsWith("https://")) {
+            value
+        } else {
+            "https://$value"
+        }
+    }
+
     fun getSetting(key: String, defaultValue: String? = null): String? {
         if (!::appContext.isInitialized) return defaultValue
         return prefs().getString(key, defaultValue)
@@ -91,17 +114,23 @@ class StreamBridgePlugin : Plugin() {
             )
             .setView(layout)
             .setPositiveButton("Save") { _, _ ->
-                val token = tokenField.text.toString().trim()
-                val baseUrl = urlField.text.toString().trim()
+                val tokenInput = tokenField.text.toString()
+                val baseUrlInput = urlField.text.toString()
+                val token = parseAddonToken(tokenInput)
+                val baseUrl = normalizeBaseUrl(baseUrlInput)
 
-                if (token.isEmpty()) {
-                    Toast.makeText(context, "Addon token cannot be empty", Toast.LENGTH_SHORT).show()
+                if (token == null) {
+                    Toast.makeText(
+                        context,
+                        "Enter either the addon token or the full addon URL",
+                        Toast.LENGTH_LONG
+                    ).show()
                     return@setPositiveButton
                 }
 
                 prefs.edit()
                     .putString("addon_token", token)
-                    .putString("base_url", baseUrl.ifEmpty { null })
+                    .putString("base_url", baseUrl)
                     .apply()
 
                 Toast.makeText(context, "Settings saved! Reload CloudStream to apply.", Toast.LENGTH_LONG).show()
