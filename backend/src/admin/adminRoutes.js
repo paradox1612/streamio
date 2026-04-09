@@ -511,6 +511,88 @@ router.delete('/marketplace/:id', requireAdmin, async (req, res) => {
   }
 });
 
+// ─── Provider Networks ──────────────────────────────────────────────────────
+
+// GET /admin/networks — list all provider networks
+router.get('/networks', requireAdmin, async (req, res) => {
+  try {
+    const networks = await providerNetworkQueries.listAll();
+    res.json(networks);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /admin/networks/:id — network details (including hosts)
+router.get('/networks/:id', requireAdmin, async (req, res) => {
+  try {
+    const network = await providerNetworkQueries.findById(req.params.id);
+    if (!network) return res.status(404).json({ error: 'Network not found' });
+    const hosts = await providerNetworkQueries.listHosts(req.params.id);
+    res.json({ network, hosts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /admin/networks/:id — update network (including reseller creds)
+router.patch('/networks/:id', requireAdmin, async (req, res) => {
+  try {
+    const updated = await providerNetworkQueries.update(req.params.id, req.body);
+    if (!updated) return res.status(404).json({ error: 'Network not found' });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /admin/networks/:id/bouquets — fetch reseller bouquets
+router.get('/networks/:id/bouquets', requireAdmin, async (req, res) => {
+  try {
+    const network = await providerNetworkQueries.findById(req.params.id);
+    if (!network) return res.status(404).json({ error: 'Network not found' });
+    if (!network.reseller_username || !network.reseller_password) {
+      return res.status(400).json({ error: 'Reseller credentials not configured for this network' });
+    }
+
+    const hosts = await providerNetworkQueries.listHosts(req.params.id);
+    const activeHost = hosts.find(h => h.is_active)?.host_url;
+    if (!activeHost) return res.status(400).json({ error: 'No active hosts for this network' });
+
+    const bouquets = await providerService.getBouquets(activeHost, network.reseller_username, network.reseller_password);
+    res.json(bouquets);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /admin/networks/:id/create-line — create a new user line/trial
+router.post('/networks/:id/create-line', requireAdmin, async (req, res) => {
+  try {
+    const network = await providerNetworkQueries.findById(req.params.id);
+    if (!network) return res.status(404).json({ error: 'Network not found' });
+    if (!network.reseller_username || !network.reseller_password) {
+      return res.status(400).json({ error: 'Reseller credentials not configured for this network' });
+    }
+
+    const { username, password, maxConnections, expDate, bouquetIds } = req.body;
+    
+    const hosts = await providerNetworkQueries.listHosts(req.params.id);
+    const activeHost = hosts.find(h => h.is_active)?.host_url;
+    if (!activeHost) return res.status(400).json({ error: 'No active hosts for this network' });
+
+    const result = await providerService.createResellerUser(
+      activeHost, 
+      network.reseller_username, 
+      network.reseller_password, 
+      { username, password, maxConnections, expDate, bouquetIds }
+    );
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── CRM Admin ────────────────────────────────────────────────────────────────
 
 // GET /api/admin/crm/status — connection health + sync stats

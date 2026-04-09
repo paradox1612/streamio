@@ -273,8 +273,23 @@ const providerNetworkQueries = {
     return rows[0];
   },
 
+  async listAll() {
+    const { rows } = await pool.query(
+      'SELECT * FROM provider_networks ORDER BY name ASC'
+    );
+    return rows;
+  },
+
   async update(id, fields) {
-    const allowed = ['name', 'identity_key', 'legacy_provider_id', 'catalog_last_refreshed_at', 'twenty_company_id'];
+    const allowed = [
+      'name',
+      'identity_key',
+      'legacy_provider_id',
+      'catalog_last_refreshed_at',
+      'twenty_company_id',
+      'reseller_username',
+      'reseller_password',
+    ];
     const sets = [];
     const values = [];
     let idx = 1;

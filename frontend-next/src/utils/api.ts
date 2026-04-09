@@ -78,6 +78,17 @@ export const freeAccessAPI = {
   extend: () => api.post('/api/free-access/extend'),
 }
 
+export const marketplaceAPI = {
+  listOfferings: () => api.get('/api/marketplace/offerings'),
+  getOffering: (id: string) => api.get(`/api/marketplace/offerings/${id}`),
+  createCheckout: (offeringId: string) => api.post('/api/marketplace/checkout', { offering_id: offeringId }),
+  getSubscriptions: () => api.get('/api/subscriptions'),
+  getPortalUrl: () => api.get('/api/subscriptions/portal'),
+  cancelSubscription: (id: string) => api.post(`/api/subscriptions/${id}/cancel`),
+  getPaymentHistory: (params?: { limit?: number; offset?: number }) =>
+    api.get('/api/payments/history', { params }),
+}
+
 // ─── Providers ────────────────────────────────────────────────────────────────
 export const providerAPI = {
   create: (data: Record<string, unknown>) => api.post('/api/providers', data),
@@ -162,6 +173,12 @@ export const adminAPI = {
   createOffering: (data: Record<string, unknown>) => api.post('/api/admin/marketplace', data),
   updateOffering: (id: string, data: Record<string, unknown>) => api.patch(`/api/admin/marketplace/${id}`, data),
   deleteOffering: (id: string) => api.delete(`/api/admin/marketplace/${id}`),
+  // Provider Networks (Reseller)
+  listNetworks: () => api.get('/api/admin/networks'),
+  getNetwork: (id: string) => api.get(`/api/admin/networks/${id}`),
+  updateNetwork: (id: string, data: Record<string, unknown>) => api.patch(`/api/admin/networks/${id}`, data),
+  getNetworkBouquets: (id: string) => api.get(`/api/admin/networks/${id}/bouquets`),
+  createResellerLine: (id: string, data: Record<string, unknown>) => api.post(`/api/admin/networks/${id}/create-line`, data),
   // CRM
   getCrmStatus: () => api.get('/api/admin/crm/status'),
   getCrmCoverage: () => api.get('/api/admin/crm/provider-access-coverage'),

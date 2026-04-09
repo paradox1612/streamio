@@ -30,6 +30,7 @@ const navItems = [
   { path: '/admin/dashboard', label: 'Overview', icon: LayoutDashboard, description: 'System posture' },
   { path: '/admin/blog', label: 'Blog', icon: FileText, description: 'Publishing workflow' },
   { path: '/admin/users', label: 'Users', icon: Users, description: 'Access and lifecycle' },
+  { path: '/admin/networks', label: 'Networks', icon: Globe, description: 'Managed panels' },
   { path: '/admin/providers', label: 'Providers', icon: PlugZap, description: 'Catalog sources' },
   { path: '/admin/free-access', label: 'Free Access', icon: Gift, description: 'Promotions and trials' },
   { path: '/admin/health', label: 'Host Health', icon: HeartPulse, description: 'Routing confidence' },

@@ -148,13 +148,11 @@ async function getProviderAccountInfo(provider, { forceRefresh = false } = {}) {
 
 /**
  * Retry logic for xtream requests with exponential backoff.
- * Retries up to 3 times on network errors or 5xx responses.
- * Does NOT retry on 401/403 (auth errors).
  */
 async function xtreamRequest(host, username, password, action, extraParams = '') {
   const url = `${host}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&action=${action}${extraParams}`;
   const maxRetries = 3;
-  const backoffs = [1000, 2000, 4000]; // exponential backoff: 1s, 2s, 4s
+  const backoffs = [1000, 2000, 4000];
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     const controller = new AbortController();
@@ -163,16 +161,10 @@ async function xtreamRequest(host, username, password, action, extraParams = '')
       const res = await fetch(url, { signal: controller.signal });
       clearTimeout(timer);
 
-      // Don't retry auth errors
-      if (res.status === 401 || res.status === 403) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-
-      // Retry on 5xx errors
+      if (res.status === 401 || res.status === 403) throw new Error(`HTTP ${res.status}`);
       if (!res.ok && res.status >= 500) {
         if (attempt < maxRetries - 1) {
           const delay = backoffs[attempt];
-          logger.warn(`xtreamRequest: HTTP ${res.status}, retrying in ${delay}ms`);
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
@@ -184,17 +176,37 @@ async function xtreamRequest(host, username, password, action, extraParams = '')
       return data;
     } catch (err) {
       clearTimeout(timer);
-
-      // Retry on network errors
       if (attempt < maxRetries - 1) {
         const delay = backoffs[attempt];
-        logger.warn(`xtreamRequest: ${err.message}, retrying in ${delay}ms`);
         await new Promise(r => setTimeout(r, delay));
         continue;
       }
-
       throw err;
     }
+  }
+}
+
+/**
+ * Reseller API helper — uses /api.php instead of /player_api.php
+ */
+async function xtreamResellerRequest(host, username, password, action, subAction, body = null) {
+  const url = `${host}/api.php?action=${action}&sub=${subAction}&user=${encodeURIComponent(username)}&pass=${encodeURIComponent(password)}`;
+  
+  const options = {
+    method: body ? 'POST' : 'GET',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body ? new URLSearchParams(body).toString() : undefined,
+  };
+
+  const res = await fetch(url, options);
+  if (!res.ok) throw new Error(`Reseller API HTTP ${res.status}`);
+  
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    // Some panels return raw text or numeric IDs on success
+    return { result: text };
   }
 }
 
@@ -283,6 +295,35 @@ const providerService = {
     return results;
   },
 
+  // ─── Reseller Operations ───────────────────────────────────────────────────
+
+  async getBouquets(host, username, password) {
+    return xtreamResellerRequest(host, username, password, 'bouquet', 'get');
+  },
+
+  async createResellerUser(host, resellerUser, resellerPass, userData) {
+    // userData: { username, password, max_connections, exp_date (unix), bouquet: [id, id] }
+    const payload = {
+      'user_data[username]': userData.username,
+      'user_data[password]': userData.password,
+      'user_data[max_connections]': userData.maxConnections || 1,
+      'user_data[exp_date]': userData.expDate, // Unix timestamp
+      'user_data[bouquet]': JSON.stringify(userData.bouquetIds || []),
+    };
+    return xtreamResellerRequest(host, resellerUser, resellerPass, 'user', 'create', payload);
+  },
+
+  async extendResellerUser(host, resellerUser, resellerPass, lineUsername, newExpDate) {
+    // Note: Panels vary on how extension works; often it is a 'user' 'edit' with a new timestamp
+    const payload = {
+      'user_data[username]': lineUsername,
+      'user_data[exp_date]': newExpDate,
+    };
+    return xtreamResellerRequest(host, resellerUser, resellerPass, 'user', 'edit', payload);
+  },
+
+  // ─── Catalog Operations ────────────────────────────────────────────────────
+
   async getLiveStreams(providerId, userId) {
     const provider = await providerQueries.findByIdAndUser(providerId, userId);
     if (!provider) throw Object.assign(new Error('Provider not found'), { status: 404 });
@@ -291,7 +332,6 @@ const providerService = {
     if (!host) throw new Error('No host available');
 
     try {
-      // Fetch live categories and channels in parallel
       const [liveCategoryMap, liveChannels] = await Promise.all([
         fetchCategoryMap(host, provider.username, provider.password, 'get_live_categories'),
         xtreamRequest(host, provider.username, provider.password, 'get_live_streams').catch(() => []),
@@ -348,12 +388,12 @@ const providerService = {
       message: 'Loading provider categories',
     });
 
-    // ── 1. Fetch category maps upfront ───────────────────────────────────────
     const [vodCategoryMap, seriesCategoryMap] = await Promise.all([
       fetchCategoryMap(host, provider.username, provider.password, 'get_vod_categories'),
       fetchCategoryMap(host, provider.username, provider.password, 'get_series_categories'),
     ]);
     logger.info(`Categories loaded: ${Object.keys(vodCategoryMap).length} VOD, ${Object.keys(seriesCategoryMap).length} series`);
+    
     await progress({
       stage: 'fetching_vod',
       progressPct: 12,
@@ -364,7 +404,6 @@ const providerService = {
       },
     });
 
-    // ── 2. Fetch VOD movies and series in parallel ─────────────────────────────
     const [vodMoviesResult, vodSeriesResult] = await Promise.allSettled([
       xtreamRequest(host, provider.username, provider.password, 'get_vod_streams'),
       xtreamRequest(host, provider.username, provider.password, 'get_series'),
@@ -385,16 +424,6 @@ const providerService = {
         containerExtension: m.container_extension || 'mp4',
       }));
       logger.info(`Fetched ${vodMovies.length} movies`);
-      await progress({
-        stage: 'fetching_series',
-        progressPct: 28,
-        message: 'Movies fetched, fetching series',
-        counts: {
-          movies: vodMovies.length,
-        },
-      });
-    } else if (vodMoviesResult.status === 'rejected') {
-      logger.warn(`Failed to fetch VOD movies: ${vodMoviesResult.reason?.message}`);
     }
 
     let vodSeries = [];
@@ -412,40 +441,16 @@ const providerService = {
         containerExtension: null,
       }));
       logger.info(`Fetched ${vodSeries.length} series`);
-      await progress({
-        stage: 'fetching_live',
-        progressPct: 44,
-        message: 'Movies and series fetched, fetching live channels',
-        counts: {
-          movies: vodMovies.length,
-          series: vodSeries.length,
-        },
-      });
-    } else if (vodSeriesResult.status === 'rejected') {
-      logger.warn(`Failed to fetch series: ${vodSeriesResult.reason?.message}`);
     }
 
-    // ── 3. Fetch live streams ──────────────────────────────────────────────────
     let liveStreams = [];
     try {
       liveStreams = await providerService.getLiveStreams(providerId, userId);
       logger.info(`Fetched ${liveStreams.length} live channels`);
-      await progress({
-        stage: 'persisting_catalog',
-        progressPct: 58,
-        message: 'Fetched source data, saving catalog',
-        counts: {
-          movies: vodMovies.length,
-          series: vodSeries.length,
-          live: liveStreams.length,
-          total: vodMovies.length + vodSeries.length + liveStreams.length,
-        },
-      });
     } catch (err) {
       logger.warn(`Failed to fetch live streams: ${err.message}`);
     }
 
-    // ── 4. Upsert everything in chunks ────────────────────────────────────────
     const all = [...vodMovies, ...vodSeries, ...liveStreams];
     const resolvedEntries = provider.network_id
       ? await canonicalContentQueries.resolveEntries(all, {
@@ -457,10 +462,7 @@ const providerService = {
     let catalogVariant = Boolean(provider.catalog_variant);
     if (provider.network_id && resolvedEntries.length > 0) {
       const { rows: existingNetworkRows } = await pool.query(
-        `SELECT vod_type, canonical_normalized_title, title_year
-         FROM network_vod
-         WHERE provider_network_id = $1
-         LIMIT 250`,
+        `SELECT vod_type, canonical_normalized_title, title_year FROM network_vod WHERE provider_network_id = $1 LIMIT 250`,
         [provider.network_id]
       );
 
@@ -485,42 +487,16 @@ const providerService = {
           providerNetworkId: provider.network_id,
         })));
       }
-      await progress({
-        stage: 'persisting_catalog',
-        progressPct: 96,
-        message: `Saved catalog entries ${resolvedEntries.length.toLocaleString()} / ${resolvedEntries.length.toLocaleString()}`,
-        counts: {
-          movies: vodMovies.length,
-          series: vodSeries.length,
-          live: liveStreams.length,
-          total: all.length,
-          persisted: resolvedEntries.length,
-        },
-      });
     } else {
       await vodQueries.deleteByProvider(providerId);
-      if (provider.network_id && !catalogVariant) {
-        await vodQueries.deleteByNetwork(provider.network_id);
-      }
+      if (provider.network_id && !catalogVariant) await vodQueries.deleteByNetwork(provider.network_id);
     }
 
-    if (provider.network_id && !catalogVariant) {
-      await providerNetworkQueries.touchCatalogRefresh(provider.network_id);
-    }
+    if (provider.network_id && !catalogVariant) await providerNetworkQueries.touchCatalogRefresh(provider.network_id);
 
     logger.info(`Catalog refreshed: ${vodMovies.length} movies, ${vodSeries.length} series, ${liveStreams.length} live channels`);
-    await progress({
-      stage: 'completed',
-      progressPct: 100,
-      message: 'Catalog refresh complete',
-      counts: {
-        movies: vodMovies.length,
-        series: vodSeries.length,
-        live: liveStreams.length,
-        total: all.length,
-        persisted: resolvedEntries.length,
-      },
-    });
+    await progress({ stage: 'completed', progressPct: 100, message: 'Catalog refresh complete' });
+    
     return {
       movies: vodMovies.length,
       series: vodSeries.length,
@@ -572,17 +548,12 @@ const providerService = {
       }));
     }
 
-    return {
-      movies: vodMovies,
-      series: vodSeries,
-    };
+    return { movies: vodMovies, series: vodSeries };
   },
 
-  // Resolve individual episode stream URL at playback time
   async getSeriesEpisodes(host, username, password, seriesId) {
     try {
       const data = await xtreamRequest(host, username, password, 'get_series_info', `&series_id=${seriesId}`);
-      // Response: { info: {...}, seasons: [...], episodes: { "1": [{...}], "2": [{...}] } }
       return data?.episodes || {};
     } catch (err) {
       logger.warn(`Failed to get series info for ${seriesId}: ${err.message}`);
