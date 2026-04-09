@@ -102,6 +102,12 @@ twenty:
     SERVER_URL: "https://twenty.thekush.dev"
     REDIS_URL: "redis://{{ .Release.Name }}-redis-master:6379"
 
+redis:
+  image:
+    registry: docker.io
+    repository: redis
+    tag: "7.2-bookworm"
+
 vpn:
   enabled: true
   serverRegions: "US East"

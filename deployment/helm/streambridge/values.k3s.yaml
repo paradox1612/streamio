@@ -101,7 +101,7 @@ vpn:
 
 ingress:
   enabled: true
-  className: traefik
+  className: nginx
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
   host: stream.example.com
@@ -113,7 +113,7 @@ redis:
   image:
     registry: docker.io
     repository: redis
-    tag: "7.2-alpine"
+    tag: "7.2-bookworm"
 
 twenty:
   ingress:

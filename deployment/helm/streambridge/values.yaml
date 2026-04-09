@@ -95,7 +95,7 @@ postgres:
 
 ingress:
   enabled: true
-  className: traefik
+  className: nginx
   annotations: {}
   host: stream.example.com
   tls:
@@ -112,6 +112,10 @@ ingress:
 #       condition: redis.enabled
 redis:
   enabled: true
+  image:
+    registry: docker.io
+    repository: redis
+    tag: "7.2-bookworm"
   auth:
     enabled: false
   master:
