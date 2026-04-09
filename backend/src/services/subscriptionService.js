@@ -126,6 +126,8 @@ async function provisionCredentials(userId, offering) {
  * Called when customer.subscription.updated fires.
  */
 async function handleSubscriptionUpdated(stripeSubscription) {
+  const previous = await subscriptionQueries.findByStripeSubscriptionId(stripeSubscription.id);
+
   const updated = await subscriptionQueries.updateByStripeId(stripeSubscription.id, {
     status: stripeSubscription.status,
     current_period_start: stripeSubscription.current_period_start
@@ -141,7 +143,7 @@ async function handleSubscriptionUpdated(stripeSubscription) {
   });
 
   if (updated) {
-    eventBus.emit('subscription.updated', { subscription: updated });
+    eventBus.emit('subscription.updated', { previousSubscription: previous, subscription: updated });
   }
 }
 

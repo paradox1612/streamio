@@ -358,6 +358,22 @@ ALTER TABLE user_providers
   ADD COLUMN IF NOT EXISTS catalog_variant BOOLEAN DEFAULT false;
 ALTER TABLE user_providers
   ADD COLUMN IF NOT EXISTS network_attached_at TIMESTAMP;
+ALTER TABLE provider_networks
+  ADD COLUMN IF NOT EXISTS twenty_company_id TEXT;
+ALTER TABLE user_providers
+  ADD COLUMN IF NOT EXISTS twenty_provider_access_id TEXT;
+ALTER TABLE user_providers
+  ADD COLUMN IF NOT EXISTS account_status VARCHAR;
+ALTER TABLE user_providers
+  ADD COLUMN IF NOT EXISTS account_expires_at TIMESTAMP;
+ALTER TABLE user_providers
+  ADD COLUMN IF NOT EXISTS account_is_trial BOOLEAN;
+ALTER TABLE user_providers
+  ADD COLUMN IF NOT EXISTS account_max_connections INTEGER;
+ALTER TABLE user_providers
+  ADD COLUMN IF NOT EXISTS account_active_connections INTEGER;
+ALTER TABLE user_providers
+  ADD COLUMN IF NOT EXISTS account_last_synced_at TIMESTAMP;
 ALTER TABLE tmdb_movies
   ADD COLUMN IF NOT EXISTS normalized_title VARCHAR;
 ALTER TABLE tmdb_series

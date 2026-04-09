@@ -11,6 +11,32 @@ function headers() {
   };
 }
 
+function toTwentySubscriptionStatus(status) {
+  if (!status) return undefined;
+
+  const normalized = String(status).trim().toUpperCase().replace(/-/g, '_');
+  if (normalized === 'CANCELED') return 'CANCELLED';
+  return normalized;
+}
+
+function toProviderSourceType(isMarketplaceManaged) {
+  return isMarketplaceManaged ? 'MARKETPLACE' : 'EXTERNAL';
+}
+
+function toProviderHealthStatus(status) {
+  if (!status) return 'UNKNOWN';
+
+  const normalized = String(status).trim().toUpperCase().replace(/-/g, '_');
+  if (normalized === 'ONLINE') return 'ONLINE';
+  if (normalized === 'OFFLINE') return 'OFFLINE';
+  return 'UNKNOWN';
+}
+
+function summarizeHosts(hosts = []) {
+  if (!Array.isArray(hosts) || hosts.length === 0) return '';
+  return hosts.map((host) => String(host || '').trim()).filter(Boolean).join(', ');
+}
+
 // ─── Retry Helper ─────────────────────────────────────────────────────────────
 
 async function withRetry(fn, label, maxAttempts = 3) {
@@ -95,6 +121,7 @@ async function upsertPerson(user) {
       // Persist the Twenty person ID back to our DB
       const { pool } = require('../db/queries');
       await pool.query('UPDATE users SET twenty_person_id = $1 WHERE id = $2', [personId, user.id]);
+      user.twenty_person_id = personId;
     }
     return personId;
   }, `upsertPerson(${user.id})`);
@@ -119,6 +146,7 @@ async function upsertCompany(providerNetwork) {
     if (providerNetwork.twenty_company_id) {
       await apiRequest('PATCH', `/companies/${providerNetwork.twenty_company_id}`, {
         name: providerNetwork.name,
+        streamioNetworkId: String(providerNetwork.id),
       });
       return providerNetwork.twenty_company_id;
     }
@@ -126,10 +154,64 @@ async function upsertCompany(providerNetwork) {
     const result = await apiRequest('POST', '/companies', {
       name: providerNetwork.name,
       domainName: { primaryLinkUrl: '', primaryLinkLabel: providerNetwork.name },
+      streamioNetworkId: String(providerNetwork.id),
     });
 
-    return result?.data?.id;
+    const companyId = result?.data?.id;
+    if (companyId) {
+      const { providerNetworkQueries } = require('../db/queries');
+      await providerNetworkQueries.update(providerNetwork.id, { twenty_company_id: companyId });
+    }
+    return companyId;
   }, `upsertCompany(${providerNetwork.id})`);
+}
+
+async function upsertProviderAccess(provider) {
+  return withRetry(async () => {
+    const payload = {
+      streamioId: String(provider.id),
+      personId: provider.twenty_person_id || undefined,
+      companyId: provider.twenty_company_id || undefined,
+      providerName: provider.name,
+      sourceType: toProviderSourceType(provider.is_marketplace_managed),
+      providerStatus: toProviderHealthStatus(provider.status),
+      accountStatus: provider.account_status || undefined,
+      accountExpiresAt: provider.account_expires_at || undefined,
+      isTrial: provider.account_is_trial ?? undefined,
+      maxConnections: provider.account_max_connections ?? undefined,
+      activeConnections: provider.account_active_connections ?? undefined,
+      primaryHost: provider.active_host || provider.hosts?.[0] || undefined,
+      hostCount: Array.isArray(provider.hosts) ? provider.hosts.length : 0,
+      hostList: summarizeHosts(provider.hosts),
+      networkId: provider.network_id ? String(provider.network_id) : undefined,
+      networkName: provider.network_name || undefined,
+      accountLastSyncedAt: provider.account_last_synced_at || undefined,
+    };
+
+    if (provider.twenty_provider_access_id) {
+      await apiRequest('PATCH', `/providerAccesses/${provider.twenty_provider_access_id}`, payload);
+      return provider.twenty_provider_access_id;
+    }
+
+    const result = await apiRequest('POST', '/providerAccesses', payload);
+    const providerAccessId = result?.data?.id;
+    if (providerAccessId) {
+      const { providerQueries } = require('../db/queries');
+      await providerQueries.updateCrmSync(provider.id, { twenty_provider_access_id: providerAccessId });
+    }
+    return providerAccessId;
+  }, `upsertProviderAccess(${provider.id})`);
+}
+
+async function archiveProviderAccess(provider) {
+  return withRetry(async () => {
+    if (!provider?.twenty_provider_access_id) return;
+    await apiRequest('PATCH', `/providerAccesses/${provider.twenty_provider_access_id}`, {
+      providerStatus: 'UNKNOWN',
+      accountStatus: 'REMOVED',
+      accountLastSyncedAt: new Date().toISOString(),
+    });
+  }, `archiveProviderAccess(${provider?.id || 'unknown'})`);
 }
 
 // ─── Subscription (Custom Object) ────────────────────────────────────────────
@@ -137,7 +219,7 @@ async function upsertCompany(providerNetwork) {
 async function upsertSubscription(subscription, offeringName) {
   return withRetry(async () => {
     const payload = {
-      status: subscription.status?.toUpperCase(),
+      status: toTwentySubscriptionStatus(subscription.status),
       currentPeriodEnd: subscription.current_period_end,
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       stripeSubscriptionId: subscription.stripe_subscription_id,
@@ -158,7 +240,9 @@ async function upsertSubscription(subscription, offeringName) {
 async function cancelSubscription(twentySubscriptionId) {
   return withRetry(async () => {
     if (!twentySubscriptionId) return;
-    await apiRequest('PATCH', `/subscriptions/${twentySubscriptionId}`, { status: 'cancelled' });
+    await apiRequest('PATCH', `/subscriptions/${twentySubscriptionId}`, {
+      status: toTwentySubscriptionStatus('cancelled'),
+    });
   }, `cancelSubscription(${twentySubscriptionId})`);
 }
 
@@ -257,6 +341,8 @@ module.exports = {
   upsertPerson,
   updateUserActivity,
   upsertCompany,
+  upsertProviderAccess,
+  archiveProviderAccess,
   upsertSubscription,
   cancelSubscription,
   createTask,

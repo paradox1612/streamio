@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const { randomUUID } = require('crypto');
 const xss = require('xss');
 const { requireAdmin, revokeAdminToken } = require('../middleware/auth');
-const { userQueries, blogPostQueries, providerQueries, vodQueries, tmdbQueries, matchQueries, hostHealthQueries, jobQueries, errorReportQueries, freeAccessQueries, offeringQueries, subscriptionQueries, pool } = require('../db/queries');
+const { userQueries, blogPostQueries, providerQueries, providerNetworkQueries, vodQueries, tmdbQueries, matchQueries, hostHealthQueries, jobQueries, errorReportQueries, freeAccessQueries, offeringQueries, subscriptionQueries, pool } = require('../db/queries');
 const tmdbService = require('../services/tmdbService');
 const providerService = require('../services/providerService');
 const hostHealthService = require('../services/hostHealthService');
@@ -520,10 +520,14 @@ router.get('/crm/status', requireAdmin, async (req, res) => {
     const health = await crm.testConnection();
 
     const { rows } = await pool.query(
-      `SELECT
-         COUNT(*) AS total_users,
-         COUNT(twenty_person_id) AS synced_users
-       FROM users`
+       `SELECT
+         (SELECT COUNT(*) FROM users) AS total_users,
+         (SELECT COUNT(*) FROM users WHERE twenty_person_id IS NOT NULL) AS synced_users,
+         (SELECT COUNT(*) FROM provider_subscriptions) AS total_subscriptions,
+         (SELECT COUNT(*) FROM provider_subscriptions WHERE twenty_subscription_id IS NOT NULL) AS synced_subscriptions,
+         (SELECT COUNT(*) FROM user_providers) AS total_provider_accesses,
+         (SELECT COUNT(*) FROM user_providers WHERE twenty_provider_access_id IS NOT NULL) AS synced_provider_accesses
+      `
     );
 
     res.json({
@@ -575,12 +579,60 @@ router.post('/crm/sync-all', requireAdmin, async (req, res) => {
     const crm = require('../services/twentyCrmService');
     try {
       const { rows: users } = await pool.query('SELECT * FROM users ORDER BY created_at ASC');
-      let synced = 0;
+      let syncedUsers = 0;
       for (const user of users) {
         await crm.upsertPerson(user);
-        synced++;
+        syncedUsers++;
       }
-      logger.info(`[CRM] Full sync complete: ${synced} users synced`);
+
+      const { rows: subscriptions } = await pool.query(
+        `SELECT ps.*, po.name AS offering_name, u.email AS user_email, u.twenty_person_id
+         FROM provider_subscriptions ps
+         JOIN provider_offerings po ON po.id = ps.offering_id
+         JOIN users u ON u.id = ps.user_id
+         ORDER BY ps.created_at ASC`
+      );
+
+      let syncedSubscriptions = 0;
+      for (const subscription of subscriptions) {
+        const twentySubId = await crm.upsertSubscription(subscription, subscription.offering_name);
+        if (twentySubId && !subscription.twenty_subscription_id) {
+          await subscriptionQueries.update(subscription.id, { twenty_subscription_id: twentySubId });
+        }
+        syncedSubscriptions++;
+      }
+
+      const providerNetworks = await providerNetworkQueries.listAllHosts();
+      const syncedNetworkIds = new Set();
+      for (const host of providerNetworks) {
+        if (syncedNetworkIds.has(host.provider_network_id)) continue;
+        syncedNetworkIds.add(host.provider_network_id);
+        const network = await providerNetworkQueries.findById(host.provider_network_id);
+        if (network) await crm.upsertCompany(network);
+      }
+
+      const providers = await providerQueries.listAllForCrm();
+      let syncedProviders = 0;
+      for (const provider of providers) {
+        if (provider.network_id && !provider.twenty_company_id) {
+          const network = await providerNetworkQueries.findById(provider.network_id);
+          if (network) {
+            const companyId = await crm.upsertCompany(network);
+            provider.twenty_company_id = companyId;
+          }
+        }
+        const twentyProviderAccessId = await crm.upsertProviderAccess(provider);
+        if (twentyProviderAccessId && !provider.twenty_provider_access_id) {
+          await providerQueries.updateCrmSync(provider.id, {
+            twenty_provider_access_id: twentyProviderAccessId,
+          });
+        }
+        syncedProviders++;
+      }
+
+      logger.info(
+        `[CRM] Full sync complete: ${syncedUsers} users synced, ${syncedSubscriptions} subscriptions synced, ${syncedProviders} provider access records synced`
+      );
     } catch (err) {
       logger.error(`[CRM] Full sync failed: ${err.message}`);
     }

@@ -7,6 +7,42 @@ const logger = require('../utils/logger');
 
 const router = express.Router();
 
+function parseTwentyPayload(rawBody) {
+  return JSON.parse(rawBody.toString('utf8'));
+}
+
+function verifyTwentySignature(rawBody, headers, secret) {
+  if (!secret) return true;
+
+  const signature = headers['x-twenty-webhook-signature'];
+  const timestamp = headers['x-twenty-webhook-timestamp'];
+
+  if (!signature || !timestamp) return false;
+
+  const stringToSign = `${timestamp}:${rawBody.toString('utf8')}`;
+  const expected = crypto
+    .createHmac('sha256', secret)
+    .update(stringToSign)
+    .digest('hex');
+
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(signature, 'hex'),
+      Buffer.from(expected, 'hex')
+    );
+  } catch {
+    return false;
+  }
+}
+
+function normalizeSubscriptionStatus(status) {
+  if (!status) return null;
+
+  const normalized = String(status).trim().toLowerCase().replace(/-/g, '_');
+  if (normalized === 'canceled') return 'cancelled';
+  return normalized;
+}
+
 // ─── Stripe Webhooks ──────────────────────────────────────────────────────────
 // IMPORTANT: This route must receive the raw (unparsed) body — mount it before
 // express.json() in index.js using express.raw({ type: 'application/json' }).
@@ -76,28 +112,16 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
 // pointing at: https://api.example.com/webhooks/twenty
 
 router.post('/twenty', express.raw({ type: 'application/json' }), async (req, res) => {
-  // Verify HMAC signature
-  const sig = req.headers['x-twenty-webhook-signature'];
   const secret = process.env.TWENTY_WEBHOOK_SECRET;
 
-  if (secret) {
-    if (!sig) {
-      logger.warn('[Webhook] Twenty webhook received without signature');
-      return res.status(400).json({ error: 'Missing X-Twenty-Webhook-Signature' });
-    }
-    const expected = crypto
-      .createHmac('sha256', secret)
-      .update(req.body)
-      .digest('hex');
-    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
-      logger.warn('[Webhook] Twenty webhook signature mismatch');
-      return res.status(401).json({ error: 'Invalid signature' });
-    }
+  if (secret && !verifyTwentySignature(req.body, req.headers, secret)) {
+    logger.warn('[Webhook] Twenty webhook signature mismatch');
+    return res.status(401).json({ error: 'Invalid Twenty webhook signature' });
   }
 
   let payload;
   try {
-    payload = JSON.parse(req.body.toString());
+    payload = parseTwentyPayload(req.body);
   } catch {
     return res.status(400).json({ error: 'Invalid JSON' });
   }
@@ -105,12 +129,13 @@ router.post('/twenty', express.raw({ type: 'application/json' }), async (req, re
   res.json({ received: true });
 
   try {
-    const { action, object, record } = payload;
+    const eventName = payload?.event;
+    const record = payload?.data;
 
-    if (object === 'subscription' && (action === 'updated' || action === 'update')) {
+    if (eventName === 'subscription.updated') {
       // Admin overrode a subscription status in Twenty UI
       const stripeSubId = record?.stripeSubscriptionId || record?.stripe_subscription_id;
-      const newStatus = record?.status;
+      const newStatus = normalizeSubscriptionStatus(record?.status);
 
       if (stripeSubId && newStatus) {
         await subscriptionQueries.updateByStripeId(stripeSubId, { status: newStatus });
@@ -129,7 +154,7 @@ router.post('/twenty', express.raw({ type: 'application/json' }), async (req, re
       }
     }
 
-    if (object === 'task' && action === 'completed') {
+    if (eventName === 'task.updated' && normalizeSubscriptionStatus(record?.status) === 'done') {
       // Support task resolved — log it
       logger.info(`[Webhook] Twenty task completed: ${record?.id}`);
     }

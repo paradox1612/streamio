@@ -273,6 +273,34 @@ const providerNetworkQueries = {
     return rows[0];
   },
 
+  async update(id, fields) {
+    const allowed = ['name', 'identity_key', 'legacy_provider_id', 'catalog_last_refreshed_at', 'twenty_company_id'];
+    const sets = [];
+    const values = [];
+    let idx = 1;
+
+    for (const key of allowed) {
+      if (key in fields) {
+        sets.push(`${key} = $${idx++}`);
+        values.push(fields[key]);
+      }
+    }
+
+    if (!sets.length) return null;
+
+    sets.push('updated_at = NOW()');
+    values.push(id);
+
+    const { rows } = await pool.query(
+      `UPDATE provider_networks
+       SET ${sets.join(', ')}
+       WHERE id = $${idx}
+       RETURNING *`,
+      values
+    );
+    return rows[0] || null;
+  },
+
   async addHosts(providerNetworkId, hosts) {
     if (!providerNetworkId || !Array.isArray(hosts) || hosts.length === 0) return;
     const values = [];
@@ -355,6 +383,28 @@ const providerQueries = {
     return rows[0];
   },
 
+  async findByIdForCrm(id) {
+    const { rows } = await pool.query(
+      `SELECT p.*,
+              u.email AS user_email,
+              u.twenty_person_id,
+              n.name AS network_name,
+              n.twenty_company_id,
+              EXISTS(
+                SELECT 1
+                FROM provider_subscriptions ps
+                WHERE ps.user_provider_id = p.id
+                  AND ps.status != 'cancelled'
+              ) AS is_marketplace_managed
+       FROM user_providers p
+       JOIN users u ON u.id = p.user_id
+       LEFT JOIN provider_networks n ON n.id = p.network_id
+       WHERE p.id = $1`,
+      [id]
+    );
+    return rows[0] || null;
+  },
+
   async findByUser(userId) {
     const { rows } = await pool.query(
       `SELECT p.*,
@@ -401,6 +451,27 @@ const providerQueries = {
     return rows;
   },
 
+  async listAllForCrm() {
+    const { rows } = await pool.query(
+      `SELECT p.*,
+              u.email AS user_email,
+              u.twenty_person_id,
+              n.name AS network_name,
+              n.twenty_company_id,
+              EXISTS(
+                SELECT 1
+                FROM provider_subscriptions ps
+                WHERE ps.user_provider_id = p.id
+                  AND ps.status != 'cancelled'
+              ) AS is_marketplace_managed
+       FROM user_providers p
+       JOIN users u ON u.id = p.user_id
+       LEFT JOIN provider_networks n ON n.id = p.network_id
+       ORDER BY p.created_at ASC`
+    );
+    return rows;
+  },
+
   async update(id, userId, fields) {
     const allowed = ['name', 'hosts', 'username', 'password', 'catalog_variant'];
     const updates = [];
@@ -442,6 +513,43 @@ const providerQueries = {
       `UPDATE user_providers SET active_host = $1, status = $2, last_checked = NOW() WHERE id = $3`,
       [activeHost, status, id]
     );
+  },
+
+  async updateCrmSync(id, fields) {
+    const allowed = [
+      'twenty_provider_access_id',
+      'account_status',
+      'account_expires_at',
+      'account_is_trial',
+      'account_max_connections',
+      'account_active_connections',
+      'account_last_synced_at',
+      'active_host',
+      'status',
+      'last_checked',
+    ];
+    const sets = [];
+    const values = [];
+    let idx = 1;
+
+    for (const key of allowed) {
+      if (key in fields) {
+        sets.push(`${key} = $${idx++}`);
+        values.push(fields[key]);
+      }
+    }
+
+    if (!sets.length) return null;
+
+    values.push(id);
+    const { rows } = await pool.query(
+      `UPDATE user_providers
+       SET ${sets.join(', ')}
+       WHERE id = $${idx}
+       RETURNING *`,
+      values
+    );
+    return rows[0] || null;
   },
 
   async delete(id, userId) {

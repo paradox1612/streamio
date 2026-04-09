@@ -138,13 +138,57 @@ async function main() {
   });
   await createField(subscriptionId, { name: 'currentPeriodEnd', label: 'Current Period End', type: 'DATE_TIME', defaultValue: null });
   await createField(subscriptionId, { name: 'cancelAtPeriodEnd', label: 'Cancel at Period End', type: 'BOOLEAN', defaultValue: false });
+  await createField(subscriptionId, { name: 'personId', label: 'Person ID', type: 'TEXT', defaultValue: null });
 
-  // ── Step 3: Custom fields on Person ──────────────────────────────────────────
+  // ── Step 3: ProviderAccess custom object ─────────────────────────────────────
+  console.log('\nCreating ProviderAccess object...');
+  const providerAccessId = await getOrCreateObject({
+    nameSingular: 'providerAccess',
+    namePlural: 'providerAccesses',
+    labelSingular: 'Provider Access',
+    labelPlural: 'Provider Accesses',
+    description: 'A user-specific provider access record, whether marketplace-managed or externally supplied',
+    icon: 'IconPlugConnected',
+  });
+
+  await createField(providerAccessId, { name: 'streamioId', label: 'Streamio ID', type: 'TEXT', defaultValue: null });
+  await createField(providerAccessId, { name: 'personId', label: 'Person ID', type: 'TEXT', defaultValue: null });
+  await createField(providerAccessId, { name: 'companyId', label: 'Company ID', type: 'TEXT', defaultValue: null });
+  await createField(providerAccessId, { name: 'providerName', label: 'Provider Name', type: 'TEXT', defaultValue: null });
+  await createField(providerAccessId, { name: 'sourceType', label: 'Source Type', type: 'SELECT',
+    options: [
+      { value: 'MARKETPLACE', label: 'Marketplace', color: 'green', position: 0 },
+      { value: 'EXTERNAL', label: 'External', color: 'blue', position: 1 },
+    ],
+    defaultValue: "'EXTERNAL'",
+  });
+  await createField(providerAccessId, { name: 'providerStatus', label: 'Provider Status', type: 'SELECT',
+    options: [
+      { value: 'ONLINE', label: 'Online', color: 'green', position: 0 },
+      { value: 'OFFLINE', label: 'Offline', color: 'red', position: 1 },
+      { value: 'UNKNOWN', label: 'Unknown', color: 'gray', position: 2 },
+    ],
+    defaultValue: "'UNKNOWN'",
+  });
+  await createField(providerAccessId, { name: 'accountStatus', label: 'Account Status', type: 'TEXT', defaultValue: null });
+  await createField(providerAccessId, { name: 'accountExpiresAt', label: 'Account Expires At', type: 'DATE_TIME', defaultValue: null });
+  await createField(providerAccessId, { name: 'isTrial', label: 'Is Trial', type: 'BOOLEAN', defaultValue: false });
+  await createField(providerAccessId, { name: 'maxConnections', label: 'Max Connections', type: 'NUMBER', defaultValue: 0 });
+  await createField(providerAccessId, { name: 'activeConnections', label: 'Active Connections', type: 'NUMBER', defaultValue: 0 });
+  await createField(providerAccessId, { name: 'primaryHost', label: 'Primary Host', type: 'TEXT', defaultValue: null });
+  await createField(providerAccessId, { name: 'hostCount', label: 'Host Count', type: 'NUMBER', defaultValue: 0 });
+  await createField(providerAccessId, { name: 'hostList', label: 'Host List', type: 'TEXT', defaultValue: null });
+  await createField(providerAccessId, { name: 'networkId', label: 'Network ID', type: 'TEXT', defaultValue: null });
+  await createField(providerAccessId, { name: 'networkName', label: 'Network Name', type: 'TEXT', defaultValue: null });
+  await createField(providerAccessId, { name: 'accountLastSyncedAt', label: 'Account Last Synced At', type: 'DATE_TIME', defaultValue: null });
+
+  // ── Step 4: Custom fields on Person + Company ────────────────────────────────
   console.log('\nAdding custom fields to Person object...');
 
   // Look up Person object ID
   const objectsData = await metaQuery(`{ objects(paging: { first: 100 }) { edges { node { id nameSingular } } } }`);
   const personObjectId = objectsData?.objects?.edges?.find((e) => e.node.nameSingular === 'person')?.node?.id;
+  const companyObjectId = objectsData?.objects?.edges?.find((e) => e.node.nameSingular === 'company')?.node?.id;
 
   if (personObjectId) {
     await createField(personObjectId, { name: 'streamioId', label: 'Streamio ID', type: 'TEXT', defaultValue: null });
@@ -159,6 +203,13 @@ async function main() {
     await createField(personObjectId, { name: 'lastActiveAt', label: 'Last Active At', type: 'DATE_TIME', defaultValue: null });
   } else {
     console.warn('  Could not find Person object — skipping custom person fields');
+  }
+
+  if (companyObjectId) {
+    console.log('\nAdding custom fields to Company object...');
+    await createField(companyObjectId, { name: 'streamioNetworkId', label: 'Streamio Network ID', type: 'TEXT', defaultValue: null });
+  } else {
+    console.warn('  Could not find Company object — skipping custom company fields');
   }
 
   console.log('\n✓ Setup complete. Verify objects appear in Twenty UI under Settings → Data Model.\n');

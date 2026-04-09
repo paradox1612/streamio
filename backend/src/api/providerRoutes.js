@@ -7,6 +7,7 @@ const epgService = require('../services/epgService');
 const { providerQueries, vodQueries, jobQueries } = require('../db/queries');
 const cache = require('../utils/cache');
 const logger = require('../utils/logger');
+const eventBus = require('../utils/eventBus');
 
 const validate = (req, res, next) => {
   const errors = validationResult(req);
@@ -53,6 +54,10 @@ router.patch('/:id',
     try {
       const updated = await providerQueries.update(req.params.id, req.user.id, req.body);
       if (!updated) return res.status(404).json({ error: 'Provider not found' });
+      const providerForCrm = await providerQueries.findByIdForCrm(updated.id);
+      if (providerForCrm) {
+        eventBus.emit('provider.updated', { provider: providerForCrm });
+      }
       res.json(updated);
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -62,7 +67,14 @@ router.patch('/:id',
 
 // DELETE /api/providers/:id
 router.delete('/:id', requireAuth, async (req, res) => {
+  const provider = await providerQueries.findByIdAndUser(req.params.id, req.user.id);
+  if (!provider) return res.status(404).json({ error: 'Provider not found' });
+
+  const providerForCrm = await providerQueries.findByIdForCrm(req.params.id);
   await providerQueries.delete(req.params.id, req.user.id);
+  if (providerForCrm) {
+    eventBus.emit('provider.deleted', { provider: providerForCrm });
+  }
   res.json({ message: 'Provider deleted' });
 });
 

@@ -4,6 +4,7 @@ const { providerQueries, providerNetworkQueries, canonicalContentQueries, vodQue
 const logger = require('../utils/logger');
 const cache = require('../utils/cache');
 const { normalizeTitle, parseMovieTitle, parseReleaseTitle, parseSeriesTitle } = require('../utils/titleNormalization');
+const eventBus = require('../utils/eventBus');
 
 const FETCH_TIMEOUT = 20000; // 20s — some providers are slow
 const ACCOUNT_LOOKUP_SUCCESS_TTL_SECONDS = parseInt(process.env.ACCOUNT_LOOKUP_SUCCESS_TTL_SECONDS || '600', 10);
@@ -125,6 +126,23 @@ async function getProviderAccountInfo(provider, { forceRefresh = false } = {}) {
 
   const result = await fetchAccountInfoForHost(hostToCheck, provider.username, provider.password);
   cache.set('providerAccountInfo', cacheKey, result, result.ok ? ACCOUNT_LOOKUP_SUCCESS_TTL_SECONDS : ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
+  if (result.ok) {
+    await providerQueries.updateCrmSync(provider.id, {
+      account_status: result.accountInfo.status,
+      account_expires_at: result.accountInfo.expiresAt,
+      account_is_trial: result.accountInfo.isTrial,
+      account_max_connections: result.accountInfo.maxConnections,
+      account_active_connections: result.accountInfo.activeConnections,
+      account_last_synced_at: new Date(),
+      active_host: result.host || provider.active_host || hostToCheck,
+      status: provider.status || 'unknown',
+      last_checked: new Date(),
+    });
+    const providerForCrm = await providerQueries.findByIdForCrm(provider.id);
+    if (providerForCrm) {
+      eventBus.emit('provider.account_updated', { provider: providerForCrm });
+    }
+  }
   return result;
 }
 
@@ -226,7 +244,7 @@ const providerService = {
 
     await providerNetworkQueries.addHosts(network.id, cleanHosts);
 
-    return providerQueries.create({
+    const provider = await providerQueries.create({
       userId,
       name,
       hosts: cleanHosts,
@@ -235,6 +253,11 @@ const providerService = {
       networkId: network.id,
       catalogVariant: false,
     });
+    const providerForCrm = await providerQueries.findByIdForCrm(provider.id);
+    if (providerForCrm) {
+      eventBus.emit('provider.created', { provider: providerForCrm });
+    }
+    return provider;
   },
 
   async testConnection(host, username, password) {
