@@ -33,6 +33,15 @@ spec:
             - name: postgres
               containerPort: 5432
               protocol: TCP
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - |
+                    until pg_isready -U "$POSTGRES_USER"; do sleep 1; done
+                    psql -U "$POSTGRES_USER" -c "ALTER USER \"$POSTGRES_USER\" WITH PASSWORD '$POSTGRES_PASSWORD';"
           envFrom:
             - secretRef:
                 name: {{ include "streambridge.postgresAuthSecretName" . }}
