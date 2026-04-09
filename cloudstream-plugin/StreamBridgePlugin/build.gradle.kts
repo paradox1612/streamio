@@ -27,6 +27,7 @@ cloudstream {
 }
 
 android {
+    namespace = "com.streambridge.cloudstream"
     compileSdk = 33
 
     defaultConfig {
