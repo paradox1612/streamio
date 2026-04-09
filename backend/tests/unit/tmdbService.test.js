@@ -85,12 +85,10 @@ describe('tmdbService – runMatching', () => {
     mockTmdbQueries.exactMatchMovie
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ id: 280180, imdb_id: 'tt3083016', score: 1 });
-    mockTmdbQueries.fuzzyMatchMovie.mockResolvedValue(null);
 
     const result = await runMatching(1);
 
     expect(mockTmdbQueries.exactMatchMovie).toHaveBeenNthCalledWith(1, 'beverly hills cop axel f', 2024);
-    expect(mockTmdbQueries.fuzzyMatchMovie).toHaveBeenNthCalledWith(1, 'beverly hills cop axel f', 2024);
     expect(mockTmdbQueries.exactMatchMovie).toHaveBeenNthCalledWith(2, 'beverly hills cop axel f', null);
     expect(mockMatchQueries.upsert).toHaveBeenCalledWith({
       rawTitle: 'Beverly Hills Cop: Axel F (2024) (English)',
@@ -108,8 +106,7 @@ describe('tmdbService – runMatching', () => {
         { raw_title: 'The Matrix (1999)', vod_type: 'movie', tmdb_id: null, imdb_id: null, confidence_score: null },
       ])
       .mockResolvedValueOnce([]);
-    mockTmdbQueries.exactMatchMovie.mockResolvedValue(null);
-    mockTmdbQueries.fuzzyMatchMovie.mockResolvedValue({ id: 603, imdb_id: null, score: 0.94 });
+    mockTmdbQueries.exactMatchMovie.mockResolvedValue({ id: 603, imdb_id: null, score: 1 });
     fetch.mockResolvedValue({
       ok: true,
       json: async () => ({ imdb_id: 'tt0133093' }),
@@ -124,7 +121,7 @@ describe('tmdbService – runMatching', () => {
       tmdbId: 603,
       tmdbType: 'movie',
       imdbId: 'tt0133093',
-      confidenceScore: 0.94,
+      confidenceScore: 1,
     });
     expect(result).toMatchObject({ matched: 1, enriched: 0, failed: 0, total: 1 });
   });
@@ -183,8 +180,6 @@ describe('tmdbService – runMatching', () => {
     ]);
 
     mockTmdbQueries.exactMatchMovie.mockResolvedValue(null);
-    mockTmdbQueries.fuzzyMatchMovie.mockResolvedValue(null);
-
     const result = await runMatching(1, { enrichMissingImdb: false });
 
     expect(mockVodQueries.getUnmatchedForMatching).toHaveBeenCalledTimes(1);

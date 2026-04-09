@@ -85,6 +85,10 @@ vpn:
   serverRegions: "US East"
   # How often the scheduler rotates to a new PIA IP (hours)
   rotationHours: "1"
+  # Preserve the pod's original ClusterFirst resolver so service discovery
+  # still works while HTTP/HTTPS provider traffic exits via gluetun's proxy.
+  dnsKeepNameserver: "on"
+  firewallOutboundSubnets: "10.42.0.0/16,10.43.0.0/16"
   resources:
     requests:
       cpu: 50m

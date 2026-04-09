@@ -447,34 +447,33 @@ describe('addonHandler tryOnDemandMatch', () => {
       { raw_title: 'War Machine (2026) (Tamil)', normalized_title: 'war machine 2026' },
     ]);
     mockVodQueries.resolveByExternalIdForUser.mockResolvedValueOnce({ raw_title: 'War Machine (2026)', provider_id: 'provider-1' });
-    mockTmdbQueries.exactMatchMovie.mockResolvedValue(null);
-    mockTmdbQueries.fuzzyMatchMovie.mockResolvedValue({ id: 1265609, score: 0.7058824 });
+    mockTmdbQueries.exactMatchMovie.mockResolvedValue({ id: 1265609, score: 1 });
 
     const result = await __test__.tryOnDemandMatch('user-1', 'tt15940132', 'movie');
 
     expect(mockMatchQueries.upsert).toHaveBeenCalledTimes(3);
     expect(mockTmdbQueries.exactMatchMovie).toHaveBeenCalledTimes(1);
-    expect(mockTmdbQueries.fuzzyMatchMovie).toHaveBeenCalledTimes(1);
+    expect(mockTmdbQueries.fuzzyMatchMovie).not.toHaveBeenCalled();
     expect(mockMatchQueries.upsert).toHaveBeenNthCalledWith(1, {
       rawTitle: 'War Machine (2026)',
       tmdbId: 1265609,
       tmdbType: 'movie',
       imdbId: 'tt15940132',
-      confidenceScore: 0.7058824,
+      confidenceScore: 1,
     });
     expect(mockMatchQueries.upsert).toHaveBeenNthCalledWith(2, {
       rawTitle: 'War Machine (2026) (Hindi)',
       tmdbId: 1265609,
       tmdbType: 'movie',
       imdbId: 'tt15940132',
-      confidenceScore: 0.7058824,
+      confidenceScore: 1,
     });
     expect(mockMatchQueries.upsert).toHaveBeenNthCalledWith(3, {
       rawTitle: 'War Machine (2026) (Tamil)',
       tmdbId: 1265609,
       tmdbType: 'movie',
       imdbId: 'tt15940132',
-      confidenceScore: 0.7058824,
+      confidenceScore: 1,
     });
     expect(result).toEqual({ raw_title: 'War Machine (2026)', provider_id: 'provider-1' });
   });
@@ -523,8 +522,7 @@ describe('addonHandler tryOnDemandMatch', () => {
       },
     ]);
     mockVodQueries.resolveByExternalIdForUser.mockResolvedValueOnce(null);
-    mockTmdbQueries.exactMatchMovie.mockResolvedValue(null);
-    mockTmdbQueries.fuzzyMatchMovie.mockResolvedValue({ id: 1265609, score: 0.7058824 });
+    mockTmdbQueries.exactMatchMovie.mockResolvedValue({ id: 1265609, score: 1 });
 
     const result = await __test__.tryOnDemandMatch('user-1', 'tt15940132', 'movie');
 
@@ -578,7 +576,7 @@ describe('addonHandler tryOnDemandMatch', () => {
 
     mockVodQueries.findOnDemandCandidateForUser.mockReturnValue(deferred.promise);
     mockTmdbQueries.exactMatchMovie.mockResolvedValue(null);
-    mockTmdbQueries.fuzzyMatchMovie.mockResolvedValue({ id: 1265609, score: 0.7058824 });
+    mockTmdbQueries.exactMatchMovie.mockResolvedValue({ id: 1265609, score: 1 });
     mockVodQueries.resolveByExternalIdForUser.mockResolvedValueOnce({ raw_title: 'War Machine (2026)', provider_id: 'provider-1' });
 
     const firstPromise = __test__.resolveOnDemandMatchShared('user-1', 'tt15940132', 'movie');
@@ -592,7 +590,7 @@ describe('addonHandler tryOnDemandMatch', () => {
 
     expect(mockVodQueries.findOnDemandCandidateForUser).toHaveBeenCalledTimes(1);
     expect(mockTmdbQueries.exactMatchMovie).toHaveBeenCalledTimes(1);
-    expect(mockTmdbQueries.fuzzyMatchMovie).toHaveBeenCalledTimes(1);
+    expect(mockTmdbQueries.fuzzyMatchMovie).not.toHaveBeenCalled();
     expect(mockMatchQueries.upsert).toHaveBeenCalledTimes(1);
     expect(firstResult).toEqual({ raw_title: 'War Machine (2026)', provider_id: 'provider-1' });
     expect(secondResult).toEqual({ raw_title: 'War Machine (2026)', provider_id: 'provider-1' });

@@ -609,18 +609,15 @@ async function resolveCandidateMatch(candidate, target) {
   }
 
   for (const titleVariant of titleVariants) {
-    const exactResult = await (targetType === 'series'
+    const result = await (targetType === 'series'
       ? tmdbQueries.exactMatchSeries(titleVariant, target.year)
       : tmdbQueries.exactMatchMovie(titleVariant, target.year));
-    const result = exactResult || await (targetType === 'series'
-      ? tmdbQueries.fuzzyMatchSeries(titleVariant, target.year)
-      : tmdbQueries.fuzzyMatchMovie(titleVariant, target.year));
 
     if (result && result.id === target.id && result.score >= 0.6) {
       return {
         matched: true,
         ...result,
-        reason: exactResult ? 'tmdb_exact_match' : 'tmdb_fuzzy_match',
+        reason: 'tmdb_exact_match',
       };
     }
 

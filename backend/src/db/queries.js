@@ -1022,21 +1022,29 @@ const vodQueries = {
     let idx = 3;
 
     if (normalizedTitle) {
-      query += ` AND COALESCE(v.canonical_normalized_title, v.normalized_title) IS NOT NULL`;
+      const titleVariants = Array.from(new Set(
+        [normalizedTitle, year ? `${normalizedTitle} ${year}` : null]
+          .filter(Boolean)
+      ));
+      query += ` AND (
+        COALESCE(v.canonical_normalized_title, v.normalized_title) = ANY($${idx})
+        OR v.normalized_title = ANY($${idx})
+      )`;
       query += ` ORDER BY
         CASE WHEN m.imdb_id = $${idx + 2} THEN 0 ELSE 1 END,
         CASE WHEN m.tmdb_id = $${idx + 3} THEN 0 ELSE 1 END,
-        CASE WHEN COALESCE(v.canonical_normalized_title, v.normalized_title) = $${idx} THEN 0 ELSE 1 END,
-        CASE WHEN COALESCE(v.canonical_normalized_title, v.normalized_title) % $${idx} THEN 0 ELSE 1 END,
+        CASE WHEN COALESCE(v.canonical_normalized_title, v.normalized_title) = $${idx + 4} THEN 0 ELSE 1 END,
+        CASE WHEN v.normalized_title = $${idx + 5} THEN 0 ELSE 1 END,
         CASE WHEN v.title_year = $${idx + 1} THEN 0 ELSE 1 END,
-        COALESCE(v.canonical_normalized_title, v.normalized_title) <-> $${idx} ASC,
         ABS(COALESCE(v.title_year, $${idx + 1}) - $${idx + 1}) ASC,
         v.raw_title ASC
         LIMIT 100`;
-      params.push(normalizedTitle);
+      params.push(titleVariants);
       params.push(year || null);
       params.push(imdbId || null);
       params.push(tmdbId || null);
+      params.push(normalizedTitle);
+      params.push(year ? `${normalizedTitle} ${year}` : normalizedTitle);
     } else {
       query += ` ORDER BY
         CASE WHEN m.imdb_id = $${idx} THEN 0 ELSE 1 END,

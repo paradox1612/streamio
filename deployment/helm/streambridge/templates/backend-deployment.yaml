@@ -158,6 +158,8 @@ spec:
               value: "off"
             - name: UPDATER_PERIOD
               value: "24h"
+            - name: DNS_KEEP_NAMESERVER
+              value: {{ .Values.vpn.dnsKeepNameserver | quote }}
             - name: FIREWALL_OUTBOUND_SUBNETS
               value: {{ .Values.vpn.firewallOutboundSubnets | quote }}
           volumeMounts:

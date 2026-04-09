@@ -40,6 +40,8 @@ backend:
     adminUsername: admin
     adminPassword: "set-me-strong-password"
     jwtSecret: "set-me-long-random-secret"
+    piaUsername: ""
+    piaPassword: ""
 
 scheduler:
   enabled: true
@@ -89,3 +91,12 @@ ingress:
   tls:
     enabled: false
     secretName: ""
+
+vpn:
+  enabled: true
+  serverRegions: "US East"
+  rotationHours: "1"
+  # Keep Kubernetes service discovery working inside the pod while routing
+  # provider HTTP/HTTPS traffic through gluetun's local proxy.
+  dnsKeepNameserver: "on"
+  firewallOutboundSubnets: "10.42.0.0/16,10.43.0.0/16"

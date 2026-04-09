@@ -59,7 +59,7 @@ describe('vodQueries on-demand candidate lookup', () => {
 
     expect(pool.query).toHaveBeenCalledWith(
       expect.any(String),
-      ['user-1', 'movie', 'war machine', 2026, 'tt15940132', 1265609]
+      ['user-1', 'movie', ['war machine', 'war machine 2026'], 2026, 'tt15940132', 1265609, 'war machine', 'war machine 2026']
     );
   });
 });
