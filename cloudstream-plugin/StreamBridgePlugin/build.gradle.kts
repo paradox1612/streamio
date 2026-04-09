@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.library")
     id("kotlin-android")
@@ -32,7 +34,6 @@ android {
 
     defaultConfig {
         minSdk = 24
-        targetSdk = 33
     }
 
     compileOptions {
@@ -40,8 +41,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
-    kotlinOptions {
-        jvmTarget = "11"
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_11)
     }
 }
 
