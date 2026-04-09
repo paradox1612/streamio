@@ -134,8 +134,8 @@ twenty:
   ingress:
     enabled: true
     host: twenty.thekush.dev
-    tls: true
-    secretName: twenty-thekush-dev-tls
+    tls: false
+    secretName: ""
   env:
     SERVER_URL: "https://twenty.thekush.dev"
     STORAGE_TYPE: local

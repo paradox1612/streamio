@@ -78,3 +78,19 @@ missing-secret
 {{- fail "Set backend.secrets.databaseUrl when postgres.enabled is false" -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "streambridge.twentyDatabaseUrl" -}}
+{{- if .Values.postgres.enabled -}}
+{{- $secretName := include "streambridge.postgresAuthSecretName" . -}}
+{{- $secret := lookup "v1" "Secret" .Release.Namespace $secretName -}}
+{{- if not $secret -}}
+{{- fail (printf "postgres auth secret %s not found" $secretName) -}}
+{{- end -}}
+{{- $keys := .Values.postgres.auth.secretKeys -}}
+{{- $username := (index $secret.data $keys.username | b64dec) -}}
+{{- $password := (index $secret.data $keys.password | b64dec) -}}
+{{- printf "postgresql://%s:%s@%s:5432/twentycrm" (urlquery $username) (urlquery $password) (include "streambridge.postgresName" .) -}}
+{{- else -}}
+{{- fail "Set a Twenty database URL when postgres.enabled is false" -}}
+{{- end -}}
+{{- end -}}

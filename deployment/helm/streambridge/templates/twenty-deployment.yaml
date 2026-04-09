@@ -101,7 +101,7 @@ metadata:
     {{- include "streambridge.labels" . | nindent 4 }}
 type: Opaque
 stringData:
-  PG_DATABASE_URL: "postgresql://postgres:$(POSTGRES_PASSWORD)@{{ include "streambridge.postgresName" . }}:5432/twentycrm"
+  PG_DATABASE_URL: {{ include "streambridge.twentyDatabaseUrl" . | quote }}
   ACCESS_TOKEN_SECRET: {{ .Values.twenty.secrets.accessTokenSecret | quote }}
   LOGIN_TOKEN_SECRET: {{ .Values.twenty.secrets.loginTokenSecret | quote }}
   REFRESH_TOKEN_SECRET: {{ .Values.twenty.secrets.refreshTokenSecret | quote }}
