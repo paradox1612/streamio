@@ -1,6 +1,6 @@
 [
   {
-    "url": "https://raw.githubusercontent.com/paradox1612/streambridge/main/builds/StreamBridgePlugin.cs3",
+    "url": "https://raw.githubusercontent.com/paradox1612/streamio/main/builds/StreamBridgePlugin.cs3",
     "status": 1,
     "version": 1,
     "apiVersion": 1,
@@ -10,7 +10,7 @@
     "description": "Access your StreamBridge IPTV library in CloudStream. Sign in with your StreamBridge addon token.",
     "tvTypes": ["Movie", "TvSeries", "Live"],
     "language": "en",
-    "iconUrl": "https://raw.githubusercontent.com/paradox1612/streambridge/main/cloudstream-plugin/icon.png",
-    "repositoryUrl": "https://github.com/paradox1612/streambridge"
+    "iconUrl": "https://raw.githubusercontent.com/paradox1612/streamio/main/cloudstream-plugin/icon.png",
+    "repositoryUrl": "https://github.com/paradox1612/streamio"
   }
 ]
