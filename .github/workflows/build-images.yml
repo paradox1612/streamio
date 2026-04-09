@@ -277,6 +277,7 @@ jobs:
           FRONTEND_CHANGED: ${{ needs.build-and-push.outputs.frontend_changed }}
           PIA_USERNAME: ${{ secrets.PIA_USERNAME }}
           PIA_PASSWORD: ${{ secrets.PIA_PASSWORD }}
+          TWENTY_API_KEY: ${{ secrets.TWENTY_API_KEY }}
         run: |
           set -euo pipefail
           if [ -n "${KUBECONFIG_PATH:-}" ]; then
@@ -316,6 +317,11 @@ jobs:
             VPN_ARG="--set vpn.enabled=true"
           fi
 
+          TWENTY_ARGS=""
+          if [ -n "${TWENTY_API_KEY:-}" ]; then
+            TWENTY_ARGS="--set-string backend.env.twentyApiKey=${TWENTY_API_KEY}"
+          fi
+
           helm upgrade --install "$RELEASE_NAME" ./deployment/helm/streambridge \
             --namespace "$RELEASE_NAMESPACE" \
             --create-namespace \
@@ -323,7 +329,8 @@ jobs:
             --set-string frontend.image.tag="$FRONTEND_TAG" \
             --set-string backend.image.tag="$BACKEND_TAG" \
             $VPN_ARG \
-            $PIA_ARGS
+            $PIA_ARGS \
+            $TWENTY_ARGS
 
       - name: Wait for rollout
         shell: bash
