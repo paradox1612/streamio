@@ -278,6 +278,11 @@ jobs:
           PIA_USERNAME: ${{ secrets.PIA_USERNAME }}
           PIA_PASSWORD: ${{ secrets.PIA_PASSWORD }}
           TWENTY_API_KEY: ${{ secrets.TWENTY_API_KEY }}
+          TWENTY_APP_SECRET: ${{ secrets.TWENTY_APP_SECRET }}
+          TWENTY_ACCESS_TOKEN_SECRET: ${{ secrets.TWENTY_ACCESS_TOKEN_SECRET }}
+          TWENTY_LOGIN_TOKEN_SECRET: ${{ secrets.TWENTY_LOGIN_TOKEN_SECRET }}
+          TWENTY_REFRESH_TOKEN_SECRET: ${{ secrets.TWENTY_REFRESH_TOKEN_SECRET }}
+          TWENTY_FILE_TOKEN_SECRET: ${{ secrets.TWENTY_FILE_TOKEN_SECRET }}
         run: |
           set -euo pipefail
           if [ -n "${KUBECONFIG_PATH:-}" ]; then
@@ -319,7 +324,15 @@ jobs:
 
           TWENTY_ARGS=""
           if [ -n "${TWENTY_API_KEY:-}" ]; then
-            TWENTY_ARGS="--set-string backend.env.twentyApiKey=${TWENTY_API_KEY}"
+            TWENTY_ARGS="--set-string backend.secrets.twentyApiKey=${TWENTY_API_KEY}"
+          fi
+          TWENTY_SECRET_ARGS=""
+          if [ -n "${TWENTY_APP_SECRET:-}" ]; then
+            TWENTY_SECRET_ARGS=" --set-string twenty.secrets.appSecret=${TWENTY_APP_SECRET}"
+            TWENTY_SECRET_ARGS+=" --set-string twenty.secrets.accessTokenSecret=${TWENTY_ACCESS_TOKEN_SECRET}"
+            TWENTY_SECRET_ARGS+=" --set-string twenty.secrets.loginTokenSecret=${TWENTY_LOGIN_TOKEN_SECRET}"
+            TWENTY_SECRET_ARGS+=" --set-string twenty.secrets.refreshTokenSecret=${TWENTY_REFRESH_TOKEN_SECRET}"
+            TWENTY_SECRET_ARGS+=" --set-string twenty.secrets.fileTokenSecret=${TWENTY_FILE_TOKEN_SECRET}"
           fi
 
           helm upgrade --install "$RELEASE_NAME" ./deployment/helm/streambridge \
@@ -330,7 +343,8 @@ jobs:
             --set-string backend.image.tag="$BACKEND_TAG" \
             $VPN_ARG \
             $PIA_ARGS \
-            $TWENTY_ARGS
+            $TWENTY_ARGS \
+            $TWENTY_SECRET_ARGS
 
       - name: Wait for rollout
         shell: bash
