@@ -109,6 +109,12 @@ ingress:
     enabled: true
     secretName: streambridge-tls
 
+redis:
+  image:
+    registry: docker.io
+    repository: redis
+    tag: "7.2-alpine"
+
 twenty:
   ingress:
     enabled: true
