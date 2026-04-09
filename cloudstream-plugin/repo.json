@@ -3,6 +3,6 @@
   "description": "Official StreamBridge CloudStream plugin — connect your IPTV library to CloudStream.",
   "manifestVersion": 1,
   "pluginLists": [
-    "https://raw.githubusercontent.com/paradox1612/streambridge/main/builds/plugins.json"
+    "https://raw.githubusercontent.com/paradox1612/streamio/main/builds/plugins.json"
   ]
 }

@@ -25,7 +25,7 @@ cloudstream {
     tvTypes = listOf("Movie", "TvSeries", "Live")
     language = "en"
 
-    iconUrl = "https://raw.githubusercontent.com/YOUR_ORG/streambridge-cs/main/StreamBridgePlugin/icon.png"
+    iconUrl = "https://raw.githubusercontent.com/paradox1612/streamio/main/cloudstream-plugin/icon.png"
 }
 
 android {
