@@ -75,11 +75,9 @@ async function upsertPerson(user) {
       await apiRequest('PATCH', `/people/${user.twenty_person_id}`, {
         name: { firstName: user.email.split('@')[0], lastName: '' },
         emails: { primaryEmail: user.email },
-        customFields: {
-          streamioId: user.id,
-          accountStatus: user.is_active ? 'ACTIVE' : 'INACTIVE',
-          lastActiveAt: user.last_seen || new Date().toISOString(),
-        },
+        streamioId: String(user.id),
+        accountStatus: user.is_active ? 'ACTIVE' : 'INACTIVE',
+        lastActiveAt: user.last_seen || new Date().toISOString(),
       });
       return user.twenty_person_id;
     }
@@ -87,11 +85,9 @@ async function upsertPerson(user) {
     const result = await apiRequest('POST', '/people', {
       name: { firstName: user.email.split('@')[0], lastName: '' },
       emails: { primaryEmail: user.email },
-      customFields: {
-        streamioId: user.id,
-        accountStatus: user.is_active ? 'ACTIVE' : 'INACTIVE',
-        lastActiveAt: new Date().toISOString(),
-      },
+      streamioId: String(user.id),
+      accountStatus: user.is_active ? 'ACTIVE' : 'INACTIVE',
+      lastActiveAt: new Date().toISOString(),
     });
 
     const personId = result?.data?.id;
@@ -111,7 +107,7 @@ async function updateUserActivity(userId, lastSeen) {
     const personId = rows[0]?.twenty_person_id;
     if (!personId) return;
     await apiRequest('PATCH', `/people/${personId}`, {
-      customFields: { lastActiveAt: lastSeen.toISOString() },
+      lastActiveAt: lastSeen.toISOString(),
     });
   }, `updateUserActivity(${userId})`);
 }
