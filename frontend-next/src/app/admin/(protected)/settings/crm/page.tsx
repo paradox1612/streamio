@@ -10,8 +10,12 @@ import {
   CircleAlert,
   Clock,
   Database,
+  DatabaseZap,
   ExternalLink,
+  Link2,
   RefreshCw,
+  ShieldAlert,
+  AlertTriangle,
   User,
   Users,
   Wifi,
@@ -22,10 +26,12 @@ import { adminAPI } from '@/utils/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import DataTableFilter from '@/components/ui/data-table-filter'
+import AdminDataTable from '@/components/AdminDataTable'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'status' | 'contacts' | 'tasks'
+type Tab = 'status' | 'coverage' | 'contacts' | 'tasks'
 
 interface CrmPerson {
   id: string
@@ -49,6 +55,37 @@ interface CrmTask {
   createdAt?: string
 }
 
+interface CoverageProvider {
+  id: string
+  name: string
+  user_email?: string
+  network_name?: string | null
+  active_host?: string | null
+  status?: string | null
+  account_status?: string | null
+  account_expires_at?: string | null
+  account_last_synced_at?: string | null
+  source_type: 'MARKETPLACE' | 'EXTERNAL'
+  days_until_expiry: number | null
+  expiry_risk: 'critical' | 'warning' | 'expired' | 'unknown' | 'healthy'
+  sync_state: {
+    personLinked: boolean
+    companyLinked: boolean
+    providerAccessLinked: boolean
+  }
+}
+
+interface CoverageSummary {
+  totalProviders: number
+  peopleLinked: number
+  companiesLinked: number
+  providerAccessLinked: number
+  criticalExpiry: number
+  warningExpiry: number
+  expired: number
+  unknownExpiry: number
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmt(iso?: string | null) {
@@ -63,6 +100,29 @@ function personLabel(p: CrmPerson) {
   const ln = p.name?.lastName?.trim()
   const full = [fn, ln].filter(Boolean).join(' ')
   return full || p.emails?.primaryEmail || p.id
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (isNaN(d.getTime())) return '—'
+  return d.toLocaleString()
+}
+
+function formatExpiry(provider: CoverageProvider) {
+  if (!provider.account_expires_at) return 'No expiry'
+  if (provider.days_until_expiry === null || provider.days_until_expiry === undefined) return 'Unknown'
+  if (provider.days_until_expiry < 0) return `Expired ${Math.abs(provider.days_until_expiry)}d ago`
+  if (provider.days_until_expiry === 0) return 'Expires today'
+  return `${provider.days_until_expiry}d left`
+}
+
+function getRiskBadge(provider: CoverageProvider) {
+  if (provider.expiry_risk === 'critical') return { variant: 'danger', label: 'Critical' } as const
+  if (provider.expiry_risk === 'warning') return { variant: 'warning', label: 'Warning' } as const
+  if (provider.expiry_risk === 'expired') return { variant: 'danger', label: 'Expired' } as const
+  if (provider.expiry_risk === 'healthy') return { variant: 'success', label: 'Healthy' } as const
+  return { variant: 'outline', label: 'Unknown' } as const
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -98,6 +158,33 @@ function StatCard({
   )
 }
 
+function CoverageMetricCard({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  icon: any
+  label: string
+  value: string | number
+  detail: string
+  tone: string
+}) {
+  return (
+    <div className="rounded-lg border border-white/5 bg-white/[0.02] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{label}</p>
+          <p className="mt-2 text-2xl font-bold text-white">{value}</p>
+          <p className="mt-2 text-sm text-slate-400">{detail}</p>
+        </div>
+        <Icon className={`h-5 w-5 ${tone}`} />
+      </div>
+    </div>
+  )
+}
+
 function TabButton({
   active,
   onClick,
@@ -125,12 +212,14 @@ function TabButton({
 
 function StatusTab({
   status,
+  summary,
   loading,
   syncing,
   onRefresh,
   onSyncAll,
 }: {
   status: any
+  summary: CoverageSummary | null
   loading: boolean
   syncing: boolean
   onRefresh: () => void
@@ -202,6 +291,38 @@ function StatusTab({
               tone="text-orange-400"
             />
           </div>
+          {summary && (
+            <div className="grid grid-cols-2 gap-4 border-t border-white/5 pt-4 sm:grid-cols-4">
+              <CoverageMetricCard
+                icon={Link2}
+                label="Access linked"
+                value={`${summary.providerAccessLinked}/${summary.totalProviders}`}
+                detail="Providers with persisted Twenty access IDs"
+                tone="text-brand-200"
+              />
+              <CoverageMetricCard
+                icon={DatabaseZap}
+                label="Companies linked"
+                value={summary.companiesLinked}
+                detail="Provider networks linked to Twenty companies"
+                tone="text-sky-300"
+              />
+              <CoverageMetricCard
+                icon={ShieldAlert}
+                label="Critical expiry"
+                value={summary.criticalExpiry + summary.expired}
+                detail="Expired or expiring within 3 days"
+                tone="text-red-300"
+              />
+              <CoverageMetricCard
+                icon={AlertTriangle}
+                label="Unknown expiry"
+                value={summary.unknownExpiry}
+                detail="No usable expiry date yet"
+                tone="text-amber-300"
+              />
+            </div>
+          )}
           <div className="pt-2">
             <Button onClick={onSyncAll} disabled={syncing || !isConnected} className="gap-2">
               <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
@@ -246,6 +367,182 @@ function StatusTab({
           </CardContent>
         </Card>
       )}
+    </div>
+  )
+}
+
+function CoverageTab({
+  providers,
+  summary,
+  loading,
+  syncing,
+  onSyncAll,
+}: {
+  providers: CoverageProvider[]
+  summary: CoverageSummary | null
+  loading: boolean
+  syncing: boolean
+  onSyncAll: () => void
+}) {
+  const [search, setSearch] = useState('')
+  const [riskFilter, setRiskFilter] = useState<string[]>([])
+  const [coverageFilter, setCoverageFilter] = useState<string[]>([])
+
+  const filteredProviders = providers.filter((provider) => {
+    const haystack = [
+      provider.name,
+      provider.user_email,
+      provider.network_name,
+      provider.active_host,
+      provider.source_type,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+
+    const coverageState =
+      provider.sync_state.personLinked &&
+      provider.sync_state.companyLinked &&
+      provider.sync_state.providerAccessLinked
+        ? 'linked'
+        : 'missing-links'
+
+    const matchesSearch = haystack.includes(search.toLowerCase())
+    const matchesRisk = riskFilter.length === 0 || riskFilter.includes(provider.expiry_risk)
+    const matchesCoverage = coverageFilter.length === 0 || coverageFilter.includes(coverageState)
+
+    return matchesSearch && matchesRisk && matchesCoverage
+  })
+
+  const columns = [
+    {
+      key: 'provider',
+      header: 'Provider Access',
+      render: (provider: CoverageProvider) => (
+        <div className="min-w-[16rem]">
+          <div className="font-semibold text-white">{provider.name}</div>
+          <div className="mt-1 text-xs text-slate-400/75">{provider.user_email}</div>
+          <div className="mt-1 text-xs text-slate-500">{provider.network_name || 'No network linked'}</div>
+        </div>
+      ),
+    },
+    {
+      key: 'source',
+      header: 'Source',
+      render: (provider: CoverageProvider) => (
+        <div>
+          <Badge variant={provider.source_type === 'MARKETPLACE' ? 'success' : 'brand'} className="w-fit">
+            {provider.source_type}
+          </Badge>
+          <div className="mt-2 text-xs text-slate-400/75">{provider.active_host || 'No active host'}</div>
+        </div>
+      ),
+    },
+    {
+      key: 'coverage',
+      header: 'CRM Coverage',
+      cellClassName: 'min-w-[14rem]',
+      render: (provider: CoverageProvider) => (
+        <div className="space-y-1 text-xs">
+          <div className={provider.sync_state.personLinked ? 'text-emerald-300' : 'text-red-300'}>
+            Person {provider.sync_state.personLinked ? 'linked' : 'missing'}
+          </div>
+          <div className={provider.sync_state.companyLinked ? 'text-emerald-300' : 'text-red-300'}>
+            Company {provider.sync_state.companyLinked ? 'linked' : 'missing'}
+          </div>
+          <div className={provider.sync_state.providerAccessLinked ? 'text-emerald-300' : 'text-red-300'}>
+            Access {provider.sync_state.providerAccessLinked ? 'linked' : 'missing'}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'expiry',
+      header: 'Expiry Risk',
+      render: (provider: CoverageProvider) => {
+        const badge = getRiskBadge(provider)
+        return (
+          <div>
+            <Badge variant={badge.variant} className="w-fit">{badge.label}</Badge>
+            <div className="mt-2 font-medium text-slate-100">{formatExpiry(provider)}</div>
+            <div className="text-xs text-slate-400/75">{formatDateTime(provider.account_expires_at)}</div>
+          </div>
+        )
+      },
+    },
+    {
+      key: 'sync',
+      header: 'Last Account Sync',
+      render: (provider: CoverageProvider) => (
+        <div>
+          <div className="font-medium text-slate-100">{formatDateTime(provider.account_last_synced_at)}</div>
+          <div className="text-xs text-slate-400/75">
+            Health {provider.status || 'unknown'} · Account {provider.account_status || 'unknown'}
+          </div>
+        </div>
+      ),
+    },
+  ]
+
+  return (
+    <div className="space-y-4">
+      {summary && (
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+          <CoverageMetricCard icon={CheckCircle2} label="People linked" value={summary.peopleLinked} detail="Providers whose user is linked to a Twenty person" tone="text-emerald-300" />
+          <CoverageMetricCard icon={DatabaseZap} label="Companies linked" value={summary.companiesLinked} detail="Providers whose network is linked to a Twenty company" tone="text-sky-300" />
+          <CoverageMetricCard icon={AlertTriangle} label="Warning window" value={summary.warningExpiry} detail="Providers expiring in 4 to 7 days" tone="text-amber-300" />
+          <CoverageMetricCard icon={ShieldAlert} label="Unknown expiry" value={summary.unknownExpiry} detail="Providers with no usable expiry date yet" tone="text-slate-300" />
+        </div>
+      )}
+
+      <AdminDataTable
+        title="CRM provider coverage"
+        description="Use this table to find missing Twenty links and provider accounts that need refresh before expiry tasks can become reliable."
+        count={filteredProviders.length}
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search by provider, user, network, host, or source..."
+        primaryAction={{
+          label: syncing ? 'Syncing...' : 'Run Full Sync',
+          icon: RefreshCw,
+          onClick: onSyncAll,
+          variant: 'outline',
+        }}
+        filters={[
+          (
+            <DataTableFilter
+              label="Expiry risk"
+              options={[
+                { value: 'critical', label: 'Critical', icon: ShieldAlert },
+                { value: 'warning', label: 'Warning', icon: AlertTriangle },
+                { value: 'expired', label: 'Expired', icon: ShieldAlert },
+                { value: 'unknown', label: 'Unknown', icon: DatabaseZap },
+                { value: 'healthy', label: 'Healthy', icon: CheckCircle2 },
+              ]}
+              selectedValues={riskFilter}
+              onChange={setRiskFilter}
+              isMultiSelect
+            />
+          ),
+          (
+            <DataTableFilter
+              label="Coverage"
+              options={[
+                { value: 'linked', label: 'All linked', icon: CheckCircle2 },
+                { value: 'missing-links', label: 'Missing links', icon: Link2 },
+              ]}
+              selectedValues={coverageFilter}
+              onChange={setCoverageFilter}
+              isMultiSelect
+            />
+          ),
+        ]}
+        columns={columns}
+        rows={filteredProviders}
+        loading={loading}
+        emptyMessage="No provider access rows match the current CRM filters."
+        rowKey={(provider) => provider.id}
+      />
     </div>
   )
 }
@@ -524,6 +821,7 @@ function TasksTab() {
 export default function AdminCrmStatusPage() {
   const [tab, setTab] = useState<Tab>('status')
   const [status, setStatus] = useState<any>(null)
+  const [coverage, setCoverage] = useState<{ summary: CoverageSummary; providers: CoverageProvider[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
 
@@ -533,8 +831,12 @@ export default function AdminCrmStatusPage() {
   async function loadStatus() {
     setLoading(true)
     try {
-      const { data } = await adminAPI.getCrmStatus()
-      setStatus(data)
+      const [{ data: statusData }, { data: coverageData }] = await Promise.all([
+        adminAPI.getCrmStatus(),
+        adminAPI.getCrmCoverage(),
+      ])
+      setStatus(statusData)
+      setCoverage(coverageData)
     } catch {
       toast.error('Failed to load CRM status')
     } finally {
@@ -583,6 +885,9 @@ export default function AdminCrmStatusPage() {
           <TabButton active={tab === 'contacts'} onClick={() => setTab('contacts')}>
             Contacts
           </TabButton>
+          <TabButton active={tab === 'coverage'} onClick={() => setTab('coverage')}>
+            Coverage
+          </TabButton>
           <TabButton active={tab === 'tasks'} onClick={() => setTab('tasks')}>
             Tasks
           </TabButton>
@@ -593,9 +898,19 @@ export default function AdminCrmStatusPage() {
       {tab === 'status' && (
         <StatusTab
           status={status}
+          summary={coverage?.summary ?? null}
           loading={loading}
           syncing={syncing}
           onRefresh={loadStatus}
+          onSyncAll={handleSyncAll}
+        />
+      )}
+      {tab === 'coverage' && (
+        <CoverageTab
+          providers={coverage?.providers ?? []}
+          summary={coverage?.summary ?? null}
+          loading={loading}
+          syncing={syncing}
           onSyncAll={handleSyncAll}
         />
       )}

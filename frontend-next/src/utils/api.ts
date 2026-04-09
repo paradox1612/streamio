@@ -164,6 +164,7 @@ export const adminAPI = {
   deleteOffering: (id: string) => api.delete(`/api/admin/marketplace/${id}`),
   // CRM
   getCrmStatus: () => api.get('/api/admin/crm/status'),
+  getCrmCoverage: () => api.get('/api/admin/crm/provider-access-coverage'),
   syncAllToCrm: () => api.post('/api/admin/crm/sync-all'),
   getCrmPeople: (params?: { limit?: number; cursor?: string }) => api.get('/api/admin/crm/people', { params }),
   getCrmTasks: (params?: { limit?: number; cursor?: string }) => api.get('/api/admin/crm/tasks', { params }),
