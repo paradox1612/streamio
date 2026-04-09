@@ -17,6 +17,7 @@ import {
   Settings,
   Shield,
   Users,
+  UserSquare2,
   X,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -35,6 +36,7 @@ const navItems = [
   { path: '/admin/errors', label: 'Errors', icon: OctagonAlert, description: 'Crash reports' },
   { path: '/admin/tmdb', label: 'TMDB Matching', icon: Crosshair, description: 'Catalog integrity' },
   { path: '/admin/system', label: 'System', icon: Settings, description: 'Infrastructure' },
+  { path: '/admin/settings/crm', label: 'CRM', icon: UserSquare2, description: 'Twenty CRM sync' },
 ]
 
 function AdminNavItem({ item, onClick }: { item: (typeof navItems)[number]; onClick?: () => void }) {

@@ -77,7 +77,7 @@ async function upsertPerson(user) {
         emails: { primaryEmail: user.email },
         customFields: {
           streamioId: user.id,
-          accountStatus: user.is_active ? 'active' : 'inactive',
+          accountStatus: user.is_active ? 'ACTIVE' : 'INACTIVE',
           lastActiveAt: user.last_seen || new Date().toISOString(),
         },
       });
@@ -89,7 +89,7 @@ async function upsertPerson(user) {
       emails: { primaryEmail: user.email },
       customFields: {
         streamioId: user.id,
-        accountStatus: user.is_active ? 'active' : 'inactive',
+        accountStatus: user.is_active ? 'ACTIVE' : 'INACTIVE',
         lastActiveAt: new Date().toISOString(),
       },
     });
@@ -141,7 +141,7 @@ async function upsertCompany(providerNetwork) {
 async function upsertSubscription(subscription, offeringName) {
   return withRetry(async () => {
     const payload = {
-      status: subscription.status,
+      status: subscription.status?.toUpperCase(),
       currentPeriodEnd: subscription.current_period_end,
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       stripeSubscriptionId: subscription.stripe_subscription_id,

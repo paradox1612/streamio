@@ -38,22 +38,26 @@ async function metaQuery(query, variables = {}) {
   return json.data;
 }
 
-async function createObject({ nameSingular, namePlural, labelSingular, labelPlural, description, icon }) {
+async function getOrCreateObject({ nameSingular, namePlural, labelSingular, labelPlural, description, icon }) {
+  // Check if it already exists (ObjectFilter has no nameSingular — fetch all and match client-side)
+  const existing = await metaQuery(`{ objects(paging: { first: 100 }) { edges { node { id nameSingular } } } }`);
+  const existingId = existing?.objects?.edges?.find((e) => e.node.nameSingular === nameSingular)?.node?.id;
+  if (existingId) {
+    console.log(`  Object already exists: ${nameSingular} (${existingId})`);
+    return existingId;
+  }
+
   try {
     const data = await metaQuery(`
       mutation CreateObject($input: CreateOneObjectInput!) {
         createOneObject(input: $input) { id nameSingular }
       }
     `, {
-      input: { nameSingular, namePlural, labelSingular, labelPlural, description, icon },
+      input: { object: { nameSingular, namePlural, labelSingular, labelPlural, description, icon } },
     });
     console.log(`✓ Created object: ${nameSingular} (${data.createOneObject.id})`);
     return data.createOneObject.id;
   } catch (err) {
-    if (err.message.includes('already exists') || err.message.includes('duplicate')) {
-      console.log(`  Object already exists: ${nameSingular}`);
-      return null;
-    }
     throw err;
   }
 }
@@ -65,13 +69,19 @@ async function createField(objectId, fieldInput) {
         createOneField(input: $input) { id name }
       }
     `, {
-      input: { objectMetadataId: objectId, ...fieldInput },
+      input: { field: { objectMetadataId: objectId, ...fieldInput } },
     });
     console.log(`  ✓ Field: ${fieldInput.name}`);
     return data.createOneField.id;
   } catch (err) {
-    if (err.message.includes('already exists') || err.message.includes('duplicate')) {
+    const msg = err.message || '';
+    if (msg.includes('already exists') || msg.includes('duplicate') || msg.includes('NOT_AVAILABLE') || msg.includes('not available')) {
       console.log(`    Field already exists: ${fieldInput.name}`);
+      return null;
+    }
+    // Twenty wraps ALL field validation errors in "Multiple validation errors" — log details and skip
+    if (msg.includes('Multiple validation errors')) {
+      console.log(`    Skipping field ${fieldInput.name} (already exists or conflicts): ${msg}`);
       return null;
     }
     throw err;
@@ -83,7 +93,7 @@ async function main() {
 
   // ── Step 1: ProviderOffering custom object ───────────────────────────────────
   console.log('Creating ProviderOffering object...');
-  const offeringId = await createObject({
+  const offeringId = await getOrCreateObject({
     nameSingular: 'providerOffering',
     namePlural: 'providerOfferings',
     labelSingular: 'Provider Offering',
@@ -92,23 +102,21 @@ async function main() {
     icon: 'IconShoppingCart',
   });
 
-  if (offeringId) {
-    await createField(offeringId, { name: 'streamioId', label: 'Streamio ID', type: 'TEXT', defaultValue: null });
-    await createField(offeringId, { name: 'priceCents', label: 'Price (cents)', type: 'NUMBER', defaultValue: 0 });
-    await createField(offeringId, { name: 'billingPeriod', label: 'Billing Period', type: 'SELECT',
-      options: [
-        { value: 'month', label: 'Monthly', color: 'blue', position: 0 },
-        { value: 'year',  label: 'Yearly',  color: 'green', position: 1 },
-      ],
-      defaultValue: 'month',
-    });
-    await createField(offeringId, { name: 'trialDays', label: 'Trial Days', type: 'NUMBER', defaultValue: 0 });
-    await createField(offeringId, { name: 'isActive', label: 'Is Active', type: 'BOOLEAN', defaultValue: true });
-  }
+  await createField(offeringId, { name: 'streamioId', label: 'Streamio ID', type: 'TEXT', defaultValue: null });
+  await createField(offeringId, { name: 'priceCents', label: 'Price (cents)', type: 'NUMBER', defaultValue: 0 });
+  await createField(offeringId, { name: 'billingPeriod', label: 'Billing Period', type: 'SELECT',
+    options: [
+      { value: 'MONTH', label: 'Monthly', color: 'blue', position: 0 },
+      { value: 'YEAR',  label: 'Yearly',  color: 'green', position: 1 },
+    ],
+    defaultValue: "'MONTH'",
+  });
+  await createField(offeringId, { name: 'trialDays', label: 'Trial Days', type: 'NUMBER', defaultValue: 0 });
+  await createField(offeringId, { name: 'isActive', label: 'Is Active', type: 'BOOLEAN', defaultValue: true });
 
   // ── Step 2: Subscription custom object ───────────────────────────────────────
   console.log('\nCreating Subscription object...');
-  const subscriptionId = await createObject({
+  const subscriptionId = await getOrCreateObject({
     nameSingular: 'subscription',
     namePlural: 'subscriptions',
     labelSingular: 'Subscription',
@@ -117,40 +125,36 @@ async function main() {
     icon: 'IconReceipt',
   });
 
-  if (subscriptionId) {
-    await createField(subscriptionId, { name: 'streamioId', label: 'Streamio ID', type: 'TEXT', defaultValue: null });
-    await createField(subscriptionId, { name: 'stripeSubscriptionId', label: 'Stripe Subscription ID', type: 'TEXT', defaultValue: null });
-    await createField(subscriptionId, { name: 'status', label: 'Status', type: 'SELECT',
-      options: [
-        { value: 'active',    label: 'Active',    color: 'green',  position: 0 },
-        { value: 'trialing',  label: 'Trialing',  color: 'blue',   position: 1 },
-        { value: 'past_due',  label: 'Past Due',  color: 'orange', position: 2 },
-        { value: 'cancelled', label: 'Cancelled', color: 'red',    position: 3 },
-      ],
-      defaultValue: 'active',
-    });
-    await createField(subscriptionId, { name: 'currentPeriodEnd', label: 'Current Period End', type: 'DATE_TIME', defaultValue: null });
-    await createField(subscriptionId, { name: 'cancelAtPeriodEnd', label: 'Cancel at Period End', type: 'BOOLEAN', defaultValue: false });
-  }
+  await createField(subscriptionId, { name: 'streamioId', label: 'Streamio ID', type: 'TEXT', defaultValue: null });
+  await createField(subscriptionId, { name: 'stripeSubscriptionId', label: 'Stripe Subscription ID', type: 'TEXT', defaultValue: null });
+  await createField(subscriptionId, { name: 'status', label: 'Status', type: 'SELECT',
+    options: [
+      { value: 'ACTIVE',    label: 'Active',    color: 'green',  position: 0 },
+      { value: 'TRIALING',  label: 'Trialing',  color: 'blue',   position: 1 },
+      { value: 'PAST_DUE',  label: 'Past Due',  color: 'orange', position: 2 },
+      { value: 'CANCELLED', label: 'Cancelled', color: 'red',    position: 3 },
+    ],
+    defaultValue: "'ACTIVE'",
+  });
+  await createField(subscriptionId, { name: 'currentPeriodEnd', label: 'Current Period End', type: 'DATE_TIME', defaultValue: null });
+  await createField(subscriptionId, { name: 'cancelAtPeriodEnd', label: 'Cancel at Period End', type: 'BOOLEAN', defaultValue: false });
 
   // ── Step 3: Custom fields on Person ──────────────────────────────────────────
   console.log('\nAdding custom fields to Person object...');
 
   // Look up Person object ID
-  const objectsData = await metaQuery(`
-    query { objects(filter: { nameSingular: { eq: "person" } }) { edges { node { id nameSingular } } } }
-  `);
-  const personObjectId = objectsData?.objects?.edges?.[0]?.node?.id;
+  const objectsData = await metaQuery(`{ objects(paging: { first: 100 }) { edges { node { id nameSingular } } } }`);
+  const personObjectId = objectsData?.objects?.edges?.find((e) => e.node.nameSingular === 'person')?.node?.id;
 
   if (personObjectId) {
     await createField(personObjectId, { name: 'streamioId', label: 'Streamio ID', type: 'TEXT', defaultValue: null });
     await createField(personObjectId, { name: 'accountStatus', label: 'Account Status', type: 'SELECT',
       options: [
-        { value: 'active',   label: 'Active',   color: 'green', position: 0 },
-        { value: 'inactive', label: 'Inactive', color: 'red',   position: 1 },
-        { value: 'trial',    label: 'Trial',    color: 'blue',  position: 2 },
+        { value: 'ACTIVE',   label: 'Active',   color: 'green', position: 0 },
+        { value: 'INACTIVE', label: 'Inactive', color: 'red',   position: 1 },
+        { value: 'TRIAL',    label: 'Trial',    color: 'blue',  position: 2 },
       ],
-      defaultValue: 'active',
+      defaultValue: "'ACTIVE'",
     });
     await createField(personObjectId, { name: 'lastActiveAt', label: 'Last Active At', type: 'DATE_TIME', defaultValue: null });
   } else {
