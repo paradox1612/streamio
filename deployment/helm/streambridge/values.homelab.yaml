@@ -100,6 +100,7 @@ twenty:
     secretName: ""
   env:
     SERVER_URL: "https://twenty.thekush.dev"
+    REDIS_URL: "redis://{{ .Release.Name }}-redis-master:6379"
 
 vpn:
   enabled: true

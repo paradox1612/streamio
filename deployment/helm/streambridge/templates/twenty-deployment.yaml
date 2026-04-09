@@ -57,7 +57,7 @@ spec:
                   name: {{ include "streambridge.fullname" . }}-twenty-secrets
                   key: PG_DATABASE_URL
             - name: REDIS_URL
-              value: "redis://{{ .Release.Name }}-redis-master:6379"
+              value: {{ tpl .Values.twenty.env.REDIS_URL . | quote }}
             - name: SERVER_URL
               value: {{ .Values.twenty.env.SERVER_URL | quote }}
             - name: STORAGE_TYPE
@@ -178,7 +178,7 @@ spec:
                   name: {{ include "streambridge.fullname" . }}-twenty-secrets
                   key: PG_DATABASE_URL
             - name: REDIS_URL
-              value: "redis://{{ .Release.Name }}-redis-master:6379"
+              value: {{ tpl .Values.twenty.env.REDIS_URL . | quote }}
             - name: SERVER_URL
               value: {{ .Values.twenty.env.SERVER_URL | quote }}
             - name: ACCESS_TOKEN_SECRET

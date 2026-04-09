@@ -264,6 +264,12 @@ jobs:
           kubectl version --client
           helm version
 
+      - name: Build Helm dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          helm dependency build ./deployment/helm/streambridge
+
       - name: Deploy Helm release with commit image tags
         shell: bash
         env:
