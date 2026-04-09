@@ -3,6 +3,7 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Crosshair,
+  DatabaseZap,
   Gift,
   HeartPulse,
   LayoutDashboard,
@@ -29,6 +30,7 @@ const navItems = [
   { path: '/admin/health', label: 'Host Health', icon: HeartPulse, description: 'Routing confidence' },
   { path: '/admin/errors', label: 'Errors', icon: OctagonAlert, description: 'Crash reports' },
   { path: '/admin/tmdb', label: 'TMDB Matching', icon: Crosshair, description: 'Catalog integrity' },
+  { path: '/admin/crm', label: 'CRM', icon: DatabaseZap, description: 'Coverage and expiry risk' },
   { path: '/admin/system', label: 'System', icon: Settings, description: 'Infrastructure' },
 ];
 

@@ -33,7 +33,9 @@ async function syncProviderAccess(provider) {
     provider.twenty_company_id = await ensureCompanyForProvider(provider);
   }
 
-  return crm.upsertProviderAccess(provider);
+  const providerAccessId = await crm.upsertProviderAccess(provider);
+  await crm.ensureProviderExpiryTask(provider);
+  return providerAccessId;
 }
 
 /**

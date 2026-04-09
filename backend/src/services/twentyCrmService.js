@@ -37,6 +37,160 @@ function summarizeHosts(hosts = []) {
   return hosts.map((host) => String(host || '').trim()).filter(Boolean).join(', ');
 }
 
+const PROVIDER_EXPIRY_TASK_PREFIX = 'Provider expiry risk';
+
+function normalizeValue(value) {
+  return String(value || '').trim();
+}
+
+function normalizeEmail(value) {
+  return normalizeValue(value).toLowerCase();
+}
+
+async function listAllRecords(path, dataKey, { limit = 100, maxPages = 50 } = {}) {
+  const records = [];
+  let cursor;
+  let page = 0;
+
+  while (page < maxPages) {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cursor) params.set('after', cursor);
+
+    const result = await apiRequest('GET', `${path}?${params.toString()}`);
+    records.push(...(result?.data?.[dataKey] || []));
+
+    if (!result?.pageInfo?.hasNextPage || !result?.pageInfo?.endCursor) break;
+    cursor = result.pageInfo.endCursor;
+    page += 1;
+  }
+
+  return records;
+}
+
+function isoOrNow(value) {
+  return value || new Date().toISOString();
+}
+
+function normalizeTimestamp(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+function differenceInDays(targetDate, baseDate = new Date()) {
+  const target = new Date(targetDate);
+  if (Number.isNaN(target.getTime())) return null;
+  const diff = target.getTime() - baseDate.getTime();
+  return Math.ceil(diff / (24 * 60 * 60 * 1000));
+}
+
+function getProviderExpiryTaskTitle(providerName, daysUntilExpiry) {
+  const safeName = normalizeValue(providerName) || 'provider';
+  return `${PROVIDER_EXPIRY_TASK_PREFIX}: ${safeName} expires in ${daysUntilExpiry} days`;
+}
+
+async function persistPersonId(userId, personId) {
+  if (!userId || !personId) return;
+  const { pool } = require('../db/queries');
+  await pool.query('UPDATE users SET twenty_person_id = $1 WHERE id = $2', [personId, userId]);
+}
+
+async function persistCompanyId(networkId, companyId) {
+  if (!networkId || !companyId) return;
+  const { providerNetworkQueries } = require('../db/queries');
+  await providerNetworkQueries.update(networkId, { twenty_company_id: companyId });
+}
+
+async function persistProviderAccessId(providerId, providerAccessId) {
+  if (!providerId || !providerAccessId) return;
+  const { providerQueries } = require('../db/queries');
+  await providerQueries.updateCrmSync(providerId, { twenty_provider_access_id: providerAccessId });
+}
+
+async function findExistingPerson(user) {
+  const people = await listAllRecords('/people', 'people');
+  const streamioId = normalizeValue(user.id);
+  const email = normalizeEmail(user.email);
+
+  return people.find((person) => normalizeValue(person.streamioId) === streamioId)
+    || people.find((person) => normalizeEmail(person?.emails?.primaryEmail) === email)
+    || null;
+}
+
+async function findExistingCompany(providerNetwork) {
+  const companies = await listAllRecords('/companies', 'companies');
+  const streamioNetworkId = normalizeValue(providerNetwork.id);
+  const networkName = normalizeValue(providerNetwork.name);
+
+  return companies.find((company) => normalizeValue(company.streamioNetworkId) === streamioNetworkId)
+    || companies.find((company) => normalizeValue(company.name) === networkName)
+    || null;
+}
+
+async function findExistingProviderAccess(provider) {
+  const providerAccesses = await listAllRecords('/providerAccesses', 'providerAccesses');
+  const streamioId = normalizeValue(provider.id);
+
+  return providerAccesses.find((providerAccess) => normalizeValue(providerAccess.streamioId) === streamioId)
+    || null;
+}
+
+async function findExistingTaskByTitle(title) {
+  const tasks = await listAllRecords('/tasks', 'tasks');
+  return tasks.find((task) => normalizeValue(task.title) === normalizeValue(title)) || null;
+}
+
+async function createWithDuplicateFallback(path, body, resolveExisting) {
+  try {
+    return await apiRequest('POST', path, body);
+  } catch (err) {
+    const duplicateDetected = /duplicate entry/i.test(err.message);
+    if (!duplicateDetected) throw err;
+
+    const existing = await resolveExisting();
+    if (existing?.id) {
+      return { data: { id: existing.id } };
+    }
+
+    throw err;
+  }
+}
+
+function stripProviderRelationFields(payload) {
+  const nextPayload = { ...payload };
+  delete nextPayload.personRecordId;
+  delete nextPayload.companyRecordId;
+  return nextPayload;
+}
+
+function isUnknownFieldError(err, fieldName) {
+  return err?.message?.includes(fieldName) || false;
+}
+
+async function upsertProviderAccessRecord(path, payload, resolveExisting) {
+  try {
+    if (path.includes('/providerAccesses/')) {
+      await apiRequest('PATCH', path, payload);
+      return null;
+    }
+    return await createWithDuplicateFallback(path, payload, resolveExisting);
+  } catch (err) {
+    const relationFieldMissing =
+      isUnknownFieldError(err, 'personRecordId') ||
+      isUnknownFieldError(err, 'companyRecordId');
+
+    if (!relationFieldMissing) throw err;
+
+    const fallbackPayload = stripProviderRelationFields(payload);
+    if (path.includes('/providerAccesses/')) {
+      await apiRequest('PATCH', path, fallbackPayload);
+      return null;
+    }
+    return createWithDuplicateFallback(path, fallbackPayload, resolveExisting);
+  }
+}
+
 // ─── Retry Helper ─────────────────────────────────────────────────────────────
 
 async function withRetry(fn, label, maxAttempts = 3) {
@@ -97,30 +251,33 @@ async function metaQuery(query, variables = {}) {
 
 async function upsertPerson(user) {
   return withRetry(async () => {
-    if (user.twenty_person_id) {
-      await apiRequest('PATCH', `/people/${user.twenty_person_id}`, {
-        name: { firstName: user.email.split('@')[0], lastName: '' },
-        emails: { primaryEmail: user.email },
-        streamioId: String(user.id),
-        accountStatus: user.is_active ? 'ACTIVE' : 'INACTIVE',
-        lastActiveAt: user.last_seen || new Date().toISOString(),
-      });
-      return user.twenty_person_id;
-    }
-
-    const result = await apiRequest('POST', '/people', {
+    const payload = {
       name: { firstName: user.email.split('@')[0], lastName: '' },
       emails: { primaryEmail: user.email },
       streamioId: String(user.id),
       accountStatus: user.is_active ? 'ACTIVE' : 'INACTIVE',
-      lastActiveAt: new Date().toISOString(),
-    });
+      lastActiveAt: isoOrNow(user.last_seen),
+    };
 
-    const personId = result?.data?.id;
+    let personId = user.twenty_person_id;
+    if (!personId) {
+      const existing = await findExistingPerson(user);
+      personId = existing?.id || null;
+    }
+
     if (personId) {
-      // Persist the Twenty person ID back to our DB
-      const { pool } = require('../db/queries');
-      await pool.query('UPDATE users SET twenty_person_id = $1 WHERE id = $2', [personId, user.id]);
+      await apiRequest('PATCH', `/people/${personId}`, payload);
+      if (user.twenty_person_id !== personId) {
+        await persistPersonId(user.id, personId);
+        user.twenty_person_id = personId;
+      }
+      return personId;
+    }
+
+    const result = await createWithDuplicateFallback('/people', payload, () => findExistingPerson(user));
+    personId = result?.data?.id;
+    if (personId) {
+      await persistPersonId(user.id, personId);
       user.twenty_person_id = personId;
     }
     return personId;
@@ -143,24 +300,32 @@ async function updateUserActivity(userId, lastSeen) {
 
 async function upsertCompany(providerNetwork) {
   return withRetry(async () => {
-    if (providerNetwork.twenty_company_id) {
-      await apiRequest('PATCH', `/companies/${providerNetwork.twenty_company_id}`, {
-        name: providerNetwork.name,
-        streamioNetworkId: String(providerNetwork.id),
-      });
-      return providerNetwork.twenty_company_id;
-    }
-
-    const result = await apiRequest('POST', '/companies', {
+    const payload = {
       name: providerNetwork.name,
       domainName: { primaryLinkUrl: '', primaryLinkLabel: providerNetwork.name },
       streamioNetworkId: String(providerNetwork.id),
-    });
+    };
 
-    const companyId = result?.data?.id;
+    let companyId = providerNetwork.twenty_company_id;
+    if (!companyId) {
+      const existing = await findExistingCompany(providerNetwork);
+      companyId = existing?.id || null;
+    }
+
     if (companyId) {
-      const { providerNetworkQueries } = require('../db/queries');
-      await providerNetworkQueries.update(providerNetwork.id, { twenty_company_id: companyId });
+      await apiRequest('PATCH', `/companies/${companyId}`, payload);
+      if (providerNetwork.twenty_company_id !== companyId) {
+        await persistCompanyId(providerNetwork.id, companyId);
+        providerNetwork.twenty_company_id = companyId;
+      }
+      return companyId;
+    }
+
+    const result = await createWithDuplicateFallback('/companies', payload, () => findExistingCompany(providerNetwork));
+    companyId = result?.data?.id;
+    if (companyId) {
+      await persistCompanyId(providerNetwork.id, companyId);
+      providerNetwork.twenty_company_id = companyId;
     }
     return companyId;
   }, `upsertCompany(${providerNetwork.id})`);
@@ -169,9 +334,12 @@ async function upsertCompany(providerNetwork) {
 async function upsertProviderAccess(provider) {
   return withRetry(async () => {
     const payload = {
+      name: provider.name,
       streamioId: String(provider.id),
       personId: provider.twenty_person_id || undefined,
       companyId: provider.twenty_company_id || undefined,
+      personRecordId: provider.twenty_person_id || undefined,
+      companyRecordId: provider.twenty_company_id || undefined,
       providerName: provider.name,
       sourceType: toProviderSourceType(provider.is_marketplace_managed),
       providerStatus: toProviderHealthStatus(provider.status),
@@ -188,16 +356,26 @@ async function upsertProviderAccess(provider) {
       accountLastSyncedAt: provider.account_last_synced_at || undefined,
     };
 
-    if (provider.twenty_provider_access_id) {
-      await apiRequest('PATCH', `/providerAccesses/${provider.twenty_provider_access_id}`, payload);
-      return provider.twenty_provider_access_id;
+    let providerAccessId = provider.twenty_provider_access_id;
+    if (!providerAccessId) {
+      const existing = await findExistingProviderAccess(provider);
+      providerAccessId = existing?.id || null;
     }
 
-    const result = await apiRequest('POST', '/providerAccesses', payload);
-    const providerAccessId = result?.data?.id;
     if (providerAccessId) {
-      const { providerQueries } = require('../db/queries');
-      await providerQueries.updateCrmSync(provider.id, { twenty_provider_access_id: providerAccessId });
+      await upsertProviderAccessRecord(`/providerAccesses/${providerAccessId}`, payload, () => findExistingProviderAccess(provider));
+      if (provider.twenty_provider_access_id !== providerAccessId) {
+        await persistProviderAccessId(provider.id, providerAccessId);
+        provider.twenty_provider_access_id = providerAccessId;
+      }
+      return providerAccessId;
+    }
+
+    const result = await upsertProviderAccessRecord('/providerAccesses', payload, () => findExistingProviderAccess(provider));
+    providerAccessId = result?.data?.id;
+    if (providerAccessId) {
+      await persistProviderAccessId(provider.id, providerAccessId);
+      provider.twenty_provider_access_id = providerAccessId;
     }
     return providerAccessId;
   }, `upsertProviderAccess(${provider.id})`);
@@ -260,6 +438,23 @@ async function createTask(personId, title, dueAt) {
   }, `createTask(${personId})`);
 }
 
+async function createTaskIfMissing(personId, title, dueAt) {
+  return withRetry(async () => {
+    if (!personId || !title) return null;
+
+    const existing = await findExistingTaskByTitle(title);
+    if (existing?.id) return existing.id;
+
+    const result = await apiRequest('POST', '/tasks', {
+      title,
+      dueAt: dueAt ? dueAt.toISOString() : new Date().toISOString(),
+      assignees: [],
+      taskTargets: [{ personId }],
+    });
+    return result?.data?.id || null;
+  }, `createTaskIfMissing(${personId}, ${title})`);
+}
+
 async function createNote(personId, body) {
   return withRetry(async () => {
     if (!personId) return;
@@ -287,6 +482,21 @@ async function listTasks({ limit = 20, cursor } = {}) {
     if (cursor) params.set('after', cursor);
     return apiRequest('GET', `/tasks?${params}`);
   }, 'listTasks');
+}
+
+async function ensureProviderExpiryTask(provider) {
+  return withRetry(async () => {
+    const personId = provider?.twenty_person_id;
+    const expiresAt = normalizeTimestamp(provider?.account_expires_at);
+    if (!personId || !expiresAt) return null;
+
+    const daysUntilExpiry = differenceInDays(expiresAt);
+    if (daysUntilExpiry === null || daysUntilExpiry < 0 || daysUntilExpiry > 3) return null;
+
+    const dueAt = new Date(expiresAt);
+    const title = getProviderExpiryTaskTitle(provider.name, daysUntilExpiry);
+    return createTaskIfMissing(personId, title, dueAt);
+  }, `ensureProviderExpiryTask(${provider?.id || 'unknown'})`);
 }
 
 // ─── Health ───────────────────────────────────────────────────────────────────
@@ -346,9 +556,11 @@ module.exports = {
   upsertSubscription,
   cancelSubscription,
   createTask,
+  createTaskIfMissing,
   createNote,
   listPeople,
   listTasks,
+  ensureProviderExpiryTask,
   testConnection,
   setupCustomObjects,
 };

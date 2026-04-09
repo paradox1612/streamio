@@ -31,6 +31,7 @@ import AdminHealth from './admin/AdminHealth';
 import AdminErrors from './admin/AdminErrors';
 import AdminTmdb from './admin/AdminTmdb';
 import AdminSystem from './admin/AdminSystem';
+import AdminCrm from './admin/AdminCrm';
 
 function UserLayout({ children }) {
   return (
@@ -91,6 +92,7 @@ function AppShell() {
           <Route path="/admin/health" element={<AdminRoute><AdminHealth /></AdminRoute>} />
           <Route path="/admin/errors" element={<AdminRoute><AdminErrors /></AdminRoute>} />
           <Route path="/admin/tmdb" element={<AdminRoute><AdminTmdb /></AdminRoute>} />
+          <Route path="/admin/crm" element={<AdminRoute><AdminCrm /></AdminRoute>} />
           <Route path="/admin/system" element={<AdminRoute><AdminSystem /></AdminRoute>} />
 
           {/* 404 */}

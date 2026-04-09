@@ -128,6 +128,13 @@ export const adminAPI = {
   getJobs: () => api.get('/api/admin/system/jobs'),
   getDbStats: () => api.get('/api/admin/system/db'),
 
+  // CRM
+  getCrmStatus: () => api.get('/api/admin/crm/status'),
+  getCrmCoverage: () => api.get('/api/admin/crm/provider-access-coverage'),
+  syncCrmAll: () => api.post('/api/admin/crm/sync-all'),
+  listCrmPeople: (params) => api.get('/api/admin/crm/people', { params }),
+  listCrmTasks: (params) => api.get('/api/admin/crm/tasks', { params }),
+
   // Free access admin
   listFreeAccessGroups: () => api.get('/api/admin/free-access/groups'),
   getFreeAccessGroup: (id) => api.get(`/api/admin/free-access/groups/${id}`),

@@ -88,6 +88,32 @@ async function createField(objectId, fieldInput) {
   }
 }
 
+async function createRelationField(sourceObjectId, {
+  name,
+  label,
+  icon,
+  relationType = 'MANY_TO_ONE',
+  targetObjectId,
+  targetFieldName,
+  targetFieldLabel,
+  targetFieldIcon,
+}) {
+  return createField(sourceObjectId, {
+    name,
+    label,
+    type: 'RELATION',
+    icon,
+    settings: { relationType },
+    relationCreationPayload: {
+      type: relationType,
+      targetObjectMetadataId: targetObjectId,
+      targetFieldName,
+      targetFieldLabel,
+      targetFieldIcon,
+    },
+  });
+}
+
 async function main() {
   console.log(`\nConnecting to Twenty CRM at ${BASE_URL}...\n`);
 
@@ -201,6 +227,15 @@ async function main() {
       defaultValue: "'ACTIVE'",
     });
     await createField(personObjectId, { name: 'lastActiveAt', label: 'Last Active At', type: 'DATE_TIME', defaultValue: null });
+    await createRelationField(providerAccessId, {
+      name: 'personRecord',
+      label: 'Person',
+      icon: 'IconUser',
+      targetObjectId: personObjectId,
+      targetFieldName: 'providerAccesses',
+      targetFieldLabel: 'Provider Accesses',
+      targetFieldIcon: 'IconPlugConnected',
+    });
   } else {
     console.warn('  Could not find Person object — skipping custom person fields');
   }
@@ -208,6 +243,15 @@ async function main() {
   if (companyObjectId) {
     console.log('\nAdding custom fields to Company object...');
     await createField(companyObjectId, { name: 'streamioNetworkId', label: 'Streamio Network ID', type: 'TEXT', defaultValue: null });
+    await createRelationField(providerAccessId, {
+      name: 'companyRecord',
+      label: 'Company',
+      icon: 'IconBuildingSkyscraper',
+      targetObjectId: companyObjectId,
+      targetFieldName: 'providerAccesses',
+      targetFieldLabel: 'Provider Accesses',
+      targetFieldIcon: 'IconPlugConnected',
+    });
   } else {
     console.warn('  Could not find Company object — skipping custom company fields');
   }

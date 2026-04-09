@@ -542,6 +542,108 @@ router.get('/crm/status', requireAdmin, async (req, res) => {
   }
 });
 
+// GET /api/admin/crm/provider-access-coverage — local linkage + expiry risk
+router.get('/crm/provider-access-coverage', requireAdmin, async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         p.id,
+         p.name,
+         p.status,
+         p.active_host,
+         p.account_status,
+         p.account_expires_at,
+         p.account_last_synced_at,
+         p.last_checked,
+         p.twenty_provider_access_id,
+         p.network_id,
+         u.id AS user_id,
+         u.email AS user_email,
+         u.twenty_person_id,
+         n.name AS network_name,
+         n.twenty_company_id,
+         EXISTS(
+           SELECT 1
+           FROM provider_subscriptions ps
+           WHERE ps.user_provider_id = p.id
+             AND ps.status != 'cancelled'
+         ) AS is_marketplace_managed
+       FROM user_providers p
+       JOIN users u ON u.id = p.user_id
+       LEFT JOIN provider_networks n ON n.id = p.network_id
+       ORDER BY p.created_at DESC`
+    );
+
+    const now = Date.now();
+    const providers = rows.map((row) => {
+      const expiresAt = row.account_expires_at ? new Date(row.account_expires_at) : null;
+      const daysUntilExpiry = expiresAt && !Number.isNaN(expiresAt.getTime())
+        ? Math.ceil((expiresAt.getTime() - now) / (24 * 60 * 60 * 1000))
+        : null;
+
+      const riskLevel = (() => {
+        if (daysUntilExpiry === null) return 'unknown';
+        if (daysUntilExpiry < 0) return 'expired';
+        if (daysUntilExpiry <= 3) return 'critical';
+        if (daysUntilExpiry <= 7) return 'warning';
+        return 'healthy';
+      })();
+
+      return {
+        id: row.id,
+        name: row.name,
+        status: row.status,
+        active_host: row.active_host,
+        account_status: row.account_status,
+        account_expires_at: row.account_expires_at,
+        account_last_synced_at: row.account_last_synced_at,
+        last_checked: row.last_checked,
+        twenty_provider_access_id: row.twenty_provider_access_id,
+        network_id: row.network_id,
+        network_name: row.network_name,
+        twenty_company_id: row.twenty_company_id,
+        user_id: row.user_id,
+        user_email: row.user_email,
+        twenty_person_id: row.twenty_person_id,
+        source_type: row.is_marketplace_managed ? 'MARKETPLACE' : 'EXTERNAL',
+        days_until_expiry: daysUntilExpiry,
+        expiry_risk: riskLevel,
+        sync_state: {
+          personLinked: Boolean(row.twenty_person_id),
+          companyLinked: Boolean(row.twenty_company_id),
+          providerAccessLinked: Boolean(row.twenty_provider_access_id),
+        },
+      };
+    });
+
+    const summary = providers.reduce((acc, provider) => {
+      acc.totalProviders += 1;
+      if (provider.sync_state.personLinked) acc.peopleLinked += 1;
+      if (provider.sync_state.companyLinked) acc.companiesLinked += 1;
+      if (provider.sync_state.providerAccessLinked) acc.providerAccessLinked += 1;
+      if (provider.expiry_risk === 'critical') acc.criticalExpiry += 1;
+      if (provider.expiry_risk === 'warning') acc.warningExpiry += 1;
+      if (provider.expiry_risk === 'expired') acc.expired += 1;
+      if (provider.expiry_risk === 'unknown') acc.unknownExpiry += 1;
+      return acc;
+    }, {
+      totalProviders: 0,
+      peopleLinked: 0,
+      companiesLinked: 0,
+      providerAccessLinked: 0,
+      criticalExpiry: 0,
+      warningExpiry: 0,
+      expired: 0,
+      unknownExpiry: 0,
+    });
+
+    res.json({ summary, providers });
+  } catch (err) {
+    logger.error('GET /admin/crm/provider-access-coverage:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/admin/crm/people — list People from Twenty CRM
 router.get('/crm/people', requireAdmin, async (req, res) => {
   try {
