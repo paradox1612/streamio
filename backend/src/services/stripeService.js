@@ -2,12 +2,26 @@ const Stripe = require('stripe');
 const { pool } = require('../db/queries');
 const logger = require('../utils/logger');
 
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+const STRIPE_ENABLED = process.env.STRIPE_ENABLED !== 'false' && !!process.env.STRIPE_SECRET_KEY;
+
+function stripeDisabledError() {
+  const err = new Error('Stripe is not configured');
+  err.status = 503;
+  return err;
+}
+
+function getStripe() {
+  if (!STRIPE_ENABLED) {
+    throw stripeDisabledError();
+  }
+  return Stripe(process.env.STRIPE_SECRET_KEY);
+}
 
 /**
  * Retrieve existing Stripe customer or create one, then persist to users table.
  */
 async function createOrGetCustomer(user) {
+  const stripe = getStripe();
   if (user.stripe_customer_id) {
     return stripe.customers.retrieve(user.stripe_customer_id);
   }
@@ -30,6 +44,7 @@ async function createOrGetCustomer(user) {
  * Returns { url } — redirect the browser to this URL.
  */
 async function createCheckoutSession(user, offering) {
+  const stripe = getStripe();
   const customer = await createOrGetCustomer(user);
 
   const sessionParams = {
@@ -62,6 +77,7 @@ async function createCheckoutSession(user, offering) {
  * Create a Stripe Customer Portal session for self-service billing.
  */
 async function createPortalSession(user) {
+  const stripe = getStripe();
   if (!user.stripe_customer_id) {
     const err = new Error('No billing account found');
     err.status = 404;
@@ -80,6 +96,7 @@ async function createPortalSession(user) {
  * Cancel a Stripe subscription at period end.
  */
 async function cancelSubscription(stripeSubId) {
+  const stripe = getStripe();
   return stripe.subscriptions.update(stripeSubId, { cancel_at_period_end: true });
 }
 
@@ -87,6 +104,7 @@ async function cancelSubscription(stripeSubId) {
  * Verify and construct a Stripe webhook event from the raw request body.
  */
 function constructWebhookEvent(rawBody, signature) {
+  const stripe = getStripe();
   return stripe.webhooks.constructEvent(
     rawBody,
     signature,
@@ -99,6 +117,7 @@ function constructWebhookEvent(rawBody, signature) {
  * Returns { productId, priceId }.
  */
 async function createProductAndPrice(offering) {
+  const stripe = getStripe();
   const product = await stripe.products.create({
     name: offering.name,
     description: offering.description || undefined,
@@ -117,6 +136,7 @@ async function createProductAndPrice(offering) {
 }
 
 module.exports = {
+  isEnabled: STRIPE_ENABLED,
   createOrGetCustomer,
   createCheckoutSession,
   createPortalSession,

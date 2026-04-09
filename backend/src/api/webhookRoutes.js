@@ -1,6 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
-const { constructWebhookEvent } = require('../services/stripeService');
+const { constructWebhookEvent, isEnabled: stripeEnabled } = require('../services/stripeService');
 const subscriptionService = require('../services/subscriptionService');
 const { subscriptionQueries, providerQueries } = require('../db/queries');
 const logger = require('../utils/logger');
@@ -12,6 +12,9 @@ const router = express.Router();
 // express.json() in index.js using express.raw({ type: 'application/json' }).
 
 router.post('/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+  if (!stripeEnabled) {
+    return res.status(503).json({ error: 'Stripe is not configured' });
+  }
   const sig = req.headers['stripe-signature'];
   if (!sig) return res.status(400).json({ error: 'Missing Stripe-Signature header' });
 

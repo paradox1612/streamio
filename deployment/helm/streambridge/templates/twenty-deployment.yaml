@@ -24,6 +24,22 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      initContainers:
+        - name: ensure-twenty-database
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ include "streambridge.postgresAuthSecretName" . }}
+          command:
+            - sh
+            - -c
+            - >
+              until pg_isready -h {{ include "streambridge.postgresName" . }} -p 5432 -U "$POSTGRES_USER" -d postgres;
+              do echo "waiting for postgres"; sleep 2; done;
+              psql -h {{ include "streambridge.postgresName" . }} -U "$POSTGRES_USER" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'twentycrm'" |
+              grep -q 1 ||
+              psql -h {{ include "streambridge.postgresName" . }} -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE twentycrm";
       containers:
         - name: twenty
           image: "{{ .Values.twenty.image.repository }}:{{ .Values.twenty.image.tag }}"
@@ -132,6 +148,22 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      initContainers:
+        - name: ensure-twenty-database
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ include "streambridge.postgresAuthSecretName" . }}
+          command:
+            - sh
+            - -c
+            - >
+              until pg_isready -h {{ include "streambridge.postgresName" . }} -p 5432 -U "$POSTGRES_USER" -d postgres;
+              do echo "waiting for postgres"; sleep 2; done;
+              psql -h {{ include "streambridge.postgresName" . }} -U "$POSTGRES_USER" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'twentycrm'" |
+              grep -q 1 ||
+              psql -h {{ include "streambridge.postgresName" . }} -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE twentycrm";
       containers:
         - name: twenty-worker
           image: "{{ .Values.twenty.image.repository }}:{{ .Values.twenty.image.tag }}"
