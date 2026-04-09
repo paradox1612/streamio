@@ -31,7 +31,7 @@ async function withRetry(fn, label, maxAttempts = 3) {
 // ─── REST helper ──────────────────────────────────────────────────────────────
 
 async function apiRequest(method, path, body) {
-  const res = await fetch(`${BASE_URL}/api${path}`, {
+  const res = await fetch(`${BASE_URL}/rest${path}`, {
     method,
     headers: headers(),
     body: body ? JSON.stringify(body) : undefined,

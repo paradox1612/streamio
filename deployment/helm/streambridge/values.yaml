@@ -26,7 +26,7 @@ backend:
   env:
     nodeEnv: production
     logLevel: info
-    twentyApiUrl: "http://{{ .Release.Name }}-twenty:3000"
+    twentyApiUrl: "http://{{ include \"streambridge.fullname\" . }}-twenty:3000"
     stripePublishableKey: ""
     resolverDebug: "false"
     frontendUrl: "https://stream.example.com"
