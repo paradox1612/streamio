@@ -34,6 +34,60 @@ services:
       retries: 6
       start_period: 20s
 
+  # ── Redis (required by Twenty CRM's BullMQ workers) ───────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: streambridge_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Twenty CRM Server ─────────────────────────────────────────────────────────
+  twenty:
+    image: twentycrm/twenty:latest
+    container_name: streambridge_twenty
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    environment:
+      PORT: 3000
+      PG_DATABASE_URL: postgresql://postgres:streambridge_dev@postgres:5432/twentycrm
+      REDIS_URL: redis://redis:6379
+      SERVER_URL: ${TWENTY_SERVER_URL:-http://localhost:3002}
+      ACCESS_TOKEN_SECRET: ${TWENTY_ACCESS_TOKEN_SECRET:-changeme-access}
+      LOGIN_TOKEN_SECRET: ${TWENTY_LOGIN_TOKEN_SECRET:-changeme-login}
+      REFRESH_TOKEN_SECRET: ${TWENTY_REFRESH_TOKEN_SECRET:-changeme-refresh}
+      FILE_TOKEN_SECRET: ${TWENTY_FILE_TOKEN_SECRET:-changeme-file}
+      STORAGE_TYPE: local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Twenty CRM Background Worker ──────────────────────────────────────────────
+  twenty-worker:
+    image: twentycrm/twenty:latest
+    container_name: streambridge_twenty_worker
+    restart: unless-stopped
+    command: ["yarn", "worker:prod"]
+    environment:
+      PG_DATABASE_URL: postgresql://postgres:streambridge_dev@postgres:5432/twentycrm
+      REDIS_URL: redis://redis:6379
+      ACCESS_TOKEN_SECRET: ${TWENTY_ACCESS_TOKEN_SECRET:-changeme-access}
+      LOGIN_TOKEN_SECRET: ${TWENTY_LOGIN_TOKEN_SECRET:-changeme-login}
+      REFRESH_TOKEN_SECRET: ${TWENTY_REFRESH_TOKEN_SECRET:-changeme-refresh}
+      FILE_TOKEN_SECRET: ${TWENTY_FILE_TOKEN_SECRET:-changeme-file}
+      SERVER_URL: ${TWENTY_SERVER_URL:-http://localhost:3002}
+    depends_on:
+      - twenty
+      - redis
+
   postgres:
     image: postgres:16-alpine
     container_name: streambridge_db

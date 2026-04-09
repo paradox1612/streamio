@@ -666,3 +666,79 @@ CREATE TABLE IF NOT EXISTS error_reports (
 CREATE INDEX IF NOT EXISTS idx_error_reports_created_at ON error_reports(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_error_reports_status ON error_reports(status);
 CREATE INDEX IF NOT EXISTS idx_error_reports_source ON error_reports(source);
+
+-- ─────────────────────────────────────────
+-- Marketplace: Stripe + Twenty CRM columns
+-- ─────────────────────────────────────────
+ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT UNIQUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS twenty_person_id TEXT;
+
+-- ─────────────────────────────────────────
+-- Provider Offerings (Marketplace Catalog)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS provider_offerings (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name                TEXT NOT NULL,
+  description         TEXT,
+  price_cents         INTEGER NOT NULL,
+  currency            TEXT NOT NULL DEFAULT 'usd',
+  billing_period      TEXT NOT NULL DEFAULT 'month',
+  trial_days          INTEGER NOT NULL DEFAULT 0,
+  max_connections     INTEGER NOT NULL DEFAULT 1,
+  features            JSONB DEFAULT '[]',
+  stripe_price_id     TEXT UNIQUE,
+  stripe_product_id   TEXT,
+  provider_network_id UUID REFERENCES provider_networks(id) ON DELETE SET NULL,
+  is_featured         BOOLEAN NOT NULL DEFAULT false,
+  is_active           BOOLEAN NOT NULL DEFAULT true,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_provider_offerings_active  ON provider_offerings(is_active);
+CREATE INDEX IF NOT EXISTS idx_provider_offerings_network ON provider_offerings(provider_network_id);
+
+-- ─────────────────────────────────────────
+-- Provider Subscriptions (User Purchases)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS provider_subscriptions (
+  id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id                 UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  offering_id             UUID NOT NULL REFERENCES provider_offerings(id),
+  user_provider_id        UUID REFERENCES user_providers(id) ON DELETE SET NULL,
+  stripe_customer_id      TEXT NOT NULL,
+  stripe_subscription_id  TEXT UNIQUE NOT NULL,
+  status                  TEXT NOT NULL DEFAULT 'active',
+  current_period_start    TIMESTAMPTZ,
+  current_period_end      TIMESTAMPTZ,
+  cancel_at_period_end    BOOLEAN NOT NULL DEFAULT false,
+  cancelled_at            TIMESTAMPTZ,
+  trial_end               TIMESTAMPTZ,
+  twenty_subscription_id  TEXT,
+  created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_provider_subs_user       ON provider_subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_provider_subs_status     ON provider_subscriptions(status);
+CREATE INDEX IF NOT EXISTS idx_provider_subs_stripe_sub ON provider_subscriptions(stripe_subscription_id);
+CREATE INDEX IF NOT EXISTS idx_provider_subs_period_end ON provider_subscriptions(current_period_end);
+
+-- ─────────────────────────────────────────
+-- Payment Transactions (Audit Trail)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS payment_transactions (
+  id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id                   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  subscription_id           UUID REFERENCES provider_subscriptions(id),
+  amount_cents              INTEGER NOT NULL,
+  currency                  TEXT NOT NULL DEFAULT 'usd',
+  status                    TEXT NOT NULL,
+  stripe_payment_intent_id  TEXT UNIQUE,
+  stripe_invoice_id         TEXT,
+  failure_reason            TEXT,
+  created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_tx_user         ON payment_transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_payment_tx_subscription ON payment_transactions(subscription_id);

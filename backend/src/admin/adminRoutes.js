@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const { randomUUID } = require('crypto');
 const xss = require('xss');
 const { requireAdmin, revokeAdminToken } = require('../middleware/auth');
-const { userQueries, blogPostQueries, providerQueries, vodQueries, tmdbQueries, matchQueries, hostHealthQueries, jobQueries, errorReportQueries, freeAccessQueries, pool } = require('../db/queries');
+const { userQueries, blogPostQueries, providerQueries, vodQueries, tmdbQueries, matchQueries, hostHealthQueries, jobQueries, errorReportQueries, freeAccessQueries, offeringQueries, subscriptionQueries, pool } = require('../db/queries');
 const tmdbService = require('../services/tmdbService');
 const providerService = require('../services/providerService');
 const hostHealthService = require('../services/hostHealthService');
@@ -439,6 +439,124 @@ router.get('/system/db', requireAdmin, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ─── Marketplace Admin ────────────────────────────────────────────────────────
+
+// GET /api/admin/marketplace — list all offerings (including inactive)
+router.get('/marketplace', requireAdmin, async (req, res) => {
+  try {
+    const offerings = await offeringQueries.listAll();
+    const analytics = await subscriptionQueries.getAnalytics();
+    res.json({ offerings, analytics });
+  } catch (err) {
+    logger.error('GET /admin/marketplace:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/marketplace — create offering + Stripe Product/Price
+router.post('/marketplace', requireAdmin, async (req, res) => {
+  try {
+    const { name, description, price_cents, currency, billing_period, trial_days, max_connections, features, provider_network_id, is_featured } = req.body;
+
+    if (!name || !price_cents) {
+      return res.status(400).json({ error: 'name and price_cents are required' });
+    }
+
+    // Create in DB first (without Stripe IDs)
+    let offering = await offeringQueries.create({
+      name, description, price_cents, currency, billing_period, trial_days,
+      max_connections, features, provider_network_id, is_featured,
+    });
+
+    // Sync to Stripe if key is configured
+    if (process.env.STRIPE_SECRET_KEY) {
+      const stripeService = require('../services/stripeService');
+      const { productId, priceId } = await stripeService.createProductAndPrice(offering);
+      offering = await offeringQueries.update(offering.id, {
+        stripe_product_id: productId,
+        stripe_price_id: priceId,
+      });
+    }
+
+    res.status(201).json(offering);
+  } catch (err) {
+    logger.error('POST /admin/marketplace:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/admin/marketplace/:id — update offering fields
+router.patch('/marketplace/:id', requireAdmin, async (req, res) => {
+  try {
+    const updated = await offeringQueries.update(req.params.id, req.body);
+    if (!updated) return res.status(404).json({ error: 'Offering not found' });
+    res.json(updated);
+  } catch (err) {
+    logger.error('PATCH /admin/marketplace/:id:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/admin/marketplace/:id — soft-deactivate
+router.delete('/marketplace/:id', requireAdmin, async (req, res) => {
+  try {
+    const updated = await offeringQueries.deactivate(req.params.id);
+    if (!updated) return res.status(404).json({ error: 'Offering not found' });
+    res.json({ message: 'Offering deactivated', offering: updated });
+  } catch (err) {
+    logger.error('DELETE /admin/marketplace/:id:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── CRM Admin ────────────────────────────────────────────────────────────────
+
+// GET /api/admin/crm/status — connection health + sync stats
+router.get('/crm/status', requireAdmin, async (req, res) => {
+  try {
+    const crm = require('../services/twentyCrmService');
+    const health = await crm.testConnection();
+
+    const { rows } = await pool.query(
+      `SELECT
+         COUNT(*) AS total_users,
+         COUNT(twenty_person_id) AS synced_users
+       FROM users`
+    );
+
+    res.json({
+      ...health,
+      api_url: process.env.TWENTY_API_URL || 'not configured',
+      api_key_configured: !!process.env.TWENTY_API_KEY,
+      sync_stats: rows[0],
+    });
+  } catch (err) {
+    logger.error('GET /admin/crm/status:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/crm/sync-all — batch upsert all users + subscriptions
+router.post('/crm/sync-all', requireAdmin, async (req, res) => {
+  res.json({ message: 'Full sync started in background' });
+
+  // Run async after responding
+  setImmediate(async () => {
+    const crm = require('../services/twentyCrmService');
+    try {
+      const { rows: users } = await pool.query('SELECT * FROM users ORDER BY created_at ASC');
+      let synced = 0;
+      for (const user of users) {
+        await crm.upsertPerson(user);
+        synced++;
+      }
+      logger.info(`[CRM] Full sync complete: ${synced} users synced`);
+    } catch (err) {
+      logger.error(`[CRM] Full sync failed: ${err.message}`);
+    }
+  });
 });
 
 module.exports = router;

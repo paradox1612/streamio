@@ -92,6 +92,15 @@ ingress:
     enabled: false
     secretName: ""
 
+twenty:
+  ingress:
+    enabled: true
+    host: twenty.thekush.dev
+    tls: false
+    secretName: ""
+  env:
+    SERVER_URL: "https://twenty.thekush.dev"
+
 vpn:
   enabled: true
   serverRegions: "US East"

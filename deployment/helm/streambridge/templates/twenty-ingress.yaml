@@ -1,0 +1,34 @@
+{{- if and .Values.twenty.enabled .Values.twenty.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "streambridge.fullname" . }}-twenty
+  labels:
+    {{- include "streambridge.labels" . | nindent 4 }}
+    app.kubernetes.io/component: twenty
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if and .Values.twenty.ingress.tls .Values.twenty.ingress.secretName }}
+  tls:
+    - hosts:
+        - {{ .Values.twenty.ingress.host | quote }}
+      secretName: {{ .Values.twenty.ingress.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.twenty.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "streambridge.fullname" . }}-twenty
+                port:
+                  number: {{ .Values.twenty.service.port }}
+{{- end }}

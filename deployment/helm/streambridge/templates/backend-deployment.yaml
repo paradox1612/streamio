@@ -67,6 +67,8 @@ spec:
               value: {{ .Values.backend.env.frontendUrl | quote }}
             - name: BASE_URL
               value: {{ .Values.backend.env.baseUrl | quote }}
+            - name: TWENTY_API_URL
+              value: {{ tpl .Values.backend.env.twentyApiUrl . | quote }}
             - name: HEALTH_CHECK_ENABLED
               value: {{ .Values.backend.env.healthCheckEnabled | quote }}
             - name: HEALTH_CHECK_STARTUP_ENABLED

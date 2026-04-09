@@ -1,0 +1,173 @@
+{{- if .Values.twenty.enabled }}
+---
+# ── Twenty CRM Server ────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "streambridge.fullname" . }}-twenty
+  labels:
+    {{- include "streambridge.labels" . | nindent 4 }}
+    app.kubernetes.io/component: twenty
+spec:
+  replicas: {{ .Values.twenty.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "streambridge.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: twenty
+  template:
+    metadata:
+      labels:
+        {{- include "streambridge.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: twenty
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: twenty
+          image: "{{ .Values.twenty.image.repository }}:{{ .Values.twenty.image.tag }}"
+          imagePullPolicy: {{ .Values.twenty.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.twenty.service.port }}
+          env:
+            - name: PORT
+              value: {{ .Values.twenty.service.port | quote }}
+            - name: PG_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  key: PG_DATABASE_URL
+            - name: REDIS_URL
+              value: "redis://{{ .Release.Name }}-redis-master:6379"
+            - name: SERVER_URL
+              value: {{ .Values.twenty.env.SERVER_URL | quote }}
+            - name: STORAGE_TYPE
+              value: {{ .Values.twenty.env.STORAGE_TYPE | quote }}
+            - name: ACCESS_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  key: ACCESS_TOKEN_SECRET
+            - name: LOGIN_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  key: LOGIN_TOKEN_SECRET
+            - name: REFRESH_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  key: REFRESH_TOKEN_SECRET
+            - name: FILE_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  key: FILE_TOKEN_SECRET
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            {{- toYaml (.Values.twenty.resources | default dict) | nindent 12 }}
+---
+# ── Twenty CRM Service ───────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "streambridge.fullname" . }}-twenty
+  labels:
+    {{- include "streambridge.labels" . | nindent 4 }}
+    app.kubernetes.io/component: twenty
+spec:
+  type: {{ .Values.twenty.service.type }}
+  selector:
+    {{- include "streambridge.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: twenty
+  ports:
+    - name: http
+      port: {{ .Values.twenty.service.port }}
+      targetPort: http
+---
+# ── Twenty Secrets ───────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+  labels:
+    {{- include "streambridge.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  PG_DATABASE_URL: "postgresql://postgres:$(POSTGRES_PASSWORD)@{{ include "streambridge.postgresName" . }}:5432/twentycrm"
+  ACCESS_TOKEN_SECRET: {{ .Values.twenty.secrets.accessTokenSecret | quote }}
+  LOGIN_TOKEN_SECRET: {{ .Values.twenty.secrets.loginTokenSecret | quote }}
+  REFRESH_TOKEN_SECRET: {{ .Values.twenty.secrets.refreshTokenSecret | quote }}
+  FILE_TOKEN_SECRET: {{ .Values.twenty.secrets.fileTokenSecret | quote }}
+{{- if .Values.twenty.worker.enabled }}
+---
+# ── Twenty Worker ────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "streambridge.fullname" . }}-twenty-worker
+  labels:
+    {{- include "streambridge.labels" . | nindent 4 }}
+    app.kubernetes.io/component: twenty-worker
+spec:
+  replicas: {{ .Values.twenty.worker.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "streambridge.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: twenty-worker
+  template:
+    metadata:
+      labels:
+        {{- include "streambridge.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: twenty-worker
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: twenty-worker
+          image: "{{ .Values.twenty.image.repository }}:{{ .Values.twenty.image.tag }}"
+          imagePullPolicy: {{ .Values.twenty.image.pullPolicy }}
+          command: ["yarn", "worker:prod"]
+          env:
+            - name: PG_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  key: PG_DATABASE_URL
+            - name: REDIS_URL
+              value: "redis://{{ .Release.Name }}-redis-master:6379"
+            - name: SERVER_URL
+              value: {{ .Values.twenty.env.SERVER_URL | quote }}
+            - name: ACCESS_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  key: ACCESS_TOKEN_SECRET
+            - name: LOGIN_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  key: LOGIN_TOKEN_SECRET
+            - name: REFRESH_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  key: REFRESH_TOKEN_SECRET
+            - name: FILE_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  key: FILE_TOKEN_SECRET
+          resources:
+            {{- toYaml (.Values.twenty.resources | default dict) | nindent 12 }}
+{{- end }}
+{{- end }}

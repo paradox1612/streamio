@@ -108,3 +108,12 @@ ingress:
   tls:
     enabled: true
     secretName: streambridge-tls
+
+twenty:
+  ingress:
+    enabled: true
+    host: twenty.thekush.dev
+    tls: true
+    secretName: twenty-thekush-dev-tls
+  env:
+    SERVER_URL: "https://twenty.thekush.dev"

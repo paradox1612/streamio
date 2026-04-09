@@ -2281,6 +2281,225 @@ const freeAccessQueries = {
 
 };
 
+// ─── Marketplace: Provider Offerings ─────────────────────────────────────────
+
+const offeringQueries = {
+  async list() {
+    const { rows } = await pool.query(
+      `SELECT * FROM provider_offerings WHERE is_active = true ORDER BY is_featured DESC, created_at ASC`
+    );
+    return rows;
+  },
+
+  async listAll() {
+    const { rows } = await pool.query(
+      `SELECT o.*, pn.name AS network_name
+       FROM provider_offerings o
+       LEFT JOIN provider_networks pn ON pn.id = o.provider_network_id
+       ORDER BY o.is_featured DESC, o.created_at ASC`
+    );
+    return rows;
+  },
+
+  async findById(id) {
+    const { rows } = await pool.query(
+      `SELECT o.*, pn.name AS network_name
+       FROM provider_offerings o
+       LEFT JOIN provider_networks pn ON pn.id = o.provider_network_id
+       WHERE o.id = $1`,
+      [id]
+    );
+    return rows[0] || null;
+  },
+
+  async create({ name, description, price_cents, currency, billing_period, trial_days, max_connections, features, stripe_price_id, stripe_product_id, provider_network_id, is_featured }) {
+    const { rows } = await pool.query(
+      `INSERT INTO provider_offerings
+         (name, description, price_cents, currency, billing_period, trial_days, max_connections, features, stripe_price_id, stripe_product_id, provider_network_id, is_featured)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       RETURNING *`,
+      [name, description || null, price_cents, currency || 'usd', billing_period || 'month', trial_days || 0, max_connections || 1, JSON.stringify(features || []), stripe_price_id || null, stripe_product_id || null, provider_network_id || null, is_featured || false]
+    );
+    return rows[0];
+  },
+
+  async update(id, fields) {
+    const allowed = ['name', 'description', 'price_cents', 'currency', 'billing_period', 'trial_days', 'max_connections', 'features', 'stripe_price_id', 'stripe_product_id', 'provider_network_id', 'is_featured', 'is_active'];
+    const sets = [];
+    const values = [];
+    let idx = 1;
+    for (const key of allowed) {
+      if (key in fields) {
+        sets.push(`${key} = $${idx++}`);
+        values.push(key === 'features' ? JSON.stringify(fields[key]) : fields[key]);
+      }
+    }
+    if (!sets.length) return null;
+    sets.push(`updated_at = NOW()`);
+    values.push(id);
+    const { rows } = await pool.query(
+      `UPDATE provider_offerings SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+      values
+    );
+    return rows[0] || null;
+  },
+
+  async deactivate(id) {
+    const { rows } = await pool.query(
+      `UPDATE provider_offerings SET is_active = false, updated_at = NOW() WHERE id = $1 RETURNING *`,
+      [id]
+    );
+    return rows[0] || null;
+  },
+};
+
+// ─── Marketplace: Provider Subscriptions ─────────────────────────────────────
+
+const subscriptionQueries = {
+  async create({ user_id, offering_id, stripe_customer_id, stripe_subscription_id, status, current_period_start, current_period_end, trial_end }) {
+    const { rows } = await pool.query(
+      `INSERT INTO provider_subscriptions
+         (user_id, offering_id, stripe_customer_id, stripe_subscription_id, status, current_period_start, current_period_end, trial_end)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       RETURNING *`,
+      [user_id, offering_id, stripe_customer_id, stripe_subscription_id, status || 'active', current_period_start || null, current_period_end || null, trial_end || null]
+    );
+    return rows[0];
+  },
+
+  async update(id, fields) {
+    const allowed = ['status', 'current_period_start', 'current_period_end', 'cancel_at_period_end', 'cancelled_at', 'trial_end', 'user_provider_id', 'twenty_subscription_id'];
+    const sets = [];
+    const values = [];
+    let idx = 1;
+    for (const key of allowed) {
+      if (key in fields) {
+        sets.push(`${key} = $${idx++}`);
+        values.push(fields[key]);
+      }
+    }
+    if (!sets.length) return null;
+    sets.push(`updated_at = NOW()`);
+    values.push(id);
+    const { rows } = await pool.query(
+      `UPDATE provider_subscriptions SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+      values
+    );
+    return rows[0] || null;
+  },
+
+  async updateByStripeId(stripe_subscription_id, fields) {
+    const allowed = ['status', 'current_period_start', 'current_period_end', 'cancel_at_period_end', 'cancelled_at', 'trial_end', 'user_provider_id', 'twenty_subscription_id'];
+    const sets = [];
+    const values = [];
+    let idx = 1;
+    for (const key of allowed) {
+      if (key in fields) {
+        sets.push(`${key} = $${idx++}`);
+        values.push(fields[key]);
+      }
+    }
+    if (!sets.length) return null;
+    sets.push(`updated_at = NOW()`);
+    values.push(stripe_subscription_id);
+    const { rows } = await pool.query(
+      `UPDATE provider_subscriptions SET ${sets.join(', ')} WHERE stripe_subscription_id = $${idx} RETURNING *`,
+      values
+    );
+    return rows[0] || null;
+  },
+
+  async findByStripeSubscriptionId(stripe_subscription_id) {
+    const { rows } = await pool.query(
+      `SELECT ps.*, po.name AS offering_name, po.provider_network_id, u.email AS user_email, u.twenty_person_id
+       FROM provider_subscriptions ps
+       JOIN provider_offerings po ON po.id = ps.offering_id
+       JOIN users u ON u.id = ps.user_id
+       WHERE ps.stripe_subscription_id = $1`,
+      [stripe_subscription_id]
+    );
+    return rows[0] || null;
+  },
+
+  async findByUserId(user_id) {
+    const { rows } = await pool.query(
+      `SELECT ps.*, po.name AS offering_name, po.description AS offering_description,
+              po.price_cents, po.currency, po.billing_period, po.features
+       FROM provider_subscriptions ps
+       JOIN provider_offerings po ON po.id = ps.offering_id
+       WHERE ps.user_id = $1
+         AND ps.status NOT IN ('cancelled')
+       ORDER BY ps.created_at DESC`,
+      [user_id]
+    );
+    return rows;
+  },
+
+  async findById(id) {
+    const { rows } = await pool.query(
+      `SELECT ps.*, po.name AS offering_name, po.provider_network_id, u.email AS user_email, u.twenty_person_id
+       FROM provider_subscriptions ps
+       JOIN provider_offerings po ON po.id = ps.offering_id
+       JOIN users u ON u.id = ps.user_id
+       WHERE ps.id = $1`,
+      [id]
+    );
+    return rows[0] || null;
+  },
+
+  async findByStripeCustomerId(stripe_customer_id) {
+    const { rows } = await pool.query(
+      `SELECT * FROM provider_subscriptions WHERE stripe_customer_id = $1 AND status != 'cancelled'`,
+      [stripe_customer_id]
+    );
+    return rows;
+  },
+
+  async getAnalytics() {
+    const { rows } = await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE status = 'active') AS active_count,
+         COUNT(*) FILTER (WHERE status = 'trialing') AS trialing_count,
+         COUNT(*) FILTER (WHERE status = 'past_due') AS past_due_count,
+         COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled_count,
+         SUM(po.price_cents) FILTER (WHERE ps.status IN ('active','trialing')) AS mrr_cents
+       FROM provider_subscriptions ps
+       JOIN provider_offerings po ON po.id = ps.offering_id`
+    );
+    return rows[0];
+  },
+};
+
+// ─── Marketplace: Payment Transactions ───────────────────────────────────────
+
+const paymentQueries = {
+  async insert({ user_id, subscription_id, amount_cents, currency, status, stripe_payment_intent_id, stripe_invoice_id, failure_reason }) {
+    const { rows } = await pool.query(
+      `INSERT INTO payment_transactions
+         (user_id, subscription_id, amount_cents, currency, status, stripe_payment_intent_id, stripe_invoice_id, failure_reason)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (stripe_payment_intent_id) DO NOTHING
+       RETURNING *`,
+      [user_id, subscription_id || null, amount_cents, currency || 'usd', status, stripe_payment_intent_id || null, stripe_invoice_id || null, failure_reason || null]
+    );
+    return rows[0] || null;
+  },
+
+  async listByUser(user_id, { limit = 20, offset = 0 } = {}) {
+    const { rows } = await pool.query(
+      `SELECT pt.*, ps.stripe_subscription_id, po.name AS offering_name
+       FROM payment_transactions pt
+       LEFT JOIN provider_subscriptions ps ON ps.id = pt.subscription_id
+       LEFT JOIN provider_offerings po ON po.id = ps.offering_id
+       WHERE pt.user_id = $1
+       ORDER BY pt.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [user_id, limit, offset]
+    );
+    return rows;
+  },
+};
+
 module.exports = {
   userQueries,
   blogPostQueries,
@@ -2295,5 +2514,8 @@ module.exports = {
   jobQueries,
   errorReportQueries,
   freeAccessQueries,
+  offeringQueries,
+  subscriptionQueries,
+  paymentQueries,
   pool,
 };

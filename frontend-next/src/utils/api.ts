@@ -157,6 +157,14 @@ export const adminAPI = {
   listFreeAccessAssignments: (params?: Record<string, unknown>) => api.get('/api/admin/free-access/assignments', { params }),
   listBlogPosts: () => api.get('/api/admin/blog-posts'),
   createBlogPost: (data: Record<string, unknown>) => api.post('/api/admin/blog-posts', data),
+  // Marketplace
+  getMarketplace: () => api.get('/api/admin/marketplace'),
+  createOffering: (data: Record<string, unknown>) => api.post('/api/admin/marketplace', data),
+  updateOffering: (id: string, data: Record<string, unknown>) => api.patch(`/api/admin/marketplace/${id}`, data),
+  deleteOffering: (id: string) => api.delete(`/api/admin/marketplace/${id}`),
+  // CRM
+  getCrmStatus: () => api.get('/api/admin/crm/status'),
+  syncAllToCrm: () => api.post('/api/admin/crm/sync-all'),
 }
 
 export const blogAPI = {

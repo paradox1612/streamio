@@ -26,6 +26,8 @@ backend:
   env:
     nodeEnv: production
     logLevel: info
+    twentyApiUrl: "http://{{ .Release.Name }}-twenty:3000"
+    stripePublishableKey: ""
     resolverDebug: "false"
     frontendUrl: "https://stream.example.com"
     baseUrl: "https://stream.example.com"
@@ -46,6 +48,10 @@ backend:
     jwtSecret: change-me-now
     piaUsername: ""
     piaPassword: ""
+    stripeSecretKey: ""
+    stripeWebhookSecret: ""
+    twentyApiKey: ""
+    twentyWebhookSecret: ""
   resources: {}
   nodeSelector: {}
   tolerations: []
@@ -95,6 +101,58 @@ ingress:
   tls:
     enabled: false
     secretName: ""
+
+# ── Redis ─────────────────────────────────────────────────────────────────────
+# Required by Twenty CRM's BullMQ workers.
+# Add the Bitnami redis sub-chart to Chart.yaml:
+#   dependencies:
+#     - name: redis
+#       version: "19.x.x"
+#       repository: https://charts.bitnami.com/bitnami
+#       condition: redis.enabled
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 2Gi
+  resources: {}
+
+# ── Twenty CRM ────────────────────────────────────────────────────────────────
+twenty:
+  enabled: true
+  image:
+    repository: twentycrm/twenty
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 3000
+  ingress:
+    enabled: true
+    host: twenty.thekush.dev
+    tls: true
+    secretName: twenty-thekush-dev-tls
+  env:
+    SERVER_URL: "https://twenty.thekush.dev"
+    STORAGE_TYPE: local
+  secrets:
+    # Injected via K8s Secrets — do not hardcode values here.
+    # Generate with: openssl rand -base64 32
+    accessTokenSecret: ""
+    loginTokenSecret: ""
+    refreshTokenSecret: ""
+    fileTokenSecret: ""
+  worker:
+    enabled: true
+    replicaCount: 1
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 vpn:
   enabled: false

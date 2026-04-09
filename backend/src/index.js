@@ -16,11 +16,15 @@ const previewRoutes = require('./api/previewRoutes');
 const adminRoutes = require('./admin/adminRoutes');
 const cloudstreamRoutes = require('./api/cloudstreamRoutes');
 const homeRoutes = require('./api/homeRoutes');
+const webhookRoutes = require('./api/webhookRoutes');
+const marketplaceRoutes = require('./api/marketplaceRoutes');
 const errorHandler = require('./middleware/errorHandler');
 const { startScheduler } = require('./jobs/scheduler');
 const logger = require('./utils/logger');
 const cache = require('./utils/cache');
 const { getAppRole, shouldRunHttpServer, shouldRunScheduler } = require('./utils/runtimeRole');
+// Register CRM event listeners (side-effectful import — must happen once at startup)
+require('./events/crmListeners');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -62,6 +66,11 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || '*',
   credentials: true,
 }));
+
+// ─── Webhook Routes (must be before express.json() — needs raw body) ──────────
+// express.raw() is applied per-route inside webhookRoutes.js
+app.use('/webhooks', webhookRoutes);
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -242,6 +251,7 @@ app.use('/api/user', userRoutes);
 app.use('/api/providers', providerRoutes);
 app.use('/api/free-access', freeAccessRoutes);
 app.use('/api/home', homeRoutes);
+app.use('/api', marketplaceRoutes);
 app.use('/api/admin', adminRoutes);
 
 // ─── Error Handler ────────────────────────────────────────────────────────────

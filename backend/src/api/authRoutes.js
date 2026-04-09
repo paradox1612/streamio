@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { body, validationResult } = require('express-validator');
 const authService = require('../services/authService');
 const { requireAuth } = require('../middleware/auth');
+const eventBus = require('../utils/eventBus');
 
 // Per-email rate limit for forgot-password: max 3 requests per hour per email.
 // This is complementary to the IP-based limiter — it prevents distributed probing
@@ -37,6 +38,7 @@ router.post('/signup',
     try {
       const { email, password } = req.body;
       const result = await authService.signup(email, password);
+      eventBus.emit('user.created', result.user || result);
       res.status(201).json(result);
     } catch (err) {
       res.status(err.status || 500).json({ error: err.message });
@@ -53,6 +55,7 @@ router.post('/login',
     try {
       const { email, password } = req.body;
       const result = await authService.login(email, password);
+      eventBus.emit('user.logged_in', { userId: result.user?.id || result.id, lastSeen: new Date() });
       res.json(result);
     } catch (err) {
       res.status(err.status || 500).json({ error: err.message });
