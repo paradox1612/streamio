@@ -1,9 +1,9 @@
 package com.streambridge.cloudstream
 
 import android.content.Context
+import android.content.SharedPreferences
+import android.app.AlertDialog
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
-import androidx.preference.PreferenceManager
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
 import android.widget.LinearLayout
@@ -21,12 +21,20 @@ import android.text.InputType
 @CloudstreamPlugin
 class StreamBridgePlugin : Plugin() {
 
-    /** Exposed to StreamBridgeProvider so it can read stored settings. */
-    val settingsManager by lazy {
-        PreferenceManager.getDefaultSharedPreferences(activity!!)
+    private lateinit var appContext: Context
+
+    private fun prefs(context: Context = appContext): SharedPreferences {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    }
+
+    fun getSetting(key: String, defaultValue: String? = null): String? {
+        if (!::appContext.isInitialized) return defaultValue
+        return prefs().getString(key, defaultValue)
     }
 
     override fun load(context: Context) {
+        appContext = context.applicationContext
+
         // Register the content provider with CloudStream
         registerMainAPI(StreamBridgeProvider(this))
 
@@ -44,10 +52,10 @@ class StreamBridgePlugin : Plugin() {
      *   • Backend URL  – optional override for self-hosted installs
      *
      * Values are persisted in SharedPreferences and read by StreamBridgeProvider
-     * via settingsManager.
+     * via getSetting().
      */
     private fun showSettingsDialog(context: Context) {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val prefs = prefs(context)
 
         val layout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -100,5 +108,9 @@ class StreamBridgePlugin : Plugin() {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private companion object {
+        const val PREFS_NAME = "streambridge_plugin_settings"
     }
 }

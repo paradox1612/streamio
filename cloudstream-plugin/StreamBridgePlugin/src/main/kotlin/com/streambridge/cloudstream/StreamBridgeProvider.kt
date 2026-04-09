@@ -2,9 +2,11 @@ package com.streambridge.cloudstream
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
 // ─── JSON Data Classes ────────────────────────────────────────────────────────
@@ -96,10 +98,10 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
 
     // ── Settings helpers ──────────────────────────────────────────────────────
 
-    private fun getToken(): String? = plugin.settingsManager.getString("addon_token", null)
+    private fun getToken(): String? = plugin.getSetting("addon_token")
 
     private fun getBaseUrl(): String =
-        plugin.settingsManager.getString("base_url", null)
+        plugin.getSetting("base_url")
             ?.trimEnd('/')
             ?: "https://api.streambridge.io"
 
@@ -120,49 +122,11 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
      *
      * The data field encodes "TYPE|PROVIDER_ID" — parsed in getMainPage().
      */
-    override val mainPage: List<MainPageData> by lazy {
-        val token = getToken()
-
-        // No token set yet — show placeholder rows
-        if (token.isNullOrBlank()) {
-            return@lazy listOf(
-                MainPageData("Movies",   "Movie|all",    false),
-                MainPageData("Series",   "TvSeries|all", false),
-                MainPageData("Live TV",  "Live|all",     false),
-            )
-        }
-
-        try {
-            // Fetch providers synchronously (this runs once at plugin init)
-            val url = apiUrl("/cloudstream/providers?token=$token")
-            val response = kotlinx.coroutines.runBlocking { app.get(url) }
-            val data = parseJson<CSProvidersResponse>(response.text)
-
-            if (data.providers.isEmpty()) {
-                return@lazy listOf(
-                    MainPageData("Movies",  "Movie|all",    false),
-                    MainPageData("Series",  "TvSeries|all", false),
-                    MainPageData("Live TV", "Live|all",     false),
-                )
-            }
-
-            // One row per type per provider
-            data.providers.flatMap { provider ->
-                listOf(
-                    MainPageData("${provider.name} – Movies",   "Movie|${provider.id}",    false),
-                    MainPageData("${provider.name} – Series",   "TvSeries|${provider.id}", false),
-                    MainPageData("${provider.name} – Live TV",  "Live|${provider.id}",     false),
-                )
-            }
-        } catch (e: Exception) {
-            // Network failure at init — fall back to generic rows
-            listOf(
-                MainPageData("Movies",   "Movie|all",    false),
-                MainPageData("Series",   "TvSeries|all", false),
-                MainPageData("Live TV",  "Live|all",     false),
-            )
-        }
-    }
+    override val mainPage: List<MainPageData> = listOf(
+        MainPageData("Movies", "Movie|all", false),
+        MainPageData("Series", "TvSeries|all", false),
+        MainPageData("Live TV", "Live|all", false),
+    )
 
     /**
      * Fetches one page of content for a homepage section.
@@ -239,14 +203,13 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
         return when (detail.type) {
             "TvSeries" -> {
                 val episodes = detail.episodes?.map { ep ->
-                    Episode(
-                        data = ep.url,
-                        name = ep.name,
-                        season = ep.season,
-                        episode = ep.episode,
-                        posterUrl = ep.posterUrl,
-                        description = ep.plot,
-                    )
+                    newEpisode(ep.url) {
+                        this.name = ep.name
+                        this.season = ep.season
+                        this.episode = ep.episode
+                        this.posterUrl = ep.posterUrl
+                        this.description = ep.plot
+                    }
                 } ?: emptyList()
 
                 newTvSeriesLoadResponse(
@@ -263,12 +226,7 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
             }
 
             "Live" -> {
-                newLiveStreamLoadResponse(
-                    name = detail.name,
-                    url = detail.url,
-                    type = TvType.Live,
-                    dataUrl = detail.url,
-                ) {
+                newLiveStreamLoadResponse(detail.name, detail.url, detail.url) {
                     this.posterUrl = detail.posterUrl
                     this.plot = detail.plot
                     this.tags = detail.tags
@@ -276,12 +234,7 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
             }
 
             else -> {
-                newMovieLoadResponse(
-                    name = detail.name,
-                    url = detail.url,
-                    type = TvType.Movie,
-                    dataUrl = detail.url,
-                ) {
+                newMovieLoadResponse(detail.name, detail.url, TvType.Movie, detail.url) {
                     this.posterUrl = detail.posterUrl
                     this.year = detail.year
                     this.plot = detail.plot
