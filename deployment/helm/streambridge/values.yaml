@@ -140,13 +140,19 @@ twenty:
     host: twenty.thekush.dev
     tls: false
     secretName: ""
+    annotations: {}
   env:
     SERVER_URL: "https://twenty.thekush.dev"
     REDIS_URL: "redis://{{ .Release.Name }}-redis-master:6379"
     STORAGE_TYPE: local
   secrets:
-    # Injected via K8s Secrets — do not hardcode values here.
-    # Generate with: openssl rand -base64 32
+    # Set existingSecret to the name of a pre-created K8s Secret to skip
+    # chart-managed secret creation entirely (recommended for production).
+    # The secret must contain: PG_DATABASE_URL, APP_SECRET, ACCESS_TOKEN_SECRET,
+    # LOGIN_TOKEN_SECRET, REFRESH_TOKEN_SECRET, FILE_TOKEN_SECRET
+    existingSecret: ""
+    # Only used when existingSecret is empty. Generate with: openssl rand -base64 32
+    appSecret: ""
     accessTokenSecret: ""
     loginTokenSecret: ""
     refreshTokenSecret: ""

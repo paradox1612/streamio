@@ -79,6 +79,14 @@ missing-secret
 {{- end -}}
 {{- end -}}
 
+{{- define "streambridge.twentySecretName" -}}
+{{- if .Values.twenty.secrets.existingSecret -}}
+{{- .Values.twenty.secrets.existingSecret -}}
+{{- else -}}
+{{- printf "%s-twenty-secrets" (include "streambridge.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "streambridge.twentyDatabaseUrl" -}}
 {{- if .Values.postgres.enabled -}}
 {{- $secretName := include "streambridge.postgresAuthSecretName" . -}}

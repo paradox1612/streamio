@@ -54,7 +54,7 @@ spec:
             - name: PG_DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  name: {{ include "streambridge.twentySecretName" . }}
                   key: PG_DATABASE_URL
             - name: REDIS_URL
               value: {{ tpl .Values.twenty.env.REDIS_URL . | quote }}
@@ -65,23 +65,28 @@ spec:
             - name: ACCESS_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  name: {{ include "streambridge.twentySecretName" . }}
                   key: ACCESS_TOKEN_SECRET
             - name: LOGIN_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  name: {{ include "streambridge.twentySecretName" . }}
                   key: LOGIN_TOKEN_SECRET
             - name: REFRESH_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  name: {{ include "streambridge.twentySecretName" . }}
                   key: REFRESH_TOKEN_SECRET
             - name: FILE_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  name: {{ include "streambridge.twentySecretName" . }}
                   key: FILE_TOKEN_SECRET
+            - name: APP_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "streambridge.twentySecretName" . }}
+                  key: APP_SECRET
           livenessProbe:
             httpGet:
               path: /healthz
@@ -108,12 +113,13 @@ spec:
     - name: http
       port: {{ .Values.twenty.service.port }}
       targetPort: http
+{{- if not .Values.twenty.secrets.existingSecret }}
 ---
 # ── Twenty Secrets ───────────────────────────────────────────────────────────
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+  name: {{ include "streambridge.twentySecretName" . }}
   labels:
     {{- include "streambridge.labels" . | nindent 4 }}
 type: Opaque
@@ -123,6 +129,8 @@ stringData:
   LOGIN_TOKEN_SECRET: {{ .Values.twenty.secrets.loginTokenSecret | quote }}
   REFRESH_TOKEN_SECRET: {{ .Values.twenty.secrets.refreshTokenSecret | quote }}
   FILE_TOKEN_SECRET: {{ .Values.twenty.secrets.fileTokenSecret | quote }}
+  APP_SECRET: {{ .Values.twenty.secrets.appSecret | quote }}
+{{- end }}
 {{- if .Values.twenty.worker.enabled }}
 ---
 # ── Twenty Worker ────────────────────────────────────────────────────────────
@@ -175,7 +183,7 @@ spec:
             - name: PG_DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  name: {{ include "streambridge.twentySecretName" . }}
                   key: PG_DATABASE_URL
             - name: REDIS_URL
               value: {{ tpl .Values.twenty.env.REDIS_URL . | quote }}
@@ -184,23 +192,28 @@ spec:
             - name: ACCESS_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  name: {{ include "streambridge.twentySecretName" . }}
                   key: ACCESS_TOKEN_SECRET
             - name: LOGIN_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  name: {{ include "streambridge.twentySecretName" . }}
                   key: LOGIN_TOKEN_SECRET
             - name: REFRESH_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  name: {{ include "streambridge.twentySecretName" . }}
                   key: REFRESH_TOKEN_SECRET
             - name: FILE_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "streambridge.fullname" . }}-twenty-secrets
+                  name: {{ include "streambridge.twentySecretName" . }}
                   key: FILE_TOKEN_SECRET
+            - name: APP_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "streambridge.twentySecretName" . }}
+                  key: APP_SECRET
           resources:
             {{- toYaml (.Values.twenty.resources | default dict) | nindent 12 }}
 {{- end }}

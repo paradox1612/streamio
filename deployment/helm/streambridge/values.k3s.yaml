@@ -121,6 +121,8 @@ twenty:
     host: twenty.thekush.dev
     tls: false
     secretName: ""
+  secrets:
+    existingSecret: "streambridge-streambridge-twenty-secrets"
   env:
     SERVER_URL: "https://twenty.thekush.dev"
     REDIS_URL: "redis://{{ .Release.Name }}-redis-master:6379"
