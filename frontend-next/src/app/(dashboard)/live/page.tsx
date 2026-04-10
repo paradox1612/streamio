@@ -283,28 +283,32 @@ export default function LiveTVPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
-      <section className="panel overflow-hidden p-5 sm:p-7 lg:p-8">
+      <section className="panel overflow-hidden p-4 sm:p-8">
         <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
           <div>
-            <div className="kicker mb-4">Live TV</div>
-            <h1 className="text-3xl font-bold leading-tight text-white sm:text-4xl">
-              Find channels fast, save the ones you care about, and launch immediately.
+            <div className="kicker mb-2 sm:mb-4">Live TV</div>
+            <h1 className="text-2xl font-bold leading-tight text-white sm:text-4xl">
+              Launch live streams fast and save your favorites.
             </h1>
-            <p className="hero-copy mt-3">
+            <p className="hero-copy mt-3 hidden sm:block">
               Favorites are saved per provider, so you can pin channels and categories without losing the broader lineup.
             </p>
           </div>
-          <div className="panel-soft p-4 sm:p-5">
-            <p className="metric-label mb-1">Visible Channels</p>
-            <p className="text-3xl font-bold text-white">{channels.length}</p>
-            <p className="mt-2 text-sm text-slate-300/[0.68]">
-              {hasMore
-                ? 'Showing the current page set. Load more to continue browsing.'
-                : 'All currently matching channels are loaded.'}
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-300/60">
-              <span>{scopedFavoriteChannels.length} favorite channels</span>
-              <span>{scopedFavoriteCategories.length} saved categories</span>
+          <div className="panel-soft p-3 sm:p-5 flex lg:block justify-between items-center">
+            <div>
+              <p className="metric-label mb-0 sm:mb-1 text-[10px] sm:text-xs">Visible Channels</p>
+              <p className="text-2xl sm:text-3xl font-bold text-white">{channels.length}</p>
+            </div>
+            <div className="hidden sm:block">
+              <p className="mt-2 text-sm text-slate-300/[0.68]">
+                {hasMore
+                  ? 'Showing the current page set. Load more to continue browsing.'
+                  : 'All currently matching channels are loaded.'}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-300/60">
+                <span>{scopedFavoriteChannels.length} favorite channels</span>
+                <span>{scopedFavoriteCategories.length} saved categories</span>
+              </div>
             </div>
           </div>
         </div>
@@ -371,7 +375,7 @@ export default function LiveTVPage() {
         {categories.length > 1 && (
           <div className="mt-5">
             <p className="field-label">Categories</p>
-            <div className="flex flex-wrap gap-2 sm:flex-nowrap sm:overflow-x-auto sm:pb-2">
+            <div className="scrollbar-hide flex gap-2 overflow-x-auto pb-2">
               {categories.map((cat) => {
                 const isFavorite = favoriteCategoryMap.has(cat)
                 return (
@@ -385,7 +389,7 @@ export default function LiveTVPage() {
                   >
                     <button
                       onClick={() => setSelectedCategory(cat)}
-                      className="whitespace-nowrap px-4 py-2 text-xs font-semibold uppercase tracking-wider sm:text-sm"
+                      className="whitespace-nowrap px-4 py-2 text-xs font-semibold uppercase tracking-wider"
                     >
                       {cat}
                     </button>
