@@ -289,6 +289,8 @@ const providerNetworkQueries = {
       'twenty_company_id',
       'reseller_username',
       'reseller_password',
+      'xtream_ui_scraped',
+      'reseller_session_cookie',
     ];
     const sets = [];
     const values = [];

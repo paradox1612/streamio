@@ -1,0 +1,209 @@
+const fetch = require('node-fetch');
+const logger = require('./logger');
+
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
+};
+
+const RECAPTCHA_SITE_KEY = '6LcXSrcZAAAAABPziK8siiyZ2H3JKXSDe7Z750ah'; // Starshare site key
+
+/**
+ * Xtream UI Reseller Panel Scraper (Session-based)
+ * Designed for panels that don't expose a standard REST API and require session cookies.
+ */
+const xtreamUiScraper = {
+  /**
+   * Automate login via 2Captcha and form submission.
+   */
+  async autoLogin(host, username, password) {
+    const captchaKey = process.env.TWO_CAPTCHA_API_KEY;
+    if (!captchaKey) throw new Error('TWO_CAPTCHA_API_KEY is not configured');
+
+    logger.info(`[Scraper] Requesting CAPTCHA solve for ${host}...`);
+    
+    // 1. Request captcha solve
+    const solveReq = await fetch(`https://2captcha.com/in.php?key=${captchaKey}&method=userrecaptcha&googlekey=${RECAPTCHA_SITE_KEY}&pageurl=${encodeURIComponent(host + '/login.php')}&json=1`);
+    const solveJson = await solveReq.json();
+    if (solveJson.status !== 1) throw new Error(`2Captcha Request Error: ${solveJson.request}`);
+    
+    const requestId = solveJson.request;
+    let token = null;
+
+    // 2. Poll for result (up to 60s)
+    for (let i = 0; i < 12; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      const pollReq = await fetch(`https://2captcha.com/res.php?key=${captchaKey}&action=get&id=${requestId}&json=1`);
+      const pollJson = await pollReq.json();
+      if (pollJson.status === 1) {
+        token = pollJson.request;
+        break;
+      }
+      if (pollJson.request !== 'CAPCHA_NOT_READY') {
+        throw new Error(`2Captcha Poll Error: ${pollJson.request}`);
+      }
+    }
+
+    if (!token) throw new Error('CAPTCHA solve timed out');
+    logger.info('[Scraper] CAPTCHA solved successfully');
+
+    // 3. Perform POST login
+    const loginUrl = `${host}/login.php`;
+    const formData = new URLSearchParams();
+    formData.append('username', username);
+    formData.append('password', password);
+    formData.append('g-recaptcha-response', token);
+    formData.append('login_button', '');
+
+    const loginRes = await fetch(loginUrl, {
+      method: 'POST',
+      headers: {
+        ...BROWSER_HEADERS,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Referer': loginUrl,
+      },
+      body: formData.toString(),
+      redirect: 'manual',
+    });
+
+    // 4. Extract PHPSESSID from cookies
+    const cookieHeader = loginRes.headers.get('set-cookie');
+    if (!cookieHeader) throw new Error('No cookies returned from login');
+    
+    const sessMatch = cookieHeader.match(/PHPSESSID=([^;]+)/);
+    if (!sessMatch) throw new Error('PHPSESSID not found in cookies');
+
+    const phpsessid = sessMatch[1];
+    logger.info(`[Scraper] Login successful, session acquired: ${phpsessid.substring(0, 8)}...`);
+    return phpsessid;
+  },
+
+  /**
+   * Validate if the provided PHPSESSID is still active.
+   */
+  async isSessionValid(host, phpsessid) {
+    const url = `${host}/user_reseller.php`;
+    try {
+      const res = await fetch(url, {
+        headers: {
+          ...BROWSER_HEADERS,
+          'Cookie': `PHPSESSID=${phpsessid}`,
+        },
+        timeout: 10000,
+      });
+      const body = await res.text();
+      // If we are redirected to login or the body is small and contains login.php, session is dead
+      return !body.toLowerCase().includes('login.php') && body.toLowerCase().includes('logout');
+    } catch (err) {
+      logger.warn(`Xtream UI session check failed for ${host}: ${err.message}`);
+      return false;
+    }
+  },
+
+  /**
+   * Fetch bouquets (packages) from the user_reseller.php page.
+   */
+  async getBouquets(host, phpsessid) {
+    const url = `${host}/user_reseller.php`;
+    try {
+      const res = await fetch(url, {
+        headers: {
+          ...BROWSER_HEADERS,
+          'Cookie': `PHPSESSID=${phpsessid}`,
+        },
+        timeout: 15000,
+      });
+      const body = await res.text();
+
+      // Find the bouquet multi-select or checkboxes using regex
+      // Pattern: <option value="(\d+)">([^<]+)</option> inside a bouquet-related select
+      // Or looking for names in the ALL_BOUQUETS style
+      
+      const bouquets = [];
+      const optionRegex = /<option value="(\d+)"[^>]*>([^<]+)<\/option>/g;
+      let match;
+      
+      // We look for options specifically in sections that might be bouquets
+      // (This is a bit loose but works for many XC/UI panels)
+      while ((match = optionRegex.exec(body)) !== null) {
+        const id = match[1];
+        const name = match[2].trim();
+        // Skip common non-bouquet IDs if necessary
+        if (name && !name.includes('Select') && !['0', '1'].includes(id)) {
+          bouquets.push({ id, bouquet_name: name });
+        }
+      }
+
+      return bouquets;
+    } catch (err) {
+      logger.error(`Xtream UI getBouquets failed: ${err.message}`);
+      throw err;
+    }
+  },
+
+  /**
+   * Create a new line/trial by posting to user_reseller.php.
+   */
+  async createLine(host, phpsessid, userData) {
+    const url = `${host}/user_reseller.php`;
+    
+    // First, we might need to GET the page to find the member_id or CSRF tokens if any
+    const getRes = await fetch(url, {
+      headers: { ...BROWSER_HEADERS, 'Cookie': `PHPSESSID=${phpsessid}` }
+    });
+    const html = await getRes.text();
+    
+    // Attempt to find member_id from the HTML
+    let memberId = userData.memberId;
+    if (!memberId) {
+      const memberMatch = html.match(/name="member_id" value="(\d+)"/);
+      memberId = memberMatch ? memberMatch[1] : null;
+    }
+
+    const formData = new URLSearchParams();
+    formData.append('trial', userData.trial ? '1' : '0');
+    formData.append('username', userData.username || '');
+    formData.append('password', userData.password || '');
+    formData.append('member_id', memberId || '0');
+    formData.append('package', userData.packageId || '3'); // Default 1 month
+    formData.append('mac_address_mag', '');
+    formData.append('mac_address_e2', '');
+    formData.append('reseller_notes', userData.notes || 'StreamBridge Automation');
+    formData.append('submit_user', 'add');
+
+    if (userData.bouquetIds && Array.isArray(userData.bouquetIds)) {
+      formData.append('bouquets_selected', JSON.stringify(userData.bouquetIds));
+      for (const b of userData.bouquetIds) {
+        formData.append('bouquet[]', b);
+      }
+    }
+
+    const postRes = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...BROWSER_HEADERS,
+        'Cookie': `PHPSESSID=${phpsessid}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Referer': url,
+      },
+      body: formData.toString(),
+      redirect: 'manual', // XC UI often redirects on success
+    });
+
+    const status = postRes.status;
+    const resBody = await postRes.text();
+    const resBodyLower = resBody.toLowerCase();
+
+    if (status === 302 || status === 200) {
+      if (resBodyLower.includes('already exists') || resBodyLower.includes('username taken')) {
+        return { success: false, message: 'Username already exists' };
+      }
+      return { success: true, message: 'Line created successfully' };
+    }
+
+    return { success: false, message: `Panel returned HTTP ${status}` };
+  }
+};
+
+module.exports = xtreamUiScraper;

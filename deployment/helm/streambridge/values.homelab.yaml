@@ -42,6 +42,7 @@ backend:
     jwtSecret: "set-me-long-random-secret"
     piaUsername: ""
     piaPassword: ""
+    twoCaptchaApiKey: "set-me"
 
 scheduler:
   enabled: true

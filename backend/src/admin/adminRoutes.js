@@ -551,13 +551,23 @@ router.get('/networks/:id/bouquets', requireAdmin, async (req, res) => {
   try {
     const network = await providerNetworkQueries.findById(req.params.id);
     if (!network) return res.status(404).json({ error: 'Network not found' });
-    if (!network.reseller_username || !network.reseller_password) {
-      return res.status(400).json({ error: 'Reseller credentials not configured for this network' });
-    }
 
     const hosts = await providerNetworkQueries.listHosts(req.params.id);
     const activeHost = hosts.find(h => h.is_active)?.host_url;
     if (!activeHost) return res.status(400).json({ error: 'No active hosts for this network' });
+
+    if (network.xtream_ui_scraped) {
+      if (!network.reseller_session_cookie) {
+        return res.status(400).json({ error: 'PHPSESSID not configured for this managed network' });
+      }
+      const xtreamUiScraper = require('../utils/xtreamUiScraper');
+      const bouquets = await xtreamUiScraper.getBouquets(activeHost, network.reseller_session_cookie);
+      return res.json(bouquets);
+    }
+
+    if (!network.reseller_username || !network.reseller_password) {
+      return res.status(400).json({ error: 'Reseller credentials not configured for this network' });
+    }
 
     const bouquets = await providerService.getBouquets(activeHost, network.reseller_username, network.reseller_password);
     res.json(bouquets);
@@ -571,15 +581,27 @@ router.post('/networks/:id/create-line', requireAdmin, async (req, res) => {
   try {
     const network = await providerNetworkQueries.findById(req.params.id);
     if (!network) return res.status(404).json({ error: 'Network not found' });
-    if (!network.reseller_username || !network.reseller_password) {
-      return res.status(400).json({ error: 'Reseller credentials not configured for this network' });
-    }
 
-    const { username, password, maxConnections, expDate, bouquetIds } = req.body;
+    const { username, password, maxConnections, expDate, bouquetIds, trial, notes } = req.body;
     
     const hosts = await providerNetworkQueries.listHosts(req.params.id);
     const activeHost = hosts.find(h => h.is_active)?.host_url;
     if (!activeHost) return res.status(400).json({ error: 'No active hosts for this network' });
+
+    if (network.xtream_ui_scraped) {
+      if (!network.reseller_session_cookie) {
+        return res.status(400).json({ error: 'PHPSESSID not configured for this managed network' });
+      }
+      const xtreamUiScraper = require('../utils/xtreamUiScraper');
+      const result = await xtreamUiScraper.createLine(activeHost, network.reseller_session_cookie, {
+        username, password, maxConnections, expDate, bouquetIds, trial, notes
+      });
+      return res.json(result);
+    }
+
+    if (!network.reseller_username || !network.reseller_password) {
+      return res.status(400).json({ error: 'Reseller credentials not configured for this network' });
+    }
 
     const result = await providerService.createResellerUser(
       activeHost, 
@@ -589,6 +611,54 @@ router.post('/networks/:id/create-line', requireAdmin, async (req, res) => {
     );
     res.json(result);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /admin/networks/:id/test-session — check if PHPSESSID is valid
+router.post('/networks/:id/test-session', requireAdmin, async (req, res) => {
+  try {
+    const network = await providerNetworkQueries.findById(req.params.id);
+    if (!network) return res.status(404).json({ error: 'Network not found' });
+    if (!network.reseller_session_cookie) return res.status(400).json({ error: 'No session cookie' });
+
+    const hosts = await providerNetworkQueries.listHosts(req.params.id);
+    const activeHost = hosts.find(h => h.is_active)?.host_url;
+    if (!activeHost) return res.status(400).json({ error: 'No active hosts' });
+
+    const xtreamUiScraper = require('../utils/xtreamUiScraper');
+    const isValid = await xtreamUiScraper.isSessionValid(activeHost, network.reseller_session_cookie);
+    res.json({ valid: isValid });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /admin/networks/:id/refresh-session — automate re-login via 2Captcha
+router.post('/networks/:id/refresh-session', requireAdmin, async (req, res) => {
+  try {
+    const network = await providerNetworkQueries.findById(req.params.id);
+    if (!network) return res.status(404).json({ error: 'Network not found' });
+    
+    if (!network.reseller_username || !network.reseller_password) {
+      return res.status(400).json({ error: 'Reseller username and password required for auto-login' });
+    }
+
+    const hosts = await providerNetworkQueries.listHosts(req.params.id);
+    const activeHost = hosts.find(h => h.is_active)?.host_url;
+    if (!activeHost) return res.status(400).json({ error: 'No active hosts' });
+
+    const xtreamUiScraper = require('../utils/xtreamUiScraper');
+    const newSession = await xtreamUiScraper.autoLogin(
+      activeHost,
+      network.reseller_username,
+      network.reseller_password
+    );
+
+    await providerNetworkQueries.update(network.id, { reseller_session_cookie: newSession });
+    res.json({ success: true, session: newSession.substring(0, 8) + '...' });
+  } catch (err) {
+    logger.error(`[Scraper] Auto-login failed: ${err.message}`);
     res.status(500).json({ error: err.message });
   }
 });

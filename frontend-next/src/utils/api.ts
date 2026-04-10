@@ -179,6 +179,8 @@ export const adminAPI = {
   updateNetwork: (id: string, data: Record<string, unknown>) => api.patch(`/api/admin/networks/${id}`, data),
   getNetworkBouquets: (id: string) => api.get(`/api/admin/networks/${id}/bouquets`),
   createResellerLine: (id: string, data: Record<string, unknown>) => api.post(`/api/admin/networks/${id}/create-line`, data),
+  testNetworkSession: (id: string) => api.post(`/api/admin/networks/${id}/test-session`),
+  refreshNetworkSession: (id: string) => api.post(`/api/admin/networks/${id}/refresh-session`),
   // CRM
   getCrmStatus: () => api.get('/api/admin/crm/status'),
   getCrmCoverage: () => api.get('/api/admin/crm/provider-access-coverage'),

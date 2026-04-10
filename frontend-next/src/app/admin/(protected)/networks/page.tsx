@@ -17,6 +17,7 @@ import {
   ShieldAlert,
   UserPlus,
   Wifi,
+  Zap,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { adminAPI } from '@/utils/api'
@@ -36,6 +37,8 @@ interface Network {
   identity_key: string | null
   reseller_username: string | null
   reseller_password?: string | null
+  xtream_ui_scraped: boolean
+  reseller_session_cookie: string | null
   catalog_last_refreshed_at: string | null
   updated_at: string
 }
@@ -57,20 +60,15 @@ export default function NetworksPage() {
   const [showLineModal, setShowLineModal] = useState(false)
   
   // Reseller Form
-  const [resellerForm, setResellerForm] = useState({ username: '', password: '' })
-  const [savingReseller, setSavingReseller] = useState(false)
-  
-  // Line Creation Form
-  const [lineForm, setLineForm] = useState({
-    username: '',
-    password: '',
-    duration: '24', // hours
-    maxConnections: '1',
-    selectedBouquets: [] as string[]
+  const [resellerForm, setResellerForm] = useState({ 
+    username: '', 
+    password: '', 
+    isScraped: false,
+    sessionCookie: ''
   })
-  const [bouquets, setBouquets] = useState<Bouquet[]>([])
-  const [loadingBouquets, setLoadingBouquets] = useState(false)
-  const [creatingLine, setCreatingLine] = useState(false)
+  const [savingReseller, setSavingReseller] = useState(false)
+  const [testingSession, setTestingSession] = useState<string | null>(null)
+  const [refreshingSession, setRefreshingSession] = useState<string | null>(null)
 
   useEffect(() => {
     loadNetworks()
@@ -91,7 +89,9 @@ export default function NetworksPage() {
     setSelectedNetwork(network)
     setResellerForm({
       username: network.reseller_username || '',
-      password: '' // Don't show password
+      password: '', // Don't show password
+      isScraped: network.xtream_ui_scraped || false,
+      sessionCookie: network.reseller_session_cookie || ''
     })
     setShowResellerModal(true)
   }
@@ -102,21 +102,67 @@ export default function NetworksPage() {
     try {
       await adminAPI.updateNetwork(selectedNetwork.id, {
         reseller_username: resellerForm.username,
-        reseller_password: resellerForm.password || undefined
+        reseller_password: resellerForm.password || undefined,
+        xtream_ui_scraped: resellerForm.isScraped,
+        reseller_session_cookie: resellerForm.sessionCookie
       })
-      toast.success('Reseller credentials updated')
+      toast.success('Network configuration updated')
       setShowResellerModal(false)
       loadNetworks()
     } catch (err) {
-      toast.error('Failed to update credentials')
+      toast.error('Failed to update configuration')
     } finally {
       setSavingReseller(false)
     }
   }
 
+  const testSession = async (id: string) => {
+    setTestingSession(id)
+    try {
+      const { data } = await adminAPI.testNetworkSession(id)
+      if (data.valid) {
+        toast.success('Session is valid!')
+      } else {
+        toast.error('Session expired or invalid')
+      }
+    } catch (err) {
+      toast.error('Test failed')
+    } finally {
+      setTestingSession(null)
+    }
+  }
+
+  const refreshSession = async (id: string) => {
+    setRefreshingSession(id)
+    const t = toast.loading('Solving CAPTCHA and logging in...')
+    try {
+      const { data } = await adminAPI.refreshNetworkSession(id)
+      if (data.success) {
+        toast.success('Session refreshed successfully!', { id: t })
+        loadNetworks()
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Auto-login failed', { id: t })
+    } finally {
+      setRefreshingSession(null)
+    }
+  }
+
+  // Line Creation Form
+  const [lineForm, setLineForm] = useState({
+    username: '',
+    password: '',
+    duration: '24', // hours
+    maxConnections: '1',
+    selectedBouquets: [] as string[]
+  })
+  const [bouquets, setBouquets] = useState<Bouquet[]>([])
+  const [loadingBouquets, setLoadingBouquets] = useState(false)
+  const [creatingLine, setCreatingLine] = useState(false)
+
   const openLineCreation = async (network: Network) => {
-    if (!network.reseller_username) {
-      toast.error('Configure reseller credentials first')
+    if (!network.reseller_username && !network.reseller_session_cookie) {
+      toast.error('Configure reseller credentials or session first')
       return
     }
     setSelectedNetwork(network)
@@ -142,12 +188,14 @@ export default function NetworksPage() {
         password: lineForm.password,
         maxConnections: parseInt(lineForm.maxConnections),
         expDate,
-        bouquetIds: lineForm.selectedBouquets
+        bouquetIds: lineForm.selectedBouquets,
+        trial: lineForm.duration === '24',
+        notes: `StreamBridge User Line - ${new Date().toLocaleDateString()}`
       }
       const { data } = await adminAPI.createResellerLine(selectedNetwork.id, payload)
       
-      if (data.result === 'success' || data.status === 'success') {
-        toast.success('Line created successfully!')
+      if (data.success || data.result === 'success' || data.status === 'success') {
+        toast.success(data.message || 'Line created successfully!')
         setShowLineModal(false)
       } else {
         toast.error(data.message || 'Failed to create line')
@@ -178,9 +226,9 @@ export default function NetworksPage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/10 text-brand-400">
                   <Wifi className="h-5 w-5" />
                 </div>
-                {network.reseller_username ? (
+                {network.reseller_username || network.reseller_session_cookie ? (
                   <Badge variant="success" className="gap-1">
-                    <CheckCircle2 className="h-3 w-3" /> Managed
+                    <CheckCircle2 className="h-3 w-3" /> {network.xtream_ui_scraped ? 'Scraped' : 'Managed'}
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="text-slate-500">Unmanaged</Badge>
@@ -193,17 +241,57 @@ export default function NetworksPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-400">Reseller API</span>
+                <span className="text-slate-400">Auth Method</span>
                 <span className="text-white">
-                  {network.reseller_username ? (
+                  {network.xtream_ui_scraped ? (
+                    <span className="flex items-center gap-1.5 text-blue-400">
+                      <Box className="h-3 w-3" /> Session Cookie
+                    </span>
+                  ) : network.reseller_username ? (
                     <span className="flex items-center gap-1.5 text-emerald-400">
-                      <Lock className="h-3 w-3" /> {network.reseller_username}
+                      <Lock className="h-3 w-3" /> Reseller API
                     </span>
                   ) : (
-                    <span className="text-slate-500 italic">Not configured</span>
+                    <span className="text-slate-500 italic">None</span>
                   )}
                 </span>
               </div>
+
+              {network.xtream_ui_scraped && (
+                <div className="flex flex-col gap-2">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-8 w-full gap-2 rounded-lg bg-white/5 hover:bg-white/10"
+                    onClick={() => testSession(network.id)}
+                    disabled={testingSession === network.id}
+                  >
+                    {testingSession === network.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Activity className="h-3 w-3" />
+                    )}
+                    Check Health
+                  </Button>
+                  
+                  {network.reseller_username && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-8 w-full gap-2 rounded-lg bg-brand-500/10 text-brand-400 hover:bg-brand-500/20"
+                      onClick={() => refreshSession(network.id)}
+                      disabled={refreshingSession === network.id}
+                    >
+                      {refreshingSession === network.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Zap className="h-3 w-3" />
+                      )}
+                      Auto-Refresh Session
+                    </Button>
+                  )}
+                </div>
+              )}
               
               <div className="flex flex-col gap-2 pt-2">
                 <Button 
@@ -213,14 +301,14 @@ export default function NetworksPage() {
                 >
                   <span className="flex items-center gap-2">
                     <Settings2 className="h-4 w-4 text-slate-400" />
-                    Reseller Credentials
+                    Configure Automation
                   </span>
                   <ChevronRight className="h-4 w-4 text-slate-600" />
                 </Button>
                 
                 <Button 
                   className="w-full gap-2 rounded-xl bg-brand-600 hover:bg-brand-500"
-                  disabled={!network.reseller_username}
+                  disabled={!network.reseller_username && !network.reseller_session_cookie}
                   onClick={() => openLineCreation(network)}
                 >
                   <UserPlus className="h-4 w-4" />
@@ -236,35 +324,96 @@ export default function NetworksPage() {
       <Dialog open={showResellerModal} onOpenChange={setShowResellerModal}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reseller Configuration</DialogTitle>
+            <DialogTitle>Automation Configuration</DialogTitle>
             <DialogDescription>
-              Enter the credentials for your Xtream Codes / UI panel reseller account.
+              Set up how StreamBridge interacts with this IPTV panel.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Reseller Username</Label>
-              <Input 
-                value={resellerForm.username}
-                onChange={e => setResellerForm({...resellerForm, username: e.target.value})}
-                placeholder="admin_reseller"
+          
+          <div className="space-y-6 py-4">
+            <div className="flex items-center justify-between rounded-xl bg-white/5 p-4">
+              <div className="space-y-0.5">
+                <Label className="text-base">Use Web Scraping</Label>
+                <p className="text-xs text-slate-400">Enable if the panel lacks a Reseller API (Xtream UI style)</p>
+              </div>
+              <input 
+                type="checkbox"
+                className="h-5 w-5 rounded border-white/10 bg-slate-900"
+                checked={resellerForm.isScraped}
+                onChange={e => setResellerForm({...resellerForm, isScraped: e.target.checked})}
               />
             </div>
-            <div className="space-y-2">
-              <Label>Reseller Password</Label>
-              <Input 
-                type="password"
-                value={resellerForm.password}
-                onChange={e => setResellerForm({...resellerForm, password: e.target.value})}
-                placeholder="••••••••"
-              />
-              <p className="text-[10px] text-slate-500 italic">Leave blank to keep existing password</p>
-            </div>
+
+            {!resellerForm.isScraped ? (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Reseller Username (API)</Label>
+                  <Input 
+                    value={resellerForm.username}
+                    onChange={e => setResellerForm({...resellerForm, username: e.target.value})}
+                    placeholder="admin_reseller"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Reseller Password (API)</Label>
+                  <Input 
+                    type="password"
+                    value={resellerForm.password}
+                    onChange={e => setResellerForm({...resellerForm, password: e.target.value})}
+                    placeholder="••••••••"
+                  />
+                  <p className="text-[10px] text-slate-500 italic">Leave blank to keep existing password</p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>PHPSESSID Cookie (Optional)</Label>
+                  <Input 
+                    value={resellerForm.sessionCookie}
+                    onChange={e => setResellerForm({...resellerForm, sessionCookie: e.target.value})}
+                    placeholder="e.g. 7qZ+iVMHHxVSM7ooCJ1..."
+                  />
+                  <p className="text-xs text-slate-500">
+                    Paste from browser or leave empty if using <code className="text-brand-400">Auto-Refresh</code> below.
+                  </p>
+                </div>
+                <div className="space-y-4 rounded-xl border border-brand-500/20 bg-brand-500/5 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-brand-400">CAPTCHA Automation</p>
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Reseller Username</Label>
+                      <Input 
+                        className="h-8 text-sm"
+                        value={resellerForm.username}
+                        onChange={e => setResellerForm({...resellerForm, username: e.target.value})}
+                        placeholder="kevin123"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Reseller Password</Label>
+                      <Input 
+                        type="password"
+                        className="h-8 text-sm"
+                        value={resellerForm.password}
+                        onChange={e => setResellerForm({...resellerForm, password: e.target.value})}
+                        placeholder="••••••••"
+                      />
+                    </div>
+                    <p className="text-[10px] leading-relaxed text-slate-400">
+                      These are used by the <strong>2Captcha</strong> engine to automatically solve 
+                      reCAPTCHA and refresh your session when it expires.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
+
           <DialogFooter>
             <Button variant="ghost" onClick={() => setShowResellerModal(false)}>Cancel</Button>
             <Button onClick={saveResellerConfig} disabled={savingReseller}>
-              {savingReseller ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Credentials'}
+              {savingReseller ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Configuration'}
             </Button>
           </DialogFooter>
         </DialogContent>

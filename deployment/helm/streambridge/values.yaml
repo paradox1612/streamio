@@ -52,6 +52,7 @@ backend:
     stripeWebhookSecret: ""
     twentyApiKey: ""
     twentyWebhookSecret: ""
+    twoCaptchaApiKey: ""
   resources: {}
   nodeSelector: {}
   tolerations: []

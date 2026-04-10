@@ -388,6 +388,10 @@ ALTER TABLE provider_networks
   ADD COLUMN IF NOT EXISTS reseller_username TEXT;
 ALTER TABLE provider_networks
   ADD COLUMN IF NOT EXISTS reseller_password TEXT;
+ALTER TABLE provider_networks
+  ADD COLUMN IF NOT EXISTS xtream_ui_scraped BOOLEAN DEFAULT false;
+ALTER TABLE provider_networks
+  ADD COLUMN IF NOT EXISTS reseller_session_cookie TEXT;
 
 -- ─────────────────────────────────────────
 -- Indexes
