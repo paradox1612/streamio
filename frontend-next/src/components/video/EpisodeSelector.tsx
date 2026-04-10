@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect } from 'react'
 import { providerAPI } from '@/utils/api'
-import { Play, Laptop, Monitor, Smartphone, Loader2, List, Check } from 'lucide-react'
+import { isMobileDevice, isBrowserUnfriendly, isIOS, isAndroid } from '@/utils/device'
+import { getAvailablePlayers, getMobilePlayerUrl, MobilePlayer } from '@/utils/player'
+import { Play, Laptop, Monitor, Smartphone, Loader2, List, Check, Copy, ExternalLink } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface Episode {
@@ -46,6 +48,8 @@ export default function EpisodeSelector({ providerId, seriesId, seriesTitle, tmd
   const [activeSeason, setActiveSeason] = useState<string | null>(null)
   const [providerInfo, setProviderInfo] = useState<any>(null)
 
+  const isMobile = isMobileDevice()
+
   useEffect(() => {
     async function loadData() {
       try {
@@ -78,11 +82,25 @@ export default function EpisodeSelector({ providerId, seriesId, seriesTitle, tmd
     return `${host}/series/${user}/${pass}/${episode.id}.${ext}`
   }
 
-  const handleLaunchNative = (episode: Episode, player: 'iina' | 'vlc' | 'infuse') => {
+  const handleLaunchNative = (episode: Episode, player: 'iina' | 'vlc' | 'infuse' | 'nplayer' | 'mxplayer') => {
     const url = getStreamUrl(episode)
-    if (player === 'iina') window.open(`iina://weblink?url=${encodeURIComponent(url)}`)
-    else if (player === 'vlc') window.open(`vlc://${url.replace(/^https?:\/\//, '')}`)
-    else if (player === 'infuse') window.open(`infuse://address/${url.replace(/^https?:\/\//, '')}`)
+    const epTitle = `S${activeSeason}E${episode.episode_num}: ${episode.tmdb_info?.name || episode.title}`
+    const mobileUrl = getMobilePlayerUrl(player as MobilePlayer, url, epTitle)
+    
+    if (mobileUrl) {
+      window.open(mobileUrl, '_blank')
+    } else {
+      // Legacy fallback for old hardcoded players
+      if (player === 'iina') window.open(`iina://weblink?url=${encodeURIComponent(url)}`)
+      else if (player === 'vlc') window.open(`vlc://${url.replace(/^https?:\/\//, '')}`)
+      else if (player === 'infuse') window.open(`infuse://address/${url.replace(/^https?:\/\//, '')}`)
+    }
+  }
+
+  const copyUrl = (episode: Episode) => {
+    const url = getStreamUrl(episode)
+    navigator.clipboard.writeText(url)
+    toast.success('Episode URL copied')
   }
 
   if (loading) {
@@ -107,6 +125,13 @@ export default function EpisodeSelector({ providerId, seriesId, seriesTitle, tmd
 
   const episodes = activeSeason ? seasons[activeSeason] : []
 
+  const availablePlayers = getAvailablePlayers().filter(p => {
+    if (p.platform === 'all') return true
+    if (p.platform === 'ios' && isIOS()) return true
+    if (p.platform === 'android' && isAndroid()) return true
+    return false
+  })
+
   return (
     <div className="flex flex-col gap-8">
       {/* Season Tabs */}
@@ -128,94 +153,108 @@ export default function EpisodeSelector({ providerId, seriesId, seriesTitle, tmd
 
       {/* Episode List */}
       <div className="space-y-4">
-        {episodes.map((ep) => (
-          <div 
-            key={ep.id} 
-            className={`group relative flex flex-col md:flex-row gap-6 p-4 rounded-lg bg-zinc-900/40 hover:bg-zinc-800/60 transition-all border border-white/5 ${
-              ep.is_watched ? 'opacity-60' : ''
-            }`}
-          >
-            {/* Thumbnail */}
+        {episodes.map((ep) => {
+          const streamUrl = getStreamUrl(ep)
+          const isUnfriendly = isBrowserUnfriendly(streamUrl)
+          
+          return (
             <div 
-               onClick={() => onWatch(getStreamUrl(ep), `S${activeSeason}E${ep.episode_num}: ${ep.tmdb_info?.name || ep.title}`)}
-               className="relative flex-shrink-0 w-full md:w-64 aspect-video rounded-md overflow-hidden bg-zinc-800 cursor-pointer shadow-lg"
+              key={ep.id} 
+              className={`group relative flex flex-col md:flex-row gap-6 p-4 rounded-lg bg-zinc-900/40 hover:bg-zinc-800/60 transition-all border border-white/5 ${
+                ep.is_watched ? 'opacity-60' : ''
+              }`}
             >
-               {(ep.tmdb_info?.still_path || ep.info?.movie_image) ? (
-                 // eslint-disable-next-line @next/next/no-img-element
-                 <img 
-                   src={ep.tmdb_info?.still_path ? `https://image.tmdb.org/t/p/w300${ep.tmdb_info.still_path}` : ep.info?.movie_image}
-                   alt={ep.title}
-                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                   loading="lazy"
-                 />
-               ) : (
-                 <div className="w-full h-full flex items-center justify-center text-zinc-700">
-                    <Play className="h-10 w-10 opacity-20" />
+              {/* Thumbnail */}
+              <div 
+                 onClick={() => {
+                   if (isMobile && isUnfriendly) {
+                     toast.success('Select a mobile player for best experience')
+                   } else {
+                     onWatch(streamUrl, `S${activeSeason}E${ep.episode_num}: ${ep.tmdb_info?.name || ep.title}`)
+                   }
+                 }}
+                 className="relative flex-shrink-0 w-full md:w-64 aspect-video rounded-md overflow-hidden bg-zinc-800 cursor-pointer shadow-lg"
+              >
+                 {(ep.tmdb_info?.still_path || ep.info?.movie_image) ? (
+                   // eslint-disable-next-line @next/next/no-img-element
+                   <img 
+                     src={ep.tmdb_info?.still_path ? `https://image.tmdb.org/t/p/w300${ep.tmdb_info.still_path}` : ep.info?.movie_image}
+                     alt={ep.title}
+                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                     loading="lazy"
+                   />
+                 ) : (
+                   <div className="w-full h-full flex items-center justify-center text-zinc-700">
+                      <Play className="h-10 w-10 opacity-20" />
+                   </div>
+                 )}
+                 {/* Play Button Overlay */}
+                 <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="p-3 rounded-full bg-[#1491ff]/80 backdrop-blur-md border border-white/20 text-white transform scale-90 group-hover:scale-100 transition-transform">
+                      <Play className="h-6 w-6 fill-current ml-0.5" />
+                    </div>
                  </div>
-               )}
-               {/* Play Button Overlay */}
-               <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <div className="p-3 rounded-full bg-[#1491ff]/80 backdrop-blur-md border border-white/20 text-white transform scale-90 group-hover:scale-100 transition-transform">
-                    <Play className="h-6 w-6 fill-current ml-0.5" />
-                  </div>
-               </div>
-               {ep.is_watched && (
-                  <div className="absolute top-2 right-2 p-1.5 bg-green-500 rounded-full shadow-lg">
-                    <Check className="h-3 w-3 text-white stroke-[4px]" />
-                  </div>
-               )}
-            </div>
-
-            {/* Info */}
-            <div className="flex-1 flex flex-col justify-center gap-2">
-              <div className="flex items-center justify-between gap-4">
-                <h4 className="text-lg font-bold group-hover:text-[#1491ff] transition-colors">
-                  {ep.episode_num}. {ep.tmdb_info?.name || ep.title}
-                </h4>
-                {ep.tmdb_info?.runtime && (
-                  <span className="text-xs font-bold text-zinc-500 bg-black/30 px-2 py-1 rounded">{ep.tmdb_info.runtime}m</span>
-                )}
+                 {ep.is_watched && (
+                    <div className="absolute top-2 right-2 p-1.5 bg-green-500 rounded-full shadow-lg">
+                      <Check className="h-3 w-3 text-white stroke-[4px]" />
+                    </div>
+                 )}
               </div>
-              <p className="text-sm text-zinc-400 line-clamp-2 md:line-clamp-3 leading-relaxed">
-                {ep.tmdb_info?.overview || ep.info?.plot || 'No description available for this episode.'}
-              </p>
-            </div>
 
-            {/* Actions */}
-            <div className="flex items-center gap-3">
-               <button 
-                 onClick={() => onWatch(getStreamUrl(ep), `S${activeSeason}E${ep.episode_num}: ${ep.tmdb_info?.name || ep.title}`)}
-                 className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-black hover:bg-[#1491ff] hover:text-white transition-all shadow-xl hover:scale-110 active:scale-95"
-               >
-                 <Play className="h-5 w-5 fill-current ml-0.5" />
-               </button>
-               
-               <div className="flex gap-1 p-1 bg-black/40 rounded-lg backdrop-blur-sm border border-white/10">
-                  <button 
-                    onClick={() => handleLaunchNative(ep, 'iina')}
-                    className="p-2.5 hover:bg-white/10 rounded transition-colors group/native"
-                    title="Play in IINA"
-                  >
-                    <Laptop className="h-4 w-4 text-sky-400 group-hover/native:scale-110 transition-transform" />
-                  </button>
-                  <button 
-                    onClick={() => handleLaunchNative(ep, 'vlc')}
-                    className="p-2.5 hover:bg-white/10 rounded transition-colors group/native"
-                    title="Play in VLC"
-                  >
-                    <Monitor className="h-4 w-4 text-orange-400 group-hover/native:scale-110 transition-transform" />
-                  </button>
-                  <button 
-                    onClick={() => handleLaunchNative(ep, 'infuse')}
-                    className="p-2.5 hover:bg-white/10 rounded transition-colors group/native"
-                    title="Play in Infuse"
-                  >
-                    <Smartphone className="h-4 w-4 text-rose-400 group-hover/native:scale-110 transition-transform" />
-                  </button>
-               </div>
+              {/* Info */}
+              <div className="flex-1 flex flex-col justify-center gap-2">
+                <div className="flex items-center justify-between gap-4">
+                  <h4 className="text-lg font-bold group-hover:text-[#1491ff] transition-colors">
+                    {ep.episode_num}. {ep.tmdb_info?.name || ep.title}
+                  </h4>
+                  {ep.tmdb_info?.runtime && (
+                    <span className="text-xs font-bold text-zinc-500 bg-black/30 px-2 py-1 rounded">{ep.tmdb_info.runtime}m</span>
+                  )}
+                </div>
+                <p className="text-sm text-zinc-400 line-clamp-2 md:line-clamp-3 leading-relaxed">
+                  {ep.tmdb_info?.overview || ep.info?.plot || 'No description available for this episode.'}
+                </p>
+              </div>
+
+              {/* Actions */}
+              <div className="flex flex-col gap-3 justify-center">
+                 <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => onWatch(streamUrl, `S${activeSeason}E${ep.episode_num}: ${ep.tmdb_info?.name || ep.title}`)}
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-black hover:bg-[#1491ff] hover:text-white transition-all shadow-lg hover:scale-110 active:scale-95"
+                      title="Play in Browser"
+                    >
+                      <Play className="h-4 w-4 fill-current ml-0.5" />
+                    </button>
+                    <button 
+                      onClick={() => copyUrl(ep)}
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-800 text-white hover:bg-zinc-700 transition-all border border-white/10"
+                      title="Copy Stream URL"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </button>
+                 </div>
+                 
+                 <div className="flex gap-1 p-1 bg-black/40 rounded-lg backdrop-blur-sm border border-white/10">
+                    {availablePlayers.map(p => (
+                      <button 
+                        key={p.id}
+                        onClick={() => handleLaunchNative(ep, p.id)}
+                        className="p-2 hover:bg-white/10 rounded transition-colors group/native"
+                        title={`Play in ${p.name}`}
+                      >
+                        {p.id === 'vlc' && <Monitor className="h-4 w-4 text-orange-400 group-hover/native:scale-110 transition-transform" />}
+                        {p.id === 'infuse' && <Smartphone className="h-4 w-4 text-rose-400 group-hover/native:scale-110 transition-transform" />}
+                        {p.id === 'iina' && <Laptop className="h-4 w-4 text-sky-400 group-hover/native:scale-110 transition-transform" />}
+                        {p.id === 'nplayer' && <Smartphone className="h-4 w-4 text-blue-400 group-hover/native:scale-110 transition-transform" />}
+                        {p.id === 'mxplayer' && <Smartphone className="h-4 w-4 text-green-400 group-hover/native:scale-110 transition-transform" />}
+                      </button>
+                    ))}
+                 </div>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

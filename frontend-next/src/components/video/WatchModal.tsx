@@ -7,8 +7,10 @@ import {
 } from '@/components/ui/dialog'
 import VideoPlayer from './VideoPlayer'
 import EpisodeSelector from './EpisodeSelector'
-import { X, Play, Heart, PlayCircle, Star, ExternalLink } from 'lucide-react'
+import { X, Play, Heart, PlayCircle, Star, ExternalLink, Copy, Monitor, Smartphone, Laptop } from 'lucide-react'
 import { homeAPI, userAPI, vodAPI } from '@/utils/api'
+import { isMobileDevice, isBrowserUnfriendly, isIOS, isAndroid } from '@/utils/device'
+import { getAvailablePlayers, getMobilePlayerUrl, MobilePlayer } from '@/utils/player'
 import toast from 'react-hot-toast'
 import NetflixCard from './NetflixCard'
 import { VodItem } from '@/types/vod'
@@ -45,6 +47,10 @@ export default function WatchModal({
   const [similarTitles, setSimilarTitles] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [showTrailer, setShowTrailer] = useState(false)
+
+  // Mobile player state
+  const isMobile = isMobileDevice()
+  const isUnfriendly = isBrowserUnfriendly(src)
 
   // Current item state for internal navigation (similar titles)
   const [currentTmdbId, setCurrentTmdbId] = useState<number | undefined>(initialTmdbId)
@@ -89,7 +95,12 @@ export default function WatchModal({
     } else {
       // ONLY auto-play if specifically requested AND it's not a series
       if (autoPlay && currentVodType !== 'series' && src && !activeStream) {
-        setActiveStream({ url: src, title: currentTitle })
+        // On mobile, if unfriendly, we don't autoplay in browser
+        if (isMobile && isUnfriendly) {
+           toast.success('Select a mobile player below for best experience')
+        } else {
+           setActiveStream({ url: src, title: currentTitle })
+        }
       }
       
       const checkFavorite = async () => {
@@ -109,7 +120,7 @@ export default function WatchModal({
       }
       checkFavorite()
     }
-  }, [isOpen, currentVodType, src, currentTitle, providerId, currentStreamId, activeStream, autoPlay])
+  }, [isOpen, currentVodType, src, currentTitle, providerId, currentStreamId, activeStream, autoPlay, isMobile, isUnfriendly])
 
   const toggleFavorite = async () => {
     try {
@@ -151,6 +162,21 @@ export default function WatchModal({
     } catch (_) {}
   }
 
+  const openInPlayer = (player: MobilePlayer) => {
+    if (!src) return
+    const url = getMobilePlayerUrl(player, src, currentTitle)
+    if (url) {
+      window.open(url, '_blank')
+      handleProgress(10) // Record minimal progress to show it was started
+    }
+  }
+
+  const copyUrl = () => {
+    if (!src) return
+    navigator.clipboard.writeText(src)
+    toast.success('Stream URL copied to clipboard')
+  }
+
   if (!isOpen) return null
 
   const trailer = tmdbDetails?.videos?.results?.find((v: any) => v.type === 'Trailer' && v.site === 'YouTube')
@@ -161,6 +187,13 @@ export default function WatchModal({
     : tmdbDetails?.episode_run_time?.[0] 
       ? `${tmdbDetails.episode_run_time[0]}m`
       : ''
+
+  const availablePlayers = getAvailablePlayers().filter(p => {
+    if (p.platform === 'all') return true
+    if (p.platform === 'ios' && isIOS()) return true
+    if (p.platform === 'android' && isAndroid()) return true
+    return false
+  })
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -229,23 +262,52 @@ export default function WatchModal({
                 </div>
                 <div className="flex flex-col gap-3 w-full max-w-[350px]">
                    {src && (
-                     <button 
-                       onClick={() => {
-                         if (currentVodType === 'series') {
-                           // For series, picking the first available episode stream URL would require the selector
-                           // But since we want "Play" to work, we'll signal the EpisodeSelector or find the first ep
-                           // For now, if it's a series and we hit Play, we scroll to episodes
-                           const epSection = document.getElementById('episodes-section');
-                           if (epSection) epSection.scrollIntoView({ behavior: 'smooth' });
-                           else toast.error('Please select an episode below');
-                         } else {
-                           setActiveStream({ url: src, title: currentTitle });
-                         }
-                       }}
-                       className="flex items-center justify-center gap-2 w-full py-4 bg-[#1491ff] text-white font-bold rounded hover:bg-[#0c73db] transition-colors shadow-lg"
-                     >
-                       <Play className="h-5 w-5 fill-current" /> Play Now
-                     </button>
+                     <div className="space-y-3">
+                        <button 
+                          onClick={() => {
+                            if (currentVodType === 'series') {
+                              const epSection = document.getElementById('episodes-section');
+                              if (epSection) epSection.scrollIntoView({ behavior: 'smooth' });
+                              else toast.error('Please select an episode below');
+                            } else {
+                              if (isMobile && isUnfriendly) {
+                                 toast.success('Select a mobile player below for best experience')
+                              } else {
+                                 setActiveStream({ url: src, title: currentTitle });
+                              }
+                            }
+                          }}
+                          className="flex items-center justify-center gap-2 w-full py-4 bg-[#1491ff] text-white font-bold rounded hover:bg-[#0c73db] transition-colors shadow-lg"
+                        >
+                          <Play className="h-5 w-5 fill-current" /> {currentVodType === 'series' ? 'Select Episode' : 'Play in Browser'}
+                        </button>
+
+                        {(isMobile || isUnfriendly) && currentVodType !== 'series' && (
+                          <div className="space-y-2">
+                            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest text-center">Open in External Player</p>
+                            <div className="grid grid-cols-2 gap-2">
+                               {availablePlayers.map(p => (
+                                 <button 
+                                   key={p.id}
+                                   onClick={() => openInPlayer(p.id)}
+                                   className="flex items-center justify-center gap-2 py-2 bg-white/5 border border-white/10 rounded text-xs font-bold hover:bg-white/10 transition-colors"
+                                 >
+                                   {p.id === 'vlc' && <Smartphone className="h-3 w-3 text-orange-400" />}
+                                   {p.id === 'infuse' && <Smartphone className="h-3 w-3 text-rose-400" />}
+                                   {p.id === 'iina' && <Laptop className="h-3 w-3 text-sky-400" />}
+                                   {p.name}
+                                 </button>
+                               ))}
+                               <button 
+                                 onClick={copyUrl}
+                                 className="flex items-center justify-center gap-2 py-2 bg-white/5 border border-white/10 rounded text-xs font-bold hover:bg-white/10 transition-colors col-span-2"
+                               >
+                                 <Copy className="h-3 w-3" /> Copy Stream URL
+                               </button>
+                            </div>
+                          </div>
+                        )}
+                     </div>
                    )}
                    <div className="flex gap-2">
                      <button 
