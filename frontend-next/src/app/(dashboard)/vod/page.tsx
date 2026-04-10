@@ -3,476 +3,66 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { providerAPI } from '@/utils/api'
-import { Search, X, ChevronLeft, ChevronRight, Film, Sparkles, Play, List } from 'lucide-react'
-import EmptyState from '@/components/EmptyState'
+import { providerAPI, homeAPI, userAPI, vodAPI } from '@/utils/api'
+import { Search, X, Film, SlidersHorizontal, ChevronDown } from 'lucide-react'
+import ContentRow from '@/components/video/ContentRow'
+import HeroBanner from '@/components/video/HeroBanner'
 import WatchModal from '@/components/video/WatchModal'
+import NetflixCard from '@/components/video/NetflixCard'
 import { useAuthStore } from '@/store/auth'
 import toast from 'react-hot-toast'
+import { VodItem } from '@/types/vod'
 
-// ── Animation variants ────────────────────────────────────────────────────────
-const containerAnim = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { staggerChildren: 0.06, delayChildren: 0.05 } },
-}
-const itemAnim = {
-  hidden: { opacity: 0, y: 24, scale: 0.96 },
-  visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.45, ease: [0.0, 0.0, 0.58, 1.0] as [number, number, number, number] } },
-}
-
-function formatLastWatched(value: string | null | undefined) {
-  if (!value) return ''
-  const then = new Date(value)
-  if (Number.isNaN(then.getTime())) return 'Recently watched'
-  const diffMs = Date.now() - then.getTime()
-  const diffMinutes = Math.max(Math.floor(diffMs / (1000 * 60)), 0)
-  if (diffMinutes < 1) return 'Just now'
-  if (diffMinutes < 60) return `${diffMinutes}m ago`
-  const diffHours = Math.floor(diffMinutes / 60)
-  if (diffHours < 24) return `${diffHours}h ago`
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffDays < 7) return `${diffDays}d ago`
-  return then.toLocaleDateString()
-}
-
-interface VodItem {
-  id: string
-  stream_id: string
-  raw_title: string
-  vod_type: string
-  tmdb_id?: number
-  imdb_id?: string
-  confidence_score?: number
-  poster_url?: string
-  category?: string
-  is_watched?: boolean
-  last_watched_at?: string
-  streamUrl?: string | null
-}
-
-interface TmdbResult {
-  tmdbId: number
-  title: string
-  year?: string
-  type: string
-  poster?: string
-}
-
-interface Provider {
-  id: string
-  name: string
-}
-
-// ── FixMatch Modal ────────────────────────────────────────────────────────────
-function FixMatchModal({
-  item,
-  providerId,
-  allItems,
-  currentIndex,
-  onClose,
-  onSuccess,
-  onNavigate,
-}: {
-  item: VodItem
-  providerId: string
-  allItems: VodItem[]
-  currentIndex: number
-  onClose: () => void
-  onSuccess: () => void
-  onNavigate: (dir: 'prev' | 'next') => void
-}) {
-  const [query, setQuery] = useState(item.raw_title)
-  const [results, setResults] = useState<TmdbResult[]>([])
-  const [searching, setSearching] = useState(false)
-  const [saving, setSaving] = useState<number | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  const search = useCallback(
-    async (q: string) => {
-      if (!q.trim()) return
-      setSearching(true)
-      try {
-        const res = await providerAPI.tmdbSearch(
-          providerId,
-          q,
-          item.vod_type === 'series' ? 'series' : 'movie'
-        )
-        setResults(res.data.results || [])
-      } catch {
-        toast.error('Search failed')
-      } finally {
-        setSearching(false)
-      }
-    },
-    [providerId, item.vod_type]
-  )
-
-  useEffect(() => { search(query) }, []) // eslint-disable-line
-  useEffect(() => { inputRef.current?.focus() }, [])
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { onClose(); return }
-      if (e.key === 'ArrowLeft') onNavigate('prev')
-      if (e.key === 'ArrowRight') onNavigate('next')
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, onNavigate])
-
-  const handleSelect = async (result: TmdbResult) => {
-    setSaving(result.tmdbId)
-    try {
-      await providerAPI.manualMatch(providerId, {
-        rawTitle: item.raw_title,
-        tmdbId: result.tmdbId,
-        tmdbType: result.type,
-      })
-      toast.success(`Matched to "${result.title}"`)
-      onSuccess()
-      onClose()
-    } catch {
-      toast.error('Failed to save match')
-    } finally {
-      setSaving(null)
-    }
-  }
-
-  return (
-    <AnimatePresence>
-      <motion.div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-      >
-        <motion.div
-          className="relative w-full max-w-3xl overflow-hidden rounded-[28px] border border-white/[0.1] bg-surface-900/95 shadow-[0_40px_100px_rgba(0,0,0,0.55)]"
-          initial={{ scale: 0.92, opacity: 0, y: 40 }}
-          animate={{ scale: 1, opacity: 1, y: 0 }}
-          exit={{ scale: 0.92, opacity: 0, y: 40 }}
-          transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex items-center justify-between gap-4 border-b border-white/[0.08] px-6 py-4">
-            <div className="flex items-center gap-4">
-              <span className="text-sm font-medium text-slate-400/70">
-                {currentIndex + 1} / {allItems.length}
-              </span>
-              <span className="hidden text-xs text-slate-400/45 sm:block">← → navigate · Esc close</span>
-            </div>
-            <button
-              onClick={onClose}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/[0.1] bg-white/[0.05] text-slate-300 transition hover:bg-white/[0.1] hover:text-white"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          {allItems.length > 1 && (
-            <>
-              <button
-                onClick={() => onNavigate('prev')}
-                className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/[0.1] bg-surface-950/80 text-white transition hover:bg-white/[0.12]"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-              <button
-                onClick={() => onNavigate('next')}
-                className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/[0.1] bg-surface-950/80 text-white transition hover:bg-white/[0.12]"
-              >
-                <ChevronRight className="h-5 w-5" />
-              </button>
-            </>
-          )}
-
-          <div className="grid gap-6 p-6 sm:grid-cols-[160px_1fr] sm:p-8">
-            <div className="mx-auto w-40 sm:mx-0 sm:w-auto">
-              {item.poster_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={item.poster_url}
-                  alt={item.raw_title}
-                  className="w-full rounded-[18px] object-cover"
-                  style={{ aspectRatio: '2/3' }}
-                  loading="lazy"
-                />
-              ) : (
-                <div
-                  className="flex w-full items-center justify-center rounded-[18px] bg-surface-800/60"
-                  style={{ aspectRatio: '2/3' }}
-                >
-                  <Film className="h-10 w-10 text-slate-400/40" />
-                </div>
-              )}
-            </div>
-
-            <div className="min-w-0">
-              <p className="eyebrow mb-1">Manual Match</p>
-              <h2 className="section-title line-clamp-2 text-lg">{item.raw_title}</h2>
-
-              <div className="mt-4 flex gap-2">
-                <div className="relative flex-1">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400/55" />
-                  <input
-                    ref={inputRef}
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && search(query)}
-                    placeholder="Search TMDB…"
-                    className="field-input py-2.5 pl-9 pr-4 text-sm"
-                  />
-                </div>
-                <button
-                  onClick={() => search(query)}
-                  disabled={searching}
-                  className="btn-primary whitespace-nowrap !rounded-2xl !px-4 !py-2.5 text-sm"
-                >
-                  {searching ? 'Searching…' : 'Search'}
-                </button>
-              </div>
-
-              <div className="mt-4 max-h-64 space-y-2 overflow-y-auto pr-1">
-                {searching && (
-                  <div className="py-6 text-center text-sm text-slate-300/55">Searching TMDB…</div>
-                )}
-                {!searching && results.length === 0 && (
-                  <div className="py-6 text-center text-sm text-slate-300/55">No results. Try a different query.</div>
-                )}
-                <AnimatePresence mode="popLayout">
-                  {results.map((result) => (
-                    <motion.button
-                      layout
-                      key={result.tmdbId}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.96 }}
-                      transition={{ duration: 0.22 }}
-                      onClick={() => handleSelect(result)}
-                      disabled={saving !== null}
-                      className="flex w-full items-center gap-3 rounded-[18px] border border-white/[0.08] bg-white/[0.03] p-3 text-left transition-all hover:border-white/[0.14] hover:bg-white/[0.06]"
-                    >
-                      {result.poster ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={result.poster}
-                          alt={result.title}
-                          className="h-16 w-11 flex-shrink-0 rounded-xl object-cover"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="flex h-16 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-surface-800/80">
-                          <Film className="h-4 w-4 text-slate-400/40" />
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-white">{result.title}</p>
-                        <p className="mt-0.5 text-xs text-slate-300/50">{result.year || 'Unknown year'} · {result.type}</p>
-                      </div>
-                      <span className="flex-shrink-0 text-sm font-semibold text-brand-300">
-                        {saving === result.tmdbId ? 'Saving…' : 'Select →'}
-                      </span>
-                    </motion.button>
-                  ))}
-                </AnimatePresence>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
-  )
-}
-
-// ── VodCard ───────────────────────────────────────────────────────────────────
-function VodCard({
-  item,
-  onOpenModal,
-  onWatch,
-  animVariants,
-  allowManualMatch = true,
-}: {
-  item: VodItem
-  onOpenModal: (item: VodItem) => void
-  onWatch: (item: VodItem) => void
-  animVariants: typeof itemAnim
-  allowManualMatch?: boolean
-}) {
-  const matched = item.tmdb_id != null
-  const score = item.confidence_score ? Math.round(item.confidence_score * 100) : null
-  const watchedLabel = formatLastWatched(item.last_watched_at)
-
-  return (
-    <motion.div
-      layout
-      variants={animVariants}
-      className={`group relative cursor-pointer overflow-hidden rounded-[20px] border bg-surface-800/60 sm:rounded-[22px] ${
-        item.is_watched
-          ? 'border-emerald-300/35 shadow-[0_0_0_1px_rgba(110,231,183,0.15)]'
-          : 'border-white/[0.08]'
-      }`}
-      style={{ aspectRatio: '2/3' }}
-      whileHover={{ scale: 1.03, y: -6, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
-      whileTap={{ scale: 0.98 }}
-      onClick={() => { if (allowManualMatch) onOpenModal(item) }}
-    >
-      {item.poster_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={item.poster_url}
-          alt={item.raw_title}
-          className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
-          loading="lazy"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-        />
-      ) : (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-400/40">
-          <Film className="h-10 w-10" />
-          <span className="line-clamp-3 px-3 text-center text-xs">{item.raw_title}</span>
-        </div>
-      )}
-
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-
-      <div className="absolute left-2.5 top-2.5 rounded-full border border-white/10 bg-black/50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-slate-100 backdrop-blur-sm">
-        {item.vod_type}
-      </div>
-
-      {item.is_watched && (
-        <div className="absolute left-2.5 top-9 rounded-full border border-emerald-200/25 bg-emerald-400/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-emerald-50 backdrop-blur-sm">
-          Watched
-        </div>
-      )}
-
-      <div
-        className={`absolute right-2.5 top-2.5 rounded-full px-2 py-0.5 text-[9px] font-bold backdrop-blur-sm ${
-          matched ? 'bg-emerald-500/80 text-white' : 'border border-white/10 bg-black/50 text-slate-300'
-        }`}
-      >
-        {matched ? `${score ?? '—'}%` : 'Unmatched'}
-      </div>
-
-      <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/95 via-black/50 to-black/10 opacity-0 transition-all duration-300 group-hover:opacity-100">
-        <div className="p-3">
-          {item.vod_type === 'movie' && item.streamUrl && (
-            <motion.button
-              onClick={(e) => {
-                e.stopPropagation()
-                onWatch(item)
-              }}
-              whileHover={{ scale: 1.12 }}
-              whileTap={{ scale: 0.92 }}
-              className="mb-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-brand-500 text-white shadow-[0_0_15px_rgba(20,145,255,0.4)]"
-            >
-              <Play className="ml-0.5 h-4 w-4 fill-current" />
-            </motion.button>
-          )}
-
-          {item.vod_type === 'series' && (
-            <motion.button
-              onClick={(e) => {
-                e.stopPropagation()
-                onWatch(item)
-              }}
-              whileHover={{ scale: 1.12 }}
-              whileTap={{ scale: 0.92 }}
-              className="mb-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-black shadow-lg"
-            >
-              <List className="h-4 w-4" />
-            </motion.button>
-          )}
-          <motion.p
-            className="line-clamp-2 text-xs font-bold leading-snug text-white"
-            initial={{ y: 12, opacity: 0 }}
-            whileInView={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.05 }}
-          >
-            {item.raw_title}
-          </motion.p>
-
-          {item.category && (
-            <motion.p
-              className="mt-0.5 truncate text-[9px] font-medium uppercase tracking-wider text-slate-300/60"
-              initial={{ y: 10, opacity: 0 }}
-              whileInView={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.1 }}
-            >
-              {item.category}
-            </motion.p>
-          )}
-
-          {item.is_watched && watchedLabel && (
-            <motion.p
-              className="mt-1 text-[10px] font-medium text-emerald-200/90"
-              initial={{ y: 10, opacity: 0 }}
-              whileInView={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.12 }}
-            >
-              Started in Stremio {watchedLabel}
-            </motion.p>
-          )}
-
-          <motion.div
-            className="mt-2.5 flex items-center gap-2"
-            initial={{ y: 10, opacity: 0 }}
-            whileInView={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.15 }}
-          >
-            <div
-              onClick={(e) => {
-                e.stopPropagation()
-                if (allowManualMatch) onOpenModal(item)
-              }}
-              className={`flex h-8 w-8 items-center justify-center rounded-full shadow-[0_0_12px_rgba(255,255,255,0.2)] ${
-                allowManualMatch ? 'bg-white' : 'bg-slate-500/40'
-              }`}
-            >
-              <Sparkles className={`h-3.5 w-3.5 ${allowManualMatch ? 'text-black' : 'text-white/70'}`} />
-            </div>
-            <span className="text-[11px] font-semibold text-white">
-              {!allowManualMatch ? 'Metadata View' : matched ? 'Fix Match' : 'Match Title'}
-            </span>
-          </motion.div>
-        </div>
-      </div>
-    </motion.div>
-  )
-}
-
-// ── Main ──────────────────────────────────────────────────────────────────────
-export default function VodBrowserPage() {
+export default function VodPage() {
   const { user } = useAuthStore()
   const router = useRouter()
-  const [providers, setProviders] = useState<Provider[]>([])
+  const [providers, setProviders] = useState<any[]>([])
   const [selectedProvider, setSelectedProvider] = useState('')
-  const [items, setItems] = useState<VodItem[]>([])
-  const [loading, setLoading] = useState(false)
   const [loadingProviders, setLoadingProviders] = useState(true)
-  const [filter, setFilter] = useState({ type: '', matched: '', page: 1 })
-  const [searchInput, setSearchInput] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [modalItem, setModalItem] = useState<VodItem | null>(null)
-  const [modalIndex, setModalIndex] = useState(0)
-  const [watchItem, setWatchItem] = useState<VodItem | null>(null)
-  const searchRef = useRef<HTMLInputElement>(null)
-  const hasByoProviders = Boolean((user as typeof user & { has_byo_providers?: boolean })?.has_byo_providers)
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === '/' && document.activeElement !== searchRef.current) {
-        e.preventDefault()
-        searchRef.current?.focus()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  // Section data
+  const [sections, setSections] = useState<{
+    continueWatching: VodItem[]
+    newToStreamio: VodItem[]
+    trendingMovies: VodItem[]
+    trendingSeries: VodItem[]
+    movies: VodItem[]
+    series: VodItem[]
+    topRated: VodItem[]
+    featured: VodItem[]
+  }>({
+    continueWatching: [],
+    newToStreamio: [],
+    trendingMovies: [],
+    trendingSeries: [],
+    movies: [],
+    series: [],
+    topRated: [],
+    featured: [],
+  })
+
+  // Browse state (Infinite Scroll)
+  const [browseItems, setBrowseItems] = useState<VodItem[]>([])
+  const [browseLoading, setBrowseLoading] = useState(false)
+  const [browsePage, setBrowsePage] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
+
+  // Filters
+  const [searchQuery, setSearchQuery] = useState('')
+  const [activeType, setActiveType] = useState<'' | 'movie' | 'series'>('')
+  const [activeSort, setActiveSort] = useState<'newest' | 'rating' | ''>('')
+  const [showFilters, setShowFilters] = useState(false)
+
+  // Modal
+  const [watchItem, setWatchItem] = useState<VodItem | null>(null)
+
+  const hasByoProviders = Boolean((user as any)?.has_byo_providers)
+
+  // Infinite Scroll Trigger
+  const loaderRef = useRef(null)
 
   useEffect(() => {
     if (!hasByoProviders) {
-      setProviders([])
-      setSelectedProvider('')
       setLoadingProviders(false)
       return
     }
@@ -485,289 +75,350 @@ export default function VodBrowserPage() {
       .finally(() => setLoadingProviders(false))
   }, [hasByoProviders])
 
-  useEffect(() => {
-    setItems([])
-    setFilter((f) => ({ ...f, page: 1 }))
-  }, [selectedProvider, filter.type, filter.matched])
+  const mapToVodItem = (item: any): VodItem => ({
+    id: item.id,
+    stream_id: item.stream_id,
+    raw_title: item.raw_title || item.title || item.name,
+    vod_type: item.vod_type || (item.media_type === 'tv' ? 'series' : 'movie'),
+    tmdb_id: item.tmdb_id || item.id,
+    imdb_id: item.imdb_id,
+    confidence_score: item.confidence_score,
+    poster_url: item.poster_url || (item.poster_path ? `https://image.tmdb.org/t/p/w342${item.poster_path}` : undefined),
+    backdrop_url: item.backdrop_url || (item.backdrop_path ? `https://image.tmdb.org/t/p/w1280${item.backdrop_path}` : undefined),
+    category: item.category,
+    is_watched: item.is_watched,
+    last_watched_at: item.last_watched_at,
+    streamUrl: item.streamUrl,
+    watch_progress: item.watch_progress_pct,
+    overview: item.overview,
+    rating: item.vote_average || (item.confidence_score ? (item.confidence_score * 10) : undefined),
+    year: (item.release_date || item.first_air_date || item.title_year || '').toString().slice(0, 4),
+  })
 
-  const loadVod = useCallback(async () => {
+  const loadSections = useCallback(async () => {
     if (!selectedProvider) return
-    setLoading(true)
+    
     try {
-      const params: Record<string, unknown> = { page: filter.page, limit: 60 }
-      if (filter.type) params.type = filter.type
-      if (searchQuery) params.search = searchQuery
-      if (filter.matched !== '') params.matched = filter.matched
-      const res = await providerAPI.getVod(selectedProvider, params)
-      setItems((prev) => (filter.page === 1 ? res.data : [...prev, ...res.data]))
-    } catch {
-      toast.error('Failed to load catalog')
-    } finally {
-      setLoading(false)
+      const [
+        historyRes,
+        newRes,
+        trendingMoviesRes,
+        trendingSeriesRes,
+        moviesRes,
+        seriesRes,
+        topRatedRes
+      ] = await Promise.all([
+        userAPI.getWatchHistory({ limit: 20 }),
+        providerAPI.getVod(selectedProvider, { limit: 20, sort: 'newest' }),
+        homeAPI.getTrending('movie'),
+        homeAPI.getTrending('tv'),
+        providerAPI.getVod(selectedProvider, { limit: 20, type: 'movie' }),
+        providerAPI.getVod(selectedProvider, { limit: 20, type: 'series' }),
+        providerAPI.getVod(selectedProvider, { limit: 20, sort: 'rating' }),
+      ])
+
+      const featuredItems = [...newRes.data.slice(0, 5)].map(mapToVodItem)
+      
+      const richFeatured = await Promise.all(featuredItems.map(async (item) => {
+        if (item.tmdb_id && typeof item.tmdb_id === 'number') {
+          try {
+            const details = await vodAPI.getDetails(item.tmdb_id, item.vod_type)
+            return {
+              ...item,
+              backdrop_url: details.data.backdrop_path ? `https://image.tmdb.org/t/p/w1280${details.data.backdrop_path}` : item.backdrop_url,
+              overview: details.data.overview,
+              rating: details.data.vote_average,
+              genres: details.data.genres?.map((g: any) => g.name),
+              runtime: details.data.runtime ? `${details.data.runtime}m` : undefined,
+            }
+          } catch { return item }
+        }
+        return item
+      }))
+
+      setSections({
+        continueWatching: historyRes.data.map(mapToVodItem),
+        newToStreamio: newRes.data.map(mapToVodItem),
+        trendingMovies: trendingMoviesRes.data.map(mapToVodItem),
+        trendingSeries: trendingSeriesRes.data.map(mapToVodItem),
+        movies: moviesRes.data.map(mapToVodItem),
+        series: seriesRes.data.map(mapToVodItem),
+        topRated: topRatedRes.data.map(mapToVodItem),
+        featured: richFeatured,
+      })
+    } catch (err) {
+      console.error('Failed to load VOD sections', err)
     }
-  }, [selectedProvider, filter, searchQuery])
+  }, [selectedProvider])
 
-  useEffect(() => { loadVod() }, [filter.page, searchQuery, selectedProvider, filter.type, filter.matched]) // eslint-disable-line
+  const loadBrowse = useCallback(async (page: number, refresh = false) => {
+    if (!selectedProvider) return
+    setBrowseLoading(true)
+    try {
+      const params: any = {
+        page,
+        limit: 40,
+        type: activeType || undefined,
+        search: searchQuery || undefined,
+        sort: activeSort || undefined,
+      }
+      const res = await providerAPI.getVod(selectedProvider, params)
+      const newItems = res.data.map(mapToVodItem)
+      setBrowseItems(prev => refresh ? newItems : [...prev, ...newItems])
+      setHasMore(res.data.length === 40)
+    } catch {
+      toast.error('Failed to load items')
+    } finally {
+      setBrowseLoading(false)
+    }
+  }, [selectedProvider, activeType, searchQuery, activeSort])
 
-  const handleFilterChange = (key: string, value: string) => {
-    setItems([])
-    setFilter((f) => ({ ...f, [key]: value, page: 1 }))
-  }
+  useEffect(() => {
+    if (selectedProvider) {
+      loadSections()
+      setBrowsePage(1)
+      loadBrowse(1, true)
+    }
+  }, [selectedProvider, loadSections, loadBrowse])
 
-  const applySearch = useCallback(() => {
-    const nextQuery = searchInput.trim()
-    setItems([])
-    setSearchQuery(nextQuery)
-    setFilter((f) => ({ ...f, page: 1 }))
-  }, [searchInput])
+  useEffect(() => {
+    if (selectedProvider) {
+      setBrowsePage(1)
+      loadBrowse(1, true)
+    }
+  }, [activeType, searchQuery, activeSort, selectedProvider, loadBrowse])
 
-  const openModal = (item: VodItem) => {
-    const idx = items.findIndex((i) => i.id === item.id)
-    setModalIndex(idx >= 0 ? idx : 0)
-    setModalItem(item)
-  }
+  const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
+    const target = entries[0]
+    if (target.isIntersecting && hasMore && !browseLoading) {
+      setBrowsePage(prev => {
+        const next = prev + 1
+        loadBrowse(next)
+        return next
+      })
+    }
+  }, [hasMore, browseLoading, loadBrowse])
 
-  const navigateModal = useCallback(
-    (dir: 'prev' | 'next') => {
-      const next =
-        dir === 'next'
-          ? (modalIndex + 1) % items.length
-          : (modalIndex - 1 + items.length) % items.length
-      setModalIndex(next)
-      setModalItem(items[next])
-    },
-    [modalIndex, items]
-  )
-
-  const selectedProviderName = providers.find((p) => p.id === selectedProvider)?.name || ''
+  useEffect(() => {
+    const observer = new IntersectionObserver(handleObserver, { threshold: 0.1 })
+    const currentLoader = loaderRef.current
+    if (currentLoader) observer.observe(currentLoader)
+    return () => {
+      if (currentLoader) observer.unobserve(currentLoader)
+    }
+  }, [handleObserver])
 
   if (loadingProviders) {
     return (
-      <div className="mx-auto max-w-7xl space-y-8">
-        <div className="panel p-8"><h1 className="hero-title">Loading VOD library…</h1></div>
-        <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8">
-          {Array.from({ length: 16 }).map((_, i) => <div key={i} className="skeleton aspect-[2/3]" />)}
-        </div>
+      <div className="flex h-screen items-center justify-center bg-[#141414]">
+        <div className="h-12 w-12 animate-spin rounded-full border-t-2 border-[#e50914]" />
       </div>
     )
   }
 
   if (!hasByoProviders) {
-    return (
-      <div className="mx-auto max-w-7xl space-y-8">
-        <section className="panel p-8">
-          <div className="kicker mb-5">Browse VOD</div>
-          <h1 className="hero-title">Add a provider to browse movies and series.</h1>
-          <p className="hero-copy mt-4">
-            Free access stays addon-only for hidden movie and series resolution. Web browsing remains BYO-only.
-          </p>
-        </section>
-        <EmptyState
-          icon={Sparkles}
-          heading="No BYO catalog source connected yet"
-          description="Add your own provider to browse the web catalog. Free access remains hidden addon fallback only."
-          action={() => router.push('/providers')}
-          actionLabel="Add BYO Provider"
-        />
-      </div>
-    )
+     return (
+       <div className="min-h-screen bg-[#141414] flex flex-col items-center justify-center p-8 text-center space-y-6">
+         <Film className="h-20 w-20 text-zinc-800" />
+         <h1 className="text-4xl font-black">Ready to build your library?</h1>
+         <p className="text-zinc-400 max-w-md">Connect your provider to start browsing the best movies and series in a premium cinematic interface.</p>
+         <button 
+           onClick={() => router.push('/providers')}
+           className="px-8 py-3 bg-[#e50914] text-white font-bold rounded hover:bg-[#b20710] transition-all"
+         >
+           Add Provider
+         </button>
+       </div>
+     )
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-8">
-      <motion.section
-        className="panel overflow-hidden p-5 sm:p-7 lg:p-8"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
-      >
-        <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
-          <div>
-            <div className="kicker mb-4">VOD Browser</div>
-            <h1 className="text-3xl font-bold leading-tight text-white sm:text-4xl">
-              Browse posters first, then fix metadata only when needed.
-            </h1>
-            <p className="hero-copy mt-3">
-              Search within a provider, filter by type or match status, and jump into manual TMDB correction from the
-              poster grid.
-            </p>
-          </div>
-          <div className="panel-soft p-5">
-            <p className="metric-label mb-1">Current Provider</p>
-            <p className="break-words text-2xl font-bold text-white">{selectedProviderName || 'None selected'}</p>
-            <p className="mt-2 text-sm text-slate-300/[0.68]">
-              {items.length} visible items{searchQuery ? ` for "${searchQuery}"` : ''}.
-            </p>
-          </div>
-        </div>
-      </motion.section>
-
-      <motion.section
-        className="panel-soft p-5 sm:p-6"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.08, duration: 0.45, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
-      >
-        <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
-          <div className="relative">
-            <label className="field-label">
-              Search Library{' '}
-              <span className="ml-1 rounded border border-white/10 bg-white/[0.04] px-1 py-0.5 text-[9px] font-bold uppercase text-slate-400/55">
-                /
-              </span>
-            </label>
-            <Search className="pointer-events-none absolute left-4 top-[3.1rem] h-5 w-5 text-slate-400/50" />
-            <input
-              ref={searchRef}
-              placeholder={`Search in ${selectedProviderName || 'your library'}…`}
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') applySearch() }}
-              className="field-input pl-12 pr-11"
-            />
-            <AnimatePresence>
-              {searchInput && (
-                <motion.button
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  onClick={() => {
-                    setSearchInput('')
-                    setSearchQuery('')
-                    setItems([])
-                    setFilter((f) => ({ ...f, page: 1 }))
-                  }}
-                  className="absolute right-4 top-[3.05rem] text-slate-300/55 transition-colors hover:text-white"
-                >
-                  <X className="h-4 w-4" />
-                </motion.button>
-              )}
-            </AnimatePresence>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
-            <div>
-              <label className="field-label">Provider</label>
-              <select
-                value={selectedProvider}
-                onChange={(e) => setSelectedProvider(e.target.value)}
-                className="field-select"
-              >
-                {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
-            <div className="flex items-end">
-              <button type="button" onClick={applySearch} className="btn-primary w-full whitespace-nowrap sm:w-auto">
-                Search Title
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-5 flex flex-wrap items-center gap-2">
-          {['', 'movie', 'series'].map((type) => (
-            <motion.button
-              key={type}
-              onClick={() => handleFilterChange('type', type)}
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.96 }}
-              className={`rounded-full px-4 py-2 text-sm font-semibold uppercase tracking-wider transition-all duration-200 ${
-                filter.type === type
-                  ? 'bg-brand-500 text-white shadow-[0_0_16px_rgba(20,145,255,0.35)]'
-                  : 'border border-white/10 bg-white/[0.04] text-slate-200/70 hover:border-white/20 hover:text-white'
-              }`}
-            >
-              {type === '' ? 'All' : type === 'movie' ? 'Movies' : 'Series'}
-            </motion.button>
-          ))}
-          <div className="sm:ml-auto">
-            <select
-              value={filter.matched}
-              onChange={(e) => handleFilterChange('matched', e.target.value)}
-              className="field-select min-w-[160px]"
-            >
-              <option value="">All matches</option>
-              <option value="true">Matched</option>
-              <option value="false">Unmatched</option>
-            </select>
-          </div>
-        </div>
-      </motion.section>
-
-      {items.length === 0 && !loading ? (
-        <EmptyState
-          icon={<Sparkles className="h-12 w-12" />}
-          heading={searchQuery ? `No results for "${searchQuery}"` : 'No titles found'}
-          description={
-            searchQuery
-              ? 'Try the full title or adjust the filters.'
-              : 'Refresh your catalog source to load titles here.'
-          }
+    <div className="min-h-screen bg-[#141414] text-white pb-24 overflow-x-hidden">
+      {/* Hero Banner */}
+      {sections.featured.length > 0 ? (
+        <HeroBanner 
+          items={sections.featured} 
+          onPlay={(item) => setWatchItem(item)}
+          onInfo={(item) => setWatchItem(item)}
         />
       ) : (
-        <>
-          {loading && filter.page === 1 ? (
-            <section className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8">
-              {Array.from({ length: 16 }).map((_, i) => <div key={i} className="skeleton aspect-[2/3]" />)}
-            </section>
-          ) : (
-            <>
-              <motion.section
-                layout
-                variants={containerAnim}
-                initial="hidden"
-                animate="visible"
-                className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8"
-              >
-                <AnimatePresence mode="popLayout">
-                  {items.map((item) => (
-                    <VodCard
-                      key={item.id}
-                      item={item}
-                      animVariants={itemAnim}
-                      allowManualMatch={true}
-                      onOpenModal={openModal}
-                      onWatch={(item) => setWatchItem(item)}
-                    />
-                  ))}
-                </AnimatePresence>
-                {loading && filter.page > 1 &&
-                  Array.from({ length: 8 }).map((_, i) => (
-                    <div key={`sk-${i}`} className="skeleton aspect-[2/3]" />
-                  ))}
-              </motion.section>
+        <div className="h-[50vh] flex items-center justify-center bg-zinc-900/20">
+           <div className="animate-pulse flex flex-col items-center gap-4">
+              <Film className="h-12 w-12 text-zinc-800" />
+              <p className="text-zinc-600 font-bold">Populating library...</p>
+           </div>
+        </div>
+      )}
 
-              {!loading && items.length > 0 && items.length % 60 === 0 && (
-                <div className="text-center">
-                  <motion.button
-                    whileHover={{ scale: 1.04 }}
-                    whileTap={{ scale: 0.96 }}
-                    onClick={() => setFilter((f) => ({ ...f, page: f.page + 1 }))}
-                    className="btn-secondary"
-                  >
-                    Load More Titles
-                  </motion.button>
+      {/* Floating Toolbar */}
+      <div className="sticky top-0 z-40 bg-black/60 backdrop-blur-xl border-b border-white/5 px-4 md:px-12 py-4 flex flex-wrap items-center gap-4">
+         <div className="flex items-center gap-2">
+            <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] hidden sm:block">Source</span>
+            <div className="relative group">
+               <button className="flex items-center gap-2 px-4 py-2 bg-zinc-800/80 rounded-md border border-white/10 text-sm font-bold hover:bg-zinc-700 transition-colors">
+                  {providers.find(p => p.id === selectedProvider)?.name || 'Select Provider'}
+                  <ChevronDown className="h-4 w-4 text-zinc-500" />
+               </button>
+               <div className="absolute top-full left-0 mt-2 w-64 bg-zinc-900 border border-white/10 rounded-lg shadow-[0_20px_50px_rgba(0,0,0,0.5)] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 overflow-hidden backdrop-blur-xl">
+                  {providers.map(p => (
+                    <button 
+                      key={p.id}
+                      onClick={() => setSelectedProvider(p.id)}
+                      className={`w-full text-left px-4 py-3 text-sm hover:bg-[#e50914] transition-colors ${selectedProvider === p.id ? 'bg-[#e50914] text-white font-bold' : ''}`}
+                    >
+                      {p.name}
+                    </button>
+                  ))}
+               </div>
+            </div>
+         </div>
+
+         <div className="flex-1 min-w-[200px] relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+            <input 
+              type="text" 
+              placeholder="Search library..."
+              className="w-full bg-zinc-800/50 border border-white/10 rounded-full py-2.5 pl-12 pr-10 text-sm focus:outline-none focus:border-[#e50914] focus:ring-1 focus:ring-[#e50914] transition-all backdrop-blur-sm"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            )}
+         </div>
+
+         <button 
+           onClick={() => setShowFilters(!showFilters)}
+           className={`p-2.5 rounded-md border transition-all ${showFilters ? 'bg-[#e50914] border-[#e50914] text-white' : 'bg-zinc-800/80 border-white/10 text-zinc-400 hover:text-white'}`}
+         >
+           <SlidersHorizontal className="h-5 w-5" />
+         </button>
+
+         <AnimatePresence>
+           {showFilters && (
+             <motion.div 
+               initial={{ height: 0, opacity: 0 }}
+               animate={{ height: 'auto', opacity: 1 }}
+               exit={{ height: 0, opacity: 0 }}
+               className="w-full flex flex-wrap gap-6 pt-4 overflow-hidden"
+             >
+                <div className="flex flex-col gap-2">
+                   <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Media Type</span>
+                   <div className="flex gap-2">
+                      {['', 'movie', 'series'].map(type => (
+                        <button
+                          key={type}
+                          onClick={() => setActiveType(type as any)}
+                          className={`px-4 py-1.5 rounded text-xs font-bold border transition-all ${activeType === type ? 'bg-white text-black border-white' : 'bg-zinc-900 text-zinc-400 border-white/10 hover:border-white/30'}`}
+                        >
+                          {type === '' ? 'All' : type === 'movie' ? 'Movies' : 'Series'}
+                        </button>
+                      ))}
+                   </div>
                 </div>
-              )}
-            </>
+                <div className="flex flex-col gap-2">
+                   <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Sort By</span>
+                   <div className="flex gap-2">
+                      {['', 'newest', 'rating'].map(sort => (
+                        <button
+                          key={sort}
+                          onClick={() => setActiveSort(sort as any)}
+                          className={`px-4 py-1.5 rounded text-xs font-bold border transition-all ${activeSort === sort ? 'bg-white text-black border-white' : 'bg-zinc-900 text-zinc-400 border-white/10 hover:border-white/30'}`}
+                        >
+                          {sort === '' ? 'Default' : sort === 'newest' ? 'Newest' : 'Top Rated'}
+                        </button>
+                      ))}
+                   </div>
+                </div>
+             </motion.div>
+           )}
+         </AnimatePresence>
+      </div>
+
+      {/* Content Rows */}
+      {!searchQuery && !activeType && !activeSort ? (
+        <div className="mt-8 space-y-16">
+          {sections.continueWatching.length > 0 && (
+            <ContentRow 
+              title="Continue Watching" 
+              items={sections.continueWatching} 
+              onPlay={setWatchItem}
+              onInfo={setWatchItem}
+            />
           )}
-        </>
+          <ContentRow 
+            title="New to Streamio" 
+            items={sections.newToStreamio} 
+            onPlay={setWatchItem}
+            onInfo={setWatchItem}
+          />
+          <ContentRow 
+            title="Trending Movies" 
+            items={sections.trendingMovies} 
+            onPlay={setWatchItem}
+            onInfo={setWatchItem}
+          />
+          <ContentRow 
+            title="Trending Series" 
+            items={sections.trendingSeries} 
+            onPlay={setWatchItem}
+            onInfo={setWatchItem}
+          />
+          <ContentRow 
+            title="Top Rated" 
+            items={sections.topRated} 
+            onPlay={setWatchItem}
+            onInfo={setWatchItem}
+          />
+          <ContentRow 
+            title="Movies" 
+            items={sections.movies} 
+            onPlay={setWatchItem}
+            onInfo={setWatchItem}
+            onSeeAll={() => setActiveType('movie')}
+          />
+          <ContentRow 
+            title="Series" 
+            items={sections.series} 
+            onPlay={setWatchItem}
+            onInfo={setWatchItem}
+            onSeeAll={() => setActiveType('series')}
+          />
+        </div>
+      ) : (
+        /* Browse Grid (Active Filter/Search) */
+        <div className="mt-12 px-4 md:px-12">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-3xl font-black tracking-tight">
+              {searchQuery ? `Results for "${searchQuery}"` : activeType === 'movie' ? 'Movies' : activeType === 'series' ? 'Series' : 'All Titles'}
+            </h2>
+            <span className="text-zinc-500 text-sm font-bold">{browseItems.length} items</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-x-4 gap-y-12">
+             {browseItems.map((item) => (
+                <div key={item.id} className="flex justify-center">
+                  <NetflixCard 
+                    item={item} 
+                    onPlay={setWatchItem}
+                    onInfo={setWatchItem}
+                  />
+                </div>
+             ))}
+          </div>
+          {browseLoading && (
+            <div className="flex justify-center mt-20">
+              <div className="h-10 w-10 animate-spin rounded-full border-t-2 border-[#e50914]" />
+            </div>
+          )}
+          <div ref={loaderRef} className="h-40" />
+        </div>
       )}
 
-      {modalItem && (
-        <FixMatchModal
-          item={modalItem}
-          providerId={selectedProvider}
-          allItems={items}
-          currentIndex={modalIndex}
-          onClose={() => setModalItem(null)}
-          onSuccess={() => { setItems([]); setFilter((f) => ({ ...f, page: 1 })) }}
-          onNavigate={navigateModal}
-        />
-      )}
-
-      <WatchModal
-        isOpen={Boolean(watchItem)}
+      {/* Watch Modal */}
+      <WatchModal 
+        isOpen={!!watchItem}
         onClose={() => setWatchItem(null)}
         src={watchItem?.streamUrl || null}
         title={watchItem?.raw_title || ''}

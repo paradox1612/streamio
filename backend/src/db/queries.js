@@ -895,7 +895,7 @@ const vodQueries = {
     return single ? (rows[0] || null) : rows;
   },
 
-  async getByProvider(providerId, { userId, type, page = 1, limit = 100, search = '', matched, category } = {}) {
+  async getByProvider(providerId, { userId, type, page = 1, limit = 100, search = '', matched, category, sort } = {}) {
     const provider = await this.getProviderCatalogContext(providerId);
     const useNetwork = Boolean(provider?.network_id && !provider?.catalog_variant);
     const sourceTable = useNetwork ? 'network_vod' : 'user_provider_vod';
@@ -927,12 +927,20 @@ const vodQueries = {
     if (matched === true) { query += ` AND (m.tmdb_id IS NOT NULL OR cc.tmdb_id IS NOT NULL)`; }
     if (matched === false) { query += ` AND (m.tmdb_id IS NULL AND cc.tmdb_id IS NULL AND m.id IS NOT NULL)`; }
     if (category) { query += ` AND v.category = $${idx++}`; params.push(category); }
-    query += ` ORDER BY
+
+    let orderBy = `
       v.canonical_normalized_title ASC NULLS LAST,
       v.normalized_title ASC NULLS LAST,
       v.raw_title ASC,
-      v.stream_id ASC
-      LIMIT $${idx++} OFFSET $${idx++}`;
+      v.stream_id ASC`;
+
+    if (sort === 'newest') {
+      orderBy = `v.created_at DESC, ${orderBy}`;
+    } else if (sort === 'rating') {
+      orderBy = `COALESCE(cc.confidence_score, m.confidence_score) DESC NULLS LAST, ${orderBy}`;
+    }
+
+    query += ` ORDER BY ${orderBy} LIMIT $${idx++} OFFSET $${idx++}`;
     params.push(limit, (page - 1) * limit);
     const { rows } = await pool.query(query, params);
     return rows;

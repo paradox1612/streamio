@@ -282,7 +282,7 @@ router.get('/:id/vod', requireAuth, async (req, res) => {
     const provider = await providerQueries.findByIdAndUser(req.params.id, req.user.id);
     if (!provider) return res.status(404).json({ error: 'Provider not found' });
 
-    const { type, page, limit, search, matched } = req.query;
+    const { type, page, limit, search, matched, sort } = req.query;
     const items = await vodQueries.getByProvider(req.params.id, {
       userId: req.user.id,
       type,
@@ -290,6 +290,7 @@ router.get('/:id/vod', requireAuth, async (req, res) => {
       limit: Math.min(parseInt(limit) || 50, 200),
       search,
       matched: matched === 'true' ? true : matched === 'false' ? false : undefined,
+      sort,
     });
 
     const host = provider.active_host || provider.hosts?.[0] || null;
@@ -449,14 +450,57 @@ router.get('/:id/series/:seriesId/episodes', requireAuth, async (req, res) => {
     const host = provider.active_host || provider.hosts?.[0] || null;
     if (!host) return res.status(400).json({ error: 'No active host for provider' });
 
-    const episodes = await providerService.getSeriesEpisodes(
+    const { tmdbId } = req.query;
+
+    const episodesResult = await providerService.getSeriesEpisodes(
       host,
       provider.username,
       provider.password,
       req.params.seriesId
     );
-    res.json(episodes);
+
+    const seasonMap = episodesResult.data || {};
+    
+    if (tmdbId) {
+      const seasonKeys = Object.keys(seasonMap);
+      const tmdbService = require('../services/tmdbService');
+      
+      for (const seasonNum of seasonKeys) {
+        const cacheKey = `tmdb_series_${tmdbId}_season_${seasonNum}`;
+        let tmdbSeason = cache.get(cacheKey);
+        
+        if (!tmdbSeason) {
+          tmdbSeason = await tmdbService.getSeasonDetails(tmdbId, seasonNum);
+          if (tmdbSeason) {
+            cache.set(cacheKey, tmdbSeason, 24 * 60 * 60); // 24h
+          }
+        }
+        
+        if (tmdbSeason && tmdbSeason.episodes) {
+          seasonMap[seasonNum] = seasonMap[seasonNum].map(ep => {
+            const tmdbEp = tmdbSeason.episodes.find(te => te.episode_number === ep.episode_num);
+            if (tmdbEp) {
+              return {
+                ...ep,
+                tmdb_info: {
+                  name: tmdbEp.name,
+                  overview: tmdbEp.overview,
+                  still_path: tmdbEp.still_path,
+                  vote_average: tmdbEp.vote_average,
+                  air_date: tmdbEp.air_date,
+                  runtime: tmdbEp.runtime
+                }
+              };
+            }
+            return ep;
+          });
+        }
+      }
+    }
+
+    res.json(seasonMap);
   } catch (err) {
+    logger.error('Error fetching episodes:', err);
     res.status(500).json({ error: err.message });
   }
 });

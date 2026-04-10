@@ -16,6 +16,7 @@ const previewRoutes = require('./api/previewRoutes');
 const adminRoutes = require('./admin/adminRoutes');
 const cloudstreamRoutes = require('./api/cloudstreamRoutes');
 const homeRoutes = require('./api/homeRoutes');
+const vodRoutes = require('./api/vodRoutes');
 const webhookRoutes = require('./api/webhookRoutes');
 const marketplaceRoutes = require('./api/marketplaceRoutes');
 const errorHandler = require('./middleware/errorHandler');
@@ -251,6 +252,7 @@ app.use('/api/user', userRoutes);
 app.use('/api/providers', providerRoutes);
 app.use('/api/free-access', freeAccessRoutes);
 app.use('/api/home', homeRoutes);
+app.use('/api/vod', vodRoutes);
 app.use('/api', marketplaceRoutes);
 app.use('/api/admin', adminRoutes);
 

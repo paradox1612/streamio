@@ -131,8 +131,14 @@ export const providerAPI = {
   tmdbSearch: (id: string, q: string, type: string) =>
     api.get(`/api/providers/${id}/tmdb-search`, { params: { q, type } }),
   manualMatch: (id: string, data: Record<string, unknown>) => api.post(`/api/providers/${id}/manual-match`, data),
-  getEpisodes: (id: string, seriesId: string) => api.get(`/api/providers/${id}/series/${seriesId}/episodes`),
+  getEpisodes: (id: string, seriesId: string, tmdbId?: number) => 
+    api.get(`/api/providers/${id}/series/${seriesId}/episodes`, { params: { tmdbId } }),
   getWatchUrl: (id: string, vodType: string, streamId: string) => api.get(`/api/providers/${id}/watch/${vodType}/${streamId}`),
+}
+
+export const vodAPI = {
+  getDetails: (tmdbId: number, type: string) => api.get('/api/vod/details', { params: { tmdbId, type } }),
+  getSimilar: (tmdbId: number, type: string) => api.get('/api/vod/similar', { params: { tmdbId, type } }),
 }
 
 // ─── Home / Trending / Favorites ─────────────────────────────────────────────

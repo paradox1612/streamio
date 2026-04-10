@@ -424,6 +424,48 @@ const tmdbService = {
   cleanTitle: extractCleanTitle,
   extractYear,
   TMDB_POSTER_BASE,
+
+  async getMovieDetails(tmdbId) {
+    if (!TMDB_API_KEY) return null;
+    try {
+      const url = `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=credits,external_ids,videos`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      return res.json();
+    } catch (_) { return null; }
+  },
+
+  async getSeriesDetails(tmdbId) {
+    if (!TMDB_API_KEY) return null;
+    try {
+      const url = `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=credits,external_ids,videos`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      return res.json();
+    } catch (_) { return null; }
+  },
+
+  async getSimilar(tmdbId, type) {
+    if (!TMDB_API_KEY) return [];
+    try {
+      const path = type === 'series' || type === 'tv' ? 'tv' : 'movie';
+      const url = `https://api.themoviedb.org/3/${path}/${tmdbId}/similar?api_key=${TMDB_API_KEY}`;
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.results || [];
+    } catch (_) { return []; }
+  },
+
+  async getSeasonDetails(tmdbId, seasonNum) {
+    if (!TMDB_API_KEY) return null;
+    try {
+      const url = `https://api.themoviedb.org/3/tv/${tmdbId}/season/${seasonNum}?api_key=${TMDB_API_KEY}`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      return res.json();
+    } catch (_) { return null; }
+  },
 };
 
 module.exports = tmdbService;
