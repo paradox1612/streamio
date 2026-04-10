@@ -55,6 +55,7 @@ export default function VodPage() {
 
   // Modal
   const [watchItem, setWatchItem] = useState<VodItem | null>(null)
+  const [autoPlay, setAutoPlay] = useState(false)
 
   const hasByoProviders = Boolean((user as any)?.has_byo_providers)
 
@@ -94,6 +95,11 @@ export default function VodPage() {
     rating: item.vote_average || item.rating || (item.confidence_score ? (item.confidence_score * 10) : undefined),
     year: (item.release_date || item.first_air_date || item.title_year || item.year || '').toString().slice(0, 4),
   })
+
+  const handleOpenModal = (item: VodItem, play = false) => {
+    setWatchItem(item)
+    setAutoPlay(play)
+  }
 
   const loadSections = useCallback(async () => {
     if (!selectedProvider) return
@@ -211,7 +217,7 @@ export default function VodPage() {
   if (loadingProviders) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#141414]">
-        <div className="h-12 w-12 animate-spin rounded-full border-t-2 border-[#e50914]" />
+        <div className="h-12 w-12 animate-spin rounded-full border-t-2 border-[#1491ff]" />
       </div>
     )
   }
@@ -224,7 +230,7 @@ export default function VodPage() {
          <p className="text-zinc-400 max-w-md">Connect your provider to start browsing the best movies and series in a premium cinematic interface.</p>
          <button 
            onClick={() => router.push('/providers')}
-           className="px-8 py-3 bg-[#e50914] text-white font-bold rounded hover:bg-[#b20710] transition-all"
+           className="px-8 py-3 bg-[#1491ff] text-white font-bold rounded hover:bg-[#0c73db] transition-all"
          >
            Add Provider
          </button>
@@ -238,8 +244,8 @@ export default function VodPage() {
       {sections.featured.length > 0 ? (
         <HeroBanner 
           items={sections.featured} 
-          onPlay={(item) => setWatchItem(item)}
-          onInfo={(item) => setWatchItem(item)}
+          onPlay={(item) => handleOpenModal(item, true)}
+          onInfo={(item) => handleOpenModal(item, false)}
         />
       ) : (
         <div className="h-[50vh] flex items-center justify-center bg-zinc-900/20">
@@ -264,7 +270,7 @@ export default function VodPage() {
                     <button 
                       key={p.id}
                       onClick={() => setSelectedProvider(p.id)}
-                      className={`w-full text-left px-4 py-3 text-sm hover:bg-[#e50914] transition-colors ${selectedProvider === p.id ? 'bg-[#e50914] text-white font-bold' : ''}`}
+                      className={`w-full text-left px-4 py-3 text-sm hover:bg-[#1491ff] transition-colors ${selectedProvider === p.id ? 'bg-[#1491ff] text-white font-bold' : ''}`}
                     >
                       {p.name}
                     </button>
@@ -278,7 +284,7 @@ export default function VodPage() {
             <input 
               type="text" 
               placeholder="Search library..."
-              className="w-full bg-zinc-800/50 border border-white/10 rounded-full py-2.5 pl-12 pr-10 text-sm focus:outline-none focus:border-[#e50914] focus:ring-1 focus:ring-[#e50914] transition-all backdrop-blur-sm"
+              className="w-full bg-zinc-800/50 border border-white/10 rounded-full py-2.5 pl-12 pr-10 text-sm focus:outline-none focus:border-[#1491ff] focus:ring-1 focus:ring-[#1491ff] transition-all backdrop-blur-sm"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -291,7 +297,7 @@ export default function VodPage() {
 
          <button 
            onClick={() => setShowFilters(!showFilters)}
-           className={`p-2.5 rounded-md border transition-all ${showFilters ? 'bg-[#e50914] border-[#e50914] text-white' : 'bg-zinc-800/80 border-white/10 text-zinc-400 hover:text-white'}`}
+           className={`p-2.5 rounded-md border transition-all ${showFilters ? 'bg-[#1491ff] border-[#1491ff] text-white' : 'bg-zinc-800/80 border-white/10 text-zinc-400 hover:text-white'}`}
          >
            <SlidersHorizontal className="h-5 w-5" />
          </button>
@@ -344,46 +350,46 @@ export default function VodPage() {
             <ContentRow 
               title="Continue Watching" 
               items={sections.continueWatching} 
-              onPlay={setWatchItem}
-              onInfo={setWatchItem}
+              onPlay={(item) => handleOpenModal(item, true)}
+              onInfo={(item) => handleOpenModal(item, false)}
             />
           )}
           <ContentRow 
             title="New to Streamio" 
             items={sections.newToStreamio} 
-            onPlay={setWatchItem}
-            onInfo={setWatchItem}
+            onPlay={(item) => handleOpenModal(item, true)}
+            onInfo={(item) => handleOpenModal(item, false)}
           />
           <ContentRow 
             title="Trending Movies" 
             items={sections.trendingMovies} 
-            onPlay={setWatchItem}
-            onInfo={setWatchItem}
+            onPlay={(item) => handleOpenModal(item, true)}
+            onInfo={(item) => handleOpenModal(item, false)}
           />
           <ContentRow 
             title="Trending Series" 
             items={sections.trendingSeries} 
-            onPlay={setWatchItem}
-            onInfo={setWatchItem}
+            onPlay={(item) => handleOpenModal(item, true)}
+            onInfo={(item) => handleOpenModal(item, false)}
           />
           <ContentRow 
             title="Top Rated" 
             items={sections.topRated} 
-            onPlay={setWatchItem}
-            onInfo={setWatchItem}
+            onPlay={(item) => handleOpenModal(item, true)}
+            onInfo={(item) => handleOpenModal(item, false)}
           />
           <ContentRow 
             title="Movies" 
             items={sections.movies} 
-            onPlay={setWatchItem}
-            onInfo={setWatchItem}
+            onPlay={(item) => handleOpenModal(item, true)}
+            onInfo={(item) => handleOpenModal(item, false)}
             onSeeAll={() => setActiveType('movie')}
           />
           <ContentRow 
             title="Series" 
             items={sections.series} 
-            onPlay={setWatchItem}
-            onInfo={setWatchItem}
+            onPlay={(item) => handleOpenModal(item, true)}
+            onInfo={(item) => handleOpenModal(item, false)}
             onSeeAll={() => setActiveType('series')}
           />
         </div>
@@ -401,15 +407,15 @@ export default function VodPage() {
                 <div key={item.id} className="flex justify-center">
                   <NetflixCard 
                     item={item} 
-                    onPlay={setWatchItem}
-                    onInfo={setWatchItem}
+                    onPlay={(item) => handleOpenModal(item, true)}
+                    onInfo={(item) => handleOpenModal(item, false)}
                   />
                 </div>
              ))}
           </div>
           {browseLoading && (
             <div className="flex justify-center mt-20">
-              <div className="h-10 w-10 animate-spin rounded-full border-t-2 border-[#e50914]" />
+              <div className="h-10 w-10 animate-spin rounded-full border-t-2 border-[#1491ff]" />
             </div>
           )}
           <div ref={loaderRef} className="h-40" />
@@ -427,6 +433,7 @@ export default function VodPage() {
         streamId={watchItem?.stream_id}
         tmdbId={watchItem?.tmdb_id}
         imdbId={watchItem?.imdb_id}
+        autoPlay={autoPlay}
       />
     </div>
   )

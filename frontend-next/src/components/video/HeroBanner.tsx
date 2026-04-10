@@ -88,7 +88,7 @@ const HeroBanner: React.FC<HeroBannerProps> = ({ items, onPlay, onInfo }) => {
               <div className="flex flex-wrap gap-4 pt-4">
                 <button
                   onClick={() => onPlay(item)}
-                  className="flex items-center gap-2 px-8 py-3 bg-[#e50914] text-white font-bold rounded hover:bg-[#b20710] transition-colors shadow-xl scale-100 hover:scale-105 active:scale-95"
+                  className="flex items-center gap-2 px-8 py-3 bg-[#1491ff] text-white font-bold rounded hover:bg-[#0c73db] transition-colors shadow-xl scale-100 hover:scale-105 active:scale-95"
                 >
                   <Play className="h-5 w-5 fill-current" /> Play Now
                 </button>
@@ -112,7 +112,7 @@ const HeroBanner: React.FC<HeroBannerProps> = ({ items, onPlay, onInfo }) => {
               key={idx}
               onClick={() => setCurrentIndex(idx)}
               className={`h-1.5 rounded-full transition-all ${
-                currentIndex === idx ? 'w-8 bg-[#e50914]' : 'w-2 bg-white/30 hover:bg-white/50'
+                currentIndex === idx ? 'w-8 bg-[#1491ff]' : 'w-2 bg-white/30 hover:bg-white/50'
               }`}
             />
           ))}

@@ -55,7 +55,7 @@ const NetflixCard: React.FC<NetflixCardProps> = ({
             e.stopPropagation()
             onPlay?.(item)
           }}
-          className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-sm transition-transform hover:scale-110 hover:bg-[#e50914]"
+          className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-sm transition-transform hover:scale-110 hover:bg-[#1491ff]"
         >
           <Play className="ml-1 h-6 w-6 fill-current" />
         </button>
@@ -84,7 +84,7 @@ const NetflixCard: React.FC<NetflixCardProps> = ({
           onFavorite?.(item)
         }}
         className={`absolute right-2 top-2 z-10 p-1.5 transition-opacity duration-300 group-hover:opacity-100 ${
-          item.is_favorite ? 'text-[#e50914] opacity-100' : 'text-white/70 opacity-0 hover:text-white'
+          item.is_favorite ? 'text-[#1491ff] opacity-100' : 'text-white/70 opacity-0 hover:text-white'
         }`}
       >
         <Heart className={`h-5 w-5 ${item.is_favorite ? 'fill-current' : ''}`} />
@@ -101,7 +101,7 @@ const NetflixCard: React.FC<NetflixCardProps> = ({
       {showProgress && progress > 0 && (
         <div className="absolute bottom-0 left-0 right-0 h-1 bg-zinc-700">
           <div
-            className="h-full bg-[#e50914]"
+            className="h-full bg-[#1491ff]"
             style={{ width: `${progress}%` }}
           />
         </div>

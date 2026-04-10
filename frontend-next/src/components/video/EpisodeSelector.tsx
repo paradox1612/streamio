@@ -88,7 +88,7 @@ export default function EpisodeSelector({ providerId, seriesId, seriesTitle, tmd
   if (loading) {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-4 text-slate-400">
-        <Loader2 className="h-8 w-8 animate-spin text-[#e50914]" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#1491ff]" />
         <p className="text-sm font-medium">Fetching episodes...</p>
       </div>
     )
@@ -117,7 +117,7 @@ export default function EpisodeSelector({ providerId, seriesId, seriesTitle, tmd
             onClick={() => setActiveSeason(season)}
             className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${
               activeSeason === season 
-                ? 'bg-[#e50914] text-white shadow-[0_0_20px_rgba(229,9,20,0.4)] scale-105' 
+                ? 'bg-[#1491ff] text-white shadow-[0_0_20px_rgba(20,145,255,0.4)] scale-105' 
                 : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white'
             }`}
           >
@@ -155,7 +155,7 @@ export default function EpisodeSelector({ providerId, seriesId, seriesTitle, tmd
                )}
                {/* Play Button Overlay */}
                <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <div className="p-3 rounded-full bg-[#e50914]/80 backdrop-blur-md border border-white/20 text-white transform scale-90 group-hover:scale-100 transition-transform">
+                  <div className="p-3 rounded-full bg-[#1491ff]/80 backdrop-blur-md border border-white/20 text-white transform scale-90 group-hover:scale-100 transition-transform">
                     <Play className="h-6 w-6 fill-current ml-0.5" />
                   </div>
                </div>
@@ -169,7 +169,7 @@ export default function EpisodeSelector({ providerId, seriesId, seriesTitle, tmd
             {/* Info */}
             <div className="flex-1 flex flex-col justify-center gap-2">
               <div className="flex items-center justify-between gap-4">
-                <h4 className="text-lg font-bold group-hover:text-[#e50914] transition-colors">
+                <h4 className="text-lg font-bold group-hover:text-[#1491ff] transition-colors">
                   {ep.episode_num}. {ep.tmdb_info?.name || ep.title}
                 </h4>
                 {ep.tmdb_info?.runtime && (
@@ -185,7 +185,7 @@ export default function EpisodeSelector({ providerId, seriesId, seriesTitle, tmd
             <div className="flex items-center gap-3">
                <button 
                  onClick={() => onWatch(getStreamUrl(ep), `S${activeSeason}E${ep.episode_num}: ${ep.tmdb_info?.name || ep.title}`)}
-                 className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-black hover:bg-[#e50914] hover:text-white transition-all shadow-xl hover:scale-110 active:scale-95"
+                 className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-black hover:bg-[#1491ff] hover:text-white transition-all shadow-xl hover:scale-110 active:scale-95"
                >
                  <Play className="h-5 w-5 fill-current ml-0.5" />
                </button>

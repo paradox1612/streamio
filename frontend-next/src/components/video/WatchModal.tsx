@@ -23,6 +23,7 @@ interface WatchModalProps {
   streamId?: string
   tmdbId?: number
   imdbId?: string
+  autoPlay?: boolean
 }
 
 export default function WatchModal({ 
@@ -34,7 +35,8 @@ export default function WatchModal({
   providerId, 
   streamId,
   tmdbId: initialTmdbId,
-  imdbId: initialImdbId
+  imdbId: initialImdbId,
+  autoPlay = false
 }: WatchModalProps) {
   const [activeStream, setActiveStream] = useState<{ url: string; title: string } | null>(null)
   const [isFavorite, setIsFavorite] = useState(false)
@@ -85,7 +87,8 @@ export default function WatchModal({
       setSimilarTitles([])
       setShowTrailer(false)
     } else {
-      if (currentVodType !== 'series' && src && !activeStream) {
+      // ONLY auto-play if specifically requested AND it's not a series
+      if (autoPlay && currentVodType !== 'series' && src && !activeStream) {
         setActiveStream({ url: src, title: currentTitle })
       }
       
@@ -106,7 +109,7 @@ export default function WatchModal({
       }
       checkFavorite()
     }
-  }, [isOpen, currentVodType, src, currentTitle, providerId, currentStreamId, activeStream])
+  }, [isOpen, currentVodType, src, currentTitle, providerId, currentStreamId, activeStream, autoPlay])
 
   const toggleFavorite = async () => {
     try {
@@ -158,8 +161,6 @@ export default function WatchModal({
     : tmdbDetails?.episode_run_time?.[0] 
       ? `${tmdbDetails.episode_run_time[0]}m`
       : ''
-
-  const isSeries = currentVodType === 'series' && !activeStream
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -230,9 +231,9 @@ export default function WatchModal({
                    {currentVodType !== 'series' && src && (
                      <button 
                        onClick={() => setActiveStream({ url: src, title: currentTitle })}
-                       className="flex items-center justify-center gap-2 w-full py-4 bg-white text-black font-bold rounded hover:bg-white/90 transition-colors"
+                       className="flex items-center justify-center gap-2 w-full py-4 bg-[#1491ff] text-white font-bold rounded hover:bg-[#0c73db] transition-colors shadow-lg"
                      >
-                       <Play className="h-5 w-5 fill-current" /> Play
+                       <Play className="h-5 w-5 fill-current" /> Play Now
                      </button>
                    )}
                    <div className="flex gap-2">
@@ -240,7 +241,7 @@ export default function WatchModal({
                        onClick={toggleFavorite}
                        className="flex-1 flex items-center justify-center gap-2 py-3 bg-zinc-800 text-white font-bold rounded hover:bg-zinc-700 transition-colors border border-white/10"
                      >
-                       <Heart className={`h-5 w-5 ${isFavorite ? 'fill-current text-[#e50914]' : ''}`} /> 
+                       <Heart className={`h-5 w-5 ${isFavorite ? 'fill-current text-[#1491ff]' : ''}`} /> 
                        {isFavorite ? 'In Watchlist' : 'Add to Watchlist'}
                      </button>
                      {trailer && (
@@ -409,7 +410,7 @@ export default function WatchModal({
             >
               <X className="h-6 w-6" />
             </button>
-            <div className="w-full max-w-6xl aspect-video shadow-[0_0_100px_rgba(229,9,20,0.2)] rounded-lg overflow-hidden border border-white/10">
+            <div className="w-full max-w-6xl aspect-video shadow-[0_0_100px_rgba(20,145,255,0.2)] rounded-lg overflow-hidden border border-white/10">
               <iframe
                 width="100%"
                 height="100%"
