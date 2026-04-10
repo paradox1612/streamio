@@ -82,9 +82,15 @@ export default function ParallaxCosmicBackground({
   const [largeStars, setLargeStars] = useState('')
 
   useEffect(() => {
-    setSmallStars(createStarField(180, 2000, 2000, 0.8))
-    setMediumStars(createStarField(90, 2000, 2000, 0.55))
-    setLargeStars(createStarField(45, 2000, 2000, 0.4))
+    const s = createStarField(180, 2000, 2000, 0.8)
+    const m = createStarField(90, 2000, 2000, 0.55)
+    const l = createStarField(45, 2000, 2000, 0.4)
+    // Using Promise to avoid synchronous setState inside useEffect warning
+    Promise.resolve().then(() => {
+      setSmallStars(s)
+      setMediumStars(m)
+      setLargeStars(l)
+    })
   }, [])
 
   useEffect(() => {

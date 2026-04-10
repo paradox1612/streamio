@@ -215,14 +215,12 @@ function StatusTab({
   summary,
   loading,
   syncing,
-  onRefresh,
   onSyncAll,
 }: {
   status: any
   summary: CoverageSummary | null
   loading: boolean
   syncing: boolean
-  onRefresh: () => void
   onSyncAll: () => void
 }) {
   const isConnected = status?.connected === true
@@ -511,6 +509,7 @@ function CoverageTab({
         filters={[
           (
             <DataTableFilter
+              key="expiry-risk"
               label="Expiry risk"
               options={[
                 { value: 'critical', label: 'Critical', icon: ShieldAlert },
@@ -526,6 +525,7 @@ function CoverageTab({
           ),
           (
             <DataTableFilter
+              key="coverage"
               label="Coverage"
               options={[
                 { value: 'linked', label: 'All linked', icon: CheckCircle2 },
@@ -901,7 +901,6 @@ export default function AdminCrmStatusPage() {
           summary={coverage?.summary ?? null}
           loading={loading}
           syncing={syncing}
-          onRefresh={loadStatus}
           onSyncAll={handleSyncAll}
         />
       )}

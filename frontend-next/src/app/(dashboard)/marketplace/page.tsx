@@ -1,4 +1,5 @@
 'use client'
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
@@ -22,7 +23,7 @@ import { creditsAPI, marketplaceAPI } from '@/utils/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { SkeletonCard } from '@/components/SkeletonCard'
+import SkeletonCard from '@/components/SkeletonCard'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

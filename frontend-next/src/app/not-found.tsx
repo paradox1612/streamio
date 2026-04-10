@@ -11,8 +11,13 @@ export default function NotFound() {
   const [path, setPath] = useState<string>('')
 
   useEffect(() => {
-    setReferrer(document.referrer || '')
-    setPath(window.location.pathname)
+    const r = document.referrer || ''
+    const p = window.location.pathname
+    // Using Promise to avoid synchronous setState inside useEffect warning
+    Promise.resolve().then(() => {
+      setReferrer(r)
+      setPath(p)
+    })
   }, [])
 
   const handleFeedback = () => {

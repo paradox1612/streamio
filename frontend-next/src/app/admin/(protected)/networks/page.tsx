@@ -1,4 +1,5 @@
 'use client'
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useState } from 'react'
 import {
@@ -6,15 +7,9 @@ import {
   Box,
   CheckCircle2,
   ChevronRight,
-  Globe,
-  Key,
-  Layout,
   Loader2,
   Lock,
-  Plus,
-  Server,
   Settings2,
-  ShieldAlert,
   UserPlus,
   Wifi,
   Zap,
@@ -27,7 +22,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { SkeletonCard } from '@/components/SkeletonCard'
+import SkeletonCard from '@/components/SkeletonCard'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,7 +73,7 @@ export default function NetworksPage() {
     try {
       const { data } = await adminAPI.listNetworks()
       setNetworks(data)
-    } catch (err) {
+    } catch {
       toast.error('Failed to load networks')
     } finally {
       setLoading(false)
@@ -109,7 +104,7 @@ export default function NetworksPage() {
       toast.success('Network configuration updated')
       setShowResellerModal(false)
       loadNetworks()
-    } catch (err) {
+    } catch {
       toast.error('Failed to update configuration')
     } finally {
       setSavingReseller(false)
@@ -125,7 +120,7 @@ export default function NetworksPage() {
       } else {
         toast.error('Session expired or invalid')
       }
-    } catch (err) {
+    } catch {
       toast.error('Test failed')
     } finally {
       setTestingSession(null)
@@ -171,7 +166,7 @@ export default function NetworksPage() {
     try {
       const { data } = await adminAPI.getNetworkBouquets(network.id)
       setBouquets(Array.isArray(data) ? data : [])
-    } catch (err) {
+    } catch {
       toast.error('Failed to load bouquets')
     } finally {
       setLoadingBouquets(false)

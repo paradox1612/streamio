@@ -8,6 +8,7 @@ import {
   Crosshair,
   FileText,
   Gift,
+  Globe,
   HeartPulse,
   LayoutDashboard,
   LogOut,
