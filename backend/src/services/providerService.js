@@ -74,7 +74,7 @@ function normalizeAccountInfo(data) {
 
 async function fetchAccountInfoForHost(host, username, password) {
   const cacheKey = buildAccountLookupCacheKey(host, username, password);
-  const cached = cache.get('providerAccountInfo', cacheKey);
+  const cached = await cache.get('providerAccountInfo', cacheKey);
   if (cached) return cached;
 
   const url = `${host}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
@@ -85,27 +85,27 @@ async function fetchAccountInfoForHost(host, username, password) {
     clearTimeout(timer);
     if (!res.ok) {
       const result = { ok: false, error: `HTTP ${res.status}` };
-      cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
+      await cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
       return result;
     }
     const data = await res.json();
     if (data?.user_info?.auth === 0 || data?.user_info?.auth === '0' || data?.user_info?.auth === false) {
       const result = { ok: false, error: 'Invalid credentials' };
-      cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
+      await cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
       return result;
     }
     if (isTruthyAuth(data?.user_info?.auth) || data?.user_info) {
       const result = { ok: true, host, accountInfo: normalizeAccountInfo(data) };
-      cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_SUCCESS_TTL_SECONDS);
+      await cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_SUCCESS_TTL_SECONDS);
       return result;
     }
     const result = { ok: false, error: 'Unexpected response' };
-    cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
+    await cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
     return result;
   } catch (err) {
     clearTimeout(timer);
     const result = { ok: false, error: err.message };
-    cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
+    await cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
     return result;
   }
 }
@@ -118,14 +118,14 @@ async function getProviderAccountInfo(provider, { forceRefresh = false } = {}) {
 
   const cacheKey = `${provider.id}:${hostToCheck}`;
   if (!forceRefresh) {
-    const cached = cache.get('providerAccountInfo', cacheKey);
+    const cached = await cache.get('providerAccountInfo', cacheKey);
     if (cached) return cached;
   } else {
-    cache.del('providerAccountInfo', buildAccountLookupCacheKey(hostToCheck, provider.username, provider.password));
+    await cache.del('providerAccountInfo', buildAccountLookupCacheKey(hostToCheck, provider.username, provider.password));
   }
 
   const result = await fetchAccountInfoForHost(hostToCheck, provider.username, provider.password);
-  cache.set('providerAccountInfo', cacheKey, result, result.ok ? ACCOUNT_LOOKUP_SUCCESS_TTL_SECONDS : ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
+  await cache.set('providerAccountInfo', cacheKey, result, result.ok ? ACCOUNT_LOOKUP_SUCCESS_TTL_SECONDS : ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
   if (result.ok) {
     await providerQueries.updateCrmSync(provider.id, {
       account_status: result.accountInfo.status,

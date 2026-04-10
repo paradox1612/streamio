@@ -91,6 +91,8 @@ spec:
               value: {{ .Values.backend.env.tmdbMatchConcurrency | quote }}
             - name: TMDB_MATCH_BATCH_PAUSE_MS
               value: {{ .Values.backend.env.tmdbMatchBatchPauseMs | quote }}
+            - name: REDIS_URL
+              value: "redis://{{ .Release.Name }}-redis-master:6379"
             - name: VPN_ENABLED
               value: {{ .Values.vpn.enabled | quote }}
             {{- if .Values.vpn.enabled }}

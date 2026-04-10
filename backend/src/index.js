@@ -133,7 +133,7 @@ const addonLimiter = rateLimit({
 // NAT, VPN) don't consume each other's quota. Falls back to IP for unauthenticated.
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200,
+  max: 1000, // Increased from 200 to 1000 for rich dashboard UI
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
@@ -178,12 +178,12 @@ app.get('/addon/:token/manifest.json', addonCors, addonLimiter, async (req, res)
   try {
     const token = req.params.token;
     // Check cache first
-    let manifest = cache.get('manifestByToken', token);
+    let manifest = await cache.get('manifestByToken', token);
     if (!manifest) {
       manifest = await buildManifest(token);
       if (!manifest) return res.status(401).json({ error: 'Invalid token' });
       // Cache the manifest for 60 seconds
-      cache.set('manifestByToken', token, manifest);
+      await cache.set('manifestByToken', token, manifest);
     }
     res.setHeader('Cache-Control', 'max-age=60');
     res.json(manifest);

@@ -62,17 +62,17 @@ function buildSourceFromCacheEntry(cacheEntry, assignment) {
 
 async function findUsableAccountForGroup(group, account, assignment = null) {
   const cacheKey = buildRuntimeSourceCacheKey(account.id);
-  const cached = cache.get('freeAccessRuntimeSource', cacheKey);
+  const cached = await cache.get('freeAccessRuntimeSource', cacheKey);
   if (cached) {
     return buildSourceFromCacheEntry(cached, assignment);
   }
-  if (cache.get('freeAccessRuntimeSourceMiss', cacheKey)) {
+  if (await cache.get('freeAccessRuntimeSourceMiss', cacheKey)) {
     return null;
   }
 
   const hosts = await freeAccessQueries.getHostsForGroup(group.id);
   if (!hosts.length) {
-    cache.set('freeAccessRuntimeSourceMiss', cacheKey, { missing: true });
+    await cache.set('freeAccessRuntimeSourceMiss', cacheKey, { missing: true });
     return null;
   }
 
@@ -117,13 +117,13 @@ async function findUsableAccountForGroup(group, account, assignment = null) {
       lastExpirationAt: toIsoDate(sourceHost.accountInfo.expiresAt),
       lastCheckedAt: new Date().toISOString(),
     });
-    cache.set('freeAccessRuntimeSource', cacheKey, {
+    await cache.set('freeAccessRuntimeSource', cacheKey, {
       providerGroup: group,
       username: account.username,
       password: account.password,
       hosts: [sourceHost.host],
     });
-    cache.del('freeAccessRuntimeSourceMiss', cacheKey);
+    await cache.del('freeAccessRuntimeSourceMiss', cacheKey);
     return {
       assignment,
       providerGroup: group,
@@ -140,8 +140,8 @@ async function findUsableAccountForGroup(group, account, assignment = null) {
     lastExpirationAt: toIsoDate(latestAccountInfo?.expiresAt),
     lastCheckedAt: new Date().toISOString(),
   });
-  cache.set('freeAccessRuntimeSourceMiss', cacheKey, { missing: true });
-  cache.del('freeAccessRuntimeSource', cacheKey);
+  await cache.set('freeAccessRuntimeSourceMiss', cacheKey, { missing: true });
+  await cache.del('freeAccessRuntimeSource', cacheKey);
   return null;
 }
 
@@ -379,8 +379,8 @@ const freeAccessService = {
     }
 
     if (expired > 0) {
-      cache.flush('userByToken');
-      cache.flush('manifestByToken');
+      await cache.flush('userByToken');
+      await cache.flush('manifestByToken');
     }
 
     return { expired };

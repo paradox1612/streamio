@@ -37,7 +37,7 @@ router.patch('/profile', requireAuth, async (req, res) => {
     excludedLanguages,
   });
 
-  cache.del('userByToken', req.user.addon_token);
+  await cache.del('userByToken', req.user.addon_token);
   res.json({ message: 'Profile updated', user });
 });
 

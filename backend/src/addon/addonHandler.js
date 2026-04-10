@@ -39,13 +39,13 @@ function buildLookupCacheKey(userId, baseId, mode = 'single') {
   return `${userId}:${mode}:${baseId}`;
 }
 
-function getCachedLookupResult(cacheKey) {
-  const hit = cache.get('resolvedVodLookup', cacheKey);
+async function getCachedLookupResult(cacheKey) {
+  const hit = await cache.get('resolvedVodLookup', cacheKey);
   if (hit) {
     recordLookupMetric('cacheHits');
     return hit;
   }
-  const miss = cache.get('resolvedVodLookupMiss', cacheKey);
+  const miss = await cache.get('resolvedVodLookupMiss', cacheKey);
   if (miss) {
     recordLookupMetric('cacheHits');
     return miss;
@@ -54,8 +54,8 @@ function getCachedLookupResult(cacheKey) {
   return undefined;
 }
 
-function setCachedLookupResult(cacheKey, value, { miss = false } = {}) {
-  cache.set(miss ? 'resolvedVodLookupMiss' : 'resolvedVodLookup', cacheKey, miss ? { missing: true } : value);
+async function setCachedLookupResult(cacheKey, value, { miss = false } = {}) {
+  await cache.set(miss ? 'resolvedVodLookupMiss' : 'resolvedVodLookup', cacheKey, miss ? { missing: true } : value);
 }
 
 function normalizeCategoryName(value) {
@@ -106,12 +106,12 @@ function recordWatchStart(userId, vodItem) {
 
 async function buildManifest(token) {
   // Check user cache first
-  let user = cache.get('userByToken', token);
+  let user = await cache.get('userByToken', token);
   if (!user) {
     user = await userQueries.findByToken(token);
     if (!user) return null;
     // Cache user for 5 minutes
-    cache.set('userByToken', token, user);
+    await cache.set('userByToken', token, user);
   }
   touchUserLastSeen(user.id).catch(() => {});
 
@@ -172,11 +172,11 @@ async function buildManifest(token) {
 
 async function handleCatalog(token, type, catalogId, extra = {}) {
   // Check user cache
-  let user = cache.get('userByToken', token);
+  let user = await cache.get('userByToken', token);
   if (!user) {
     user = await userQueries.findByToken(token);
     if (!user) return { metas: [] };
-    cache.set('userByToken', token, user);
+    await cache.set('userByToken', token, user);
   }
   touchUserLastSeen(user.id).catch(() => {});
 
@@ -263,7 +263,7 @@ function parseStremioId(id) {
  */
 async function resolveVodItem(userId, baseId) {
   const cacheKey = buildLookupCacheKey(userId, baseId, 'single');
-  const cached = getCachedLookupResult(cacheKey);
+  const cached = await getCachedLookupResult(cacheKey);
   if (cached !== undefined) return cached.missing ? null : cached;
 
   let result = null;
@@ -273,13 +273,13 @@ async function resolveVodItem(userId, baseId) {
     result = await vodQueries.resolveByExternalIdForUser(userId, baseId, { single: true, onlyOnline: true });
   }
 
-  setCachedLookupResult(cacheKey, result, { miss: !result });
+  await setCachedLookupResult(cacheKey, result, { miss: !result });
   return result;
 }
 
 async function resolveVodItemsForStream(userId, baseId) {
   const cacheKey = buildLookupCacheKey(userId, baseId, 'all');
-  const cached = getCachedLookupResult(cacheKey);
+  const cached = await getCachedLookupResult(cacheKey);
   if (cached !== undefined) return cached.missing ? [] : cached;
 
   let result = [];
@@ -290,7 +290,7 @@ async function resolveVodItemsForStream(userId, baseId) {
     result = await vodQueries.resolveByExternalIdForUser(userId, baseId, { single: false, onlyOnline: true });
   }
 
-  setCachedLookupResult(cacheKey, result, { miss: result.length === 0 });
+  await setCachedLookupResult(cacheKey, result, { miss: result.length === 0 });
   return result;
 }
 
@@ -414,13 +414,13 @@ async function resolveProviderPlaybackHosts(userId, providerId, providerSnapshot
 
   if (recheckOnMiss && onlineHosts.length === 0) {
     const recheckKey = `${providerId}:${provider.last_checked || 'none'}`;
-    const recentRecheck = cache.get('providerHostRecheck', recheckKey);
+    const recentRecheck = await cache.get('providerHostRecheck', recheckKey);
     try {
       if (!recentRecheck) {
         recordLookupMetric('hostRechecks');
-        cache.set('providerHostRecheck', recheckKey, true);
+        await cache.set('providerHostRecheck', recheckKey, true);
         health = await hostHealthService.checkSingleProvider(providerId, userId);
-        cache.del('providerById', `${userId}:${providerId}`);
+        await cache.del('providerById', `${userId}:${providerId}`);
         provider = await getCachedProviderForUser(providerId, userId) || provider;
         onlineHosts = health.filter(h => h.status === 'online').slice(0, 3);
       }
@@ -435,12 +435,12 @@ async function resolveProviderPlaybackHosts(userId, providerId, providerSnapshot
 
 async function getCachedProviderForUser(providerId, userId) {
   const cacheKey = `${userId}:${providerId}`;
-  const cached = cache.get('providerById', cacheKey);
+  const cached = await cache.get('providerById', cacheKey);
   if (cached) return cached;
 
   const provider = await providerQueries.findByIdAndUser(providerId, userId);
   if (provider) {
-    cache.set('providerById', cacheKey, provider);
+    await cache.set('providerById', cacheKey, provider);
   }
   return provider;
 }
@@ -765,12 +765,12 @@ async function tryOnDemandMatch(userId, baseId, type) {
       reason: result.reason || 'matched',
     });
   }
-
-  if (matchedAny) {
-    cache.del('resolvedVodLookup', buildLookupCacheKey(userId, baseId, 'single'));
-    cache.del('resolvedVodLookupMiss', buildLookupCacheKey(userId, baseId, 'single'));
-    cache.del('resolvedVodLookup', buildLookupCacheKey(userId, baseId, 'all'));
-    cache.del('resolvedVodLookupMiss', buildLookupCacheKey(userId, baseId, 'all'));
+async clearResolvedCache(userId, baseId) {
+  await cache.del('resolvedVodLookup', buildLookupCacheKey(userId, baseId, 'single'));
+  await cache.del('resolvedVodLookupMiss', buildLookupCacheKey(userId, baseId, 'single'));
+  await cache.del('resolvedVodLookup', buildLookupCacheKey(userId, baseId, 'all'));
+  await cache.del('resolvedVodLookupMiss', buildLookupCacheKey(userId, baseId, 'all'));
+},
     const resolvedItem = await resolveVodItem(userId, baseId);
     recordLookupMetric('slowPathMs', Date.now() - startedAt);
     return resolvedItem || firstMatchedCandidate;
@@ -811,22 +811,22 @@ async function handleMeta(token, type, id) {
   beginAddonRequest();
   try {
     // Check user cache
-    let user = cache.get('userByToken', token);
+    let user = await cache.get('userByToken', token);
     if (!user) {
       user = await userQueries.findByToken(token);
       if (!user) return { meta: null };
-      cache.set('userByToken', token, user);
+      await cache.set('userByToken', token, user);
     }
     touchUserLastSeen(user.id).catch(() => {});
 
     const { baseId } = parseStremioId(id);
     const metaCacheKey = `${token}:${type}:${id}`;
-    const cachedMeta = cache.get('resolvedMeta', metaCacheKey);
+    const cachedMeta = await cache.get('resolvedMeta', metaCacheKey);
     if (cachedMeta) {
       recordLookupMetric('cacheHits');
       return cachedMeta;
     }
-    if (cache.get('resolvedMetaMiss', metaCacheKey)) {
+    if (await cache.get('resolvedMetaMiss', metaCacheKey)) {
       recordLookupMetric('cacheHits');
       return { meta: null };
     }
@@ -843,7 +843,7 @@ async function handleMeta(token, type, id) {
       if (user.free_access_status === 'expired' && type !== 'tv') {
         return buildExpiredMeta(baseId, type);
       }
-      cache.set('resolvedMetaMiss', metaCacheKey, true);
+      await cache.set('resolvedMetaMiss', metaCacheKey, true);
       return { meta: null };
     }
 
@@ -867,7 +867,7 @@ async function handleMeta(token, type, id) {
         const episodeCacheKey = vodItem.access_source === 'free_access'
           ? `free:${vodItem.provider_group_id}:${vodItem.stream_id}`
           : vodItem.stream_id;
-        let episodesObj = cache.get('seriesEpisodes', episodeCacheKey);
+        let episodesObj = await cache.get('seriesEpisodes', episodeCacheKey);
         if (!episodesObj) {
           episodesObj = await providerService.getSeriesEpisodes(
             fallbackHost,
@@ -876,7 +876,7 @@ async function handleMeta(token, type, id) {
             vodItem.stream_id
           );
           // Cache episodes for 10 minutes
-          cache.set('seriesEpisodes', episodeCacheKey, episodesObj);
+          await cache.set('seriesEpisodes', episodeCacheKey, episodesObj);
         }
 
         const videos = [];
@@ -918,7 +918,7 @@ async function handleMeta(token, type, id) {
     }
 
     const payload = { meta };
-    cache.set('resolvedMeta', metaCacheKey, payload);
+    await cache.set('resolvedMeta', metaCacheKey, payload);
     logger.info(`Lookup metrics: ${JSON.stringify(lookupMetrics)}`);
     return payload;
   } finally {
@@ -932,22 +932,22 @@ async function handleStream(token, type, id) {
   beginAddonRequest();
   try {
     // Check user cache
-    let user = cache.get('userByToken', token);
+    let user = await cache.get('userByToken', token);
     if (!user) {
       user = await userQueries.findByToken(token);
       if (!user) return { streams: [] };
-      cache.set('userByToken', token, user);
+      await cache.set('userByToken', token, user);
     }
     touchUserLastSeen(user.id).catch(() => {});
 
     const { baseId, season, episode } = parseStremioId(id);
     const streamCacheKey = `${token}:${type}:${id}`;
-    const cachedStream = cache.get('resolvedStreams', streamCacheKey);
+    const cachedStream = await cache.get('resolvedStreams', streamCacheKey);
     if (cachedStream) {
       recordLookupMetric('cacheHits');
       return cachedStream;
     }
-    if (cache.get('resolvedStreamsMiss', streamCacheKey)) {
+    if (await cache.get('resolvedStreamsMiss', streamCacheKey)) {
       recordLookupMetric('cacheHits');
       return { streams: [] };
     }
@@ -983,7 +983,7 @@ async function handleStream(token, type, id) {
       if (type !== 'tv' && user.free_access_status === 'expired') {
         return buildExpiredStreamResponse();
       }
-      cache.set('resolvedStreamsMiss', streamCacheKey, true);
+      await cache.set('resolvedStreamsMiss', streamCacheKey, true);
       return { streams: [] };
     }
 
@@ -1037,7 +1037,7 @@ async function handleStream(token, type, id) {
         await freeAccessService.recordResolvedStream(vodItem.assignment_id);
       }
       const payload = { streams };
-      cache.set('resolvedStreams', streamCacheKey, payload);
+      await cache.set('resolvedStreams', streamCacheKey, payload);
       logger.info(`Lookup metrics: ${JSON.stringify(lookupMetrics)}`);
       return payload;
     }
@@ -1056,7 +1056,7 @@ async function handleStream(token, type, id) {
         const episodeCacheKey = vodItem.access_source === 'free_access'
           ? `free:${vodItem.provider_group_id}:${stream_id}`
           : stream_id;
-        let episodesObj = cache.get('seriesEpisodes', episodeCacheKey);
+        let episodesObj = await cache.get('seriesEpisodes', episodeCacheKey);
         if (!episodesObj) {
           const hostData = vodItem.access_source === 'free_access'
             ? {
@@ -1074,7 +1074,7 @@ async function handleStream(token, type, id) {
           episodesObj = await providerService.getSeriesEpisodes(
             hostToUse, username, password, stream_id
           );
-          cache.set('seriesEpisodes', episodeCacheKey, episodesObj);
+          await cache.set('seriesEpisodes', episodeCacheKey, episodesObj);
         }
 
         const seasonEps = episodesObj[String(season)];
@@ -1136,7 +1136,7 @@ async function handleStream(token, type, id) {
           await freeAccessService.recordResolvedStream(vodItem.assignment_id);
         }
         const payload = { streams };
-        cache.set('resolvedStreams', streamCacheKey, payload);
+        await cache.set('resolvedStreams', streamCacheKey, payload);
         logger.info(`Lookup metrics: ${JSON.stringify(lookupMetrics)}`);
         return payload;
       } catch (err) {
@@ -1157,11 +1157,11 @@ async function handleStream(token, type, id) {
  */
 async function handleLiveStream(token, baseId) {
   try {
-    let user = cache.get('userByToken', token);
+    let user = await cache.get('userByToken', token);
     if (!user) {
       user = await userQueries.findByToken(token);
       if (!user) return { streams: [] };
-      cache.set('userByToken', token, user);
+      await cache.set('userByToken', token, user);
     }
     touchUserLastSeen(user.id).catch(() => {});
 

@@ -11,8 +11,8 @@ router.get('/status', requireAuth, async (req, res) => {
 router.post('/start', requireAuth, async (req, res) => {
   try {
     const assignment = await freeAccessService.startOrExtend(req.user.id);
-    cache.del('userByToken', req.user.addon_token);
-    cache.del('manifestByToken', req.user.addon_token);
+    await cache.del('userByToken', req.user.addon_token);
+    await cache.del('manifestByToken', req.user.addon_token);
     res.status(201).json({
       message: 'Free access started',
       assignment,
@@ -30,8 +30,8 @@ router.post('/extend', requireAuth, async (req, res) => {
     }
 
     const assignment = await freeAccessService.startOrExtend(req.user.id);
-    cache.del('userByToken', req.user.addon_token);
-    cache.del('manifestByToken', req.user.addon_token);
+    await cache.del('userByToken', req.user.addon_token);
+    await cache.del('manifestByToken', req.user.addon_token);
     res.json({
       message: 'Free access extended',
       assignment,

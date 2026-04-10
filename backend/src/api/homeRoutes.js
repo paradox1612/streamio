@@ -33,7 +33,7 @@ async function fetchTmdbTrending(mediaType) {
   if (!TMDB_API_KEY) return [];
 
   const cacheKey = `trending_${mediaType}`;
-  const cached = cache.get('tmdbTrending', cacheKey);
+  const cached = await cache.get('tmdbTrending', cacheKey);
   if (cached) return cached;
 
   try {
@@ -55,7 +55,7 @@ async function fetchTmdbTrending(mediaType) {
       type: mediaType === 'tv' ? 'series' : 'movie',
     }));
 
-    cache.set('tmdbTrending', cacheKey, results, TMDB_TRENDING_TTL);
+    await cache.set('tmdbTrending', cacheKey, results, TMDB_TRENDING_TTL);
     return results;
   } catch (err) {
     logger.error('[Home] TMDB trending error:', err);

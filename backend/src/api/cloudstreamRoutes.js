@@ -35,11 +35,11 @@ const TMDB_POSTER_BASE = 'https://image.tmdb.org/t/p/w500';
 async function resolveUserByToken(token) {
   if (!token) return null;
 
-  let user = cache.get('userByToken', token);
+  let user = await cache.get('userByToken', token);
   if (!user) {
     user = await userQueries.findByToken(token);
     if (!user) return null;
-    cache.set('userByToken', token, user);
+    await cache.set('userByToken', token, user);
   }
 
   if (user.is_active === false) return null;

@@ -135,7 +135,7 @@ async function fetchEpg(host, username, password) {
  */
 async function getEpgForProvider(providerId, userId) {
   // Check cache first
-  const cached = cache.get('epg', providerId);
+  const cached = await cache.get('epg', providerId);
   if (cached) {
     logger.info(`EPG cache hit for provider ${providerId}`);
     return cached;
@@ -154,7 +154,7 @@ async function getEpgForProvider(providerId, userId) {
   try {
     const epgMap = await fetchEpg(host, provider.username, provider.password);
     // Cache for 4 hours
-    cache.set('epg', providerId, epgMap);
+    await cache.set('epg', providerId, epgMap);
     return epgMap;
   } catch (err) {
     logger.warn(`Failed to fetch EPG for provider ${providerId}: ${err.message}`);
@@ -192,7 +192,7 @@ async function refreshAllProviders() {
       if (!host) continue;
 
       const epgMap = await fetchEpg(host, provider.username, provider.password);
-      cache.set('epg', provider.id, epgMap);
+      await cache.set('epg', provider.id, epgMap);
       refreshed++;
       logger.info(`EPG refreshed for provider: ${provider.name}`);
     } catch (err) {

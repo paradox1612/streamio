@@ -85,7 +85,7 @@ const hostHealthService = {
       activeHost: bestHost,
       status: bestHost ? 'online' : 'offline',
     });
-    cache.del('hostHealth', provider.id);
+    await cache.del('hostHealth', provider.id);
 
     // After health check, refresh account info to ensure CRM sync and expiry tasks
     if (bestHost) {
@@ -116,7 +116,7 @@ const hostHealthService = {
 
   async getProviderHealth(providerId) {
     // Check cache first
-    const cached = cache.get('hostHealth', providerId);
+    const cached = await cache.get('hostHealth', providerId);
     if (cached) {
       return cached;
     }
@@ -124,7 +124,7 @@ const hostHealthService = {
     // Fetch from database
     const health = await hostHealthQueries.getByProvider(providerId);
     // Cache for 5 minutes
-    cache.set('hostHealth', providerId, health);
+    await cache.set('hostHealth', providerId, health);
     return health;
   },
 };
