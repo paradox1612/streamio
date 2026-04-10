@@ -37,9 +37,11 @@ function formatLastWatched(value: string | null | undefined) {
 
 interface VodItem {
   id: string
+  stream_id: string
   raw_title: string
   vod_type: string
   tmdb_id?: number
+  imdb_id?: string
   confidence_score?: number
   poster_url?: string
   category?: string

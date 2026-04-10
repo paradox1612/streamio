@@ -50,7 +50,7 @@ export default function VideoPlayer({ src, type, title, onClose, onProgress, onE
       if (player && !player.paused()) {
         const currentTime = player.currentTime()
         const duration = player.duration()
-        if (duration > 0) {
+        if (typeof duration === 'number' && duration > 0 && typeof currentTime === 'number') {
           const pct = Math.floor((currentTime / duration) * 100)
           onProgress?.(pct)
         }
