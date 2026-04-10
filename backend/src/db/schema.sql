@@ -806,3 +806,29 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
 CREATE INDEX IF NOT EXISTS idx_credit_tx_user      ON credit_transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_credit_tx_reference ON credit_transactions(reference_id);
 CREATE INDEX IF NOT EXISTS idx_credit_tx_status    ON credit_transactions(status);
+
+-- ─────────────────────────────────────────
+-- System Settings
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS system_settings (
+  key   TEXT PRIMARY KEY,
+  value JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Default credit settings
+INSERT INTO system_settings (key, value)
+VALUES (
+  'credits_config',
+  '{
+    "min_topup_cents": 500,
+    "max_topup_cents": 100000,
+    "presets": [
+      {"label": "$10", "cents": 1000},
+      {"label": "$25", "cents": 2500},
+      {"label": "$50", "cents": 5000},
+      {"label": "$100", "cents": 10000}
+    ],
+    "allow_custom_amount": true
+  }'::jsonb
+) ON CONFLICT (key) DO NOTHING;

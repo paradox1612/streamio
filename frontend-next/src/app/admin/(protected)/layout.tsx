@@ -39,6 +39,7 @@ const navItems = [
   { path: '/admin/tmdb', label: 'TMDB Matching', icon: Crosshair, description: 'Catalog integrity' },
   { path: '/admin/system', label: 'System', icon: Settings, description: 'Infrastructure' },
   { path: '/admin/settings/crm', label: 'CRM', icon: UserSquare2, description: 'Twenty CRM sync' },
+  { path: '/admin/settings/credits', label: 'Credits', icon: Shield, description: 'Top-up rules' },
 ]
 
 function AdminNavItem({ item, onClick }: { item: (typeof navItems)[number]; onClick?: () => void }) {

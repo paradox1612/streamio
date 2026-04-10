@@ -96,6 +96,7 @@ export const creditsAPI = {
   getBalance: () => api.get('/api/credits/balance'),
   getTransactions: (params?: { limit?: number; offset?: number }) =>
     api.get('/api/credits/transactions', { params }),
+  getCreditsConfig: () => api.get('/api/credits/config'),
   topup: (amountCents: number) => api.post('/api/credits/topup', { amount_cents: amountCents }),
   getTopupStatus: (creditTxId: string) => api.get(`/api/credits/topup/status/${creditTxId}`),
 }
@@ -198,6 +199,9 @@ export const adminAPI = {
   syncAllToCrm: () => api.post('/api/admin/crm/sync-all'),
   getCrmPeople: (params?: { limit?: number; cursor?: string }) => api.get('/api/admin/crm/people', { params }),
   getCrmTasks: (params?: { limit?: number; cursor?: string }) => api.get('/api/admin/crm/tasks', { params }),
+  // System Settings
+  getCreditsSettings: () => api.get('/api/admin/settings/credits'),
+  updateCreditsSettings: (data: Record<string, unknown>) => api.put('/api/admin/settings/credits', data),
 }
 
 export const blogAPI = {

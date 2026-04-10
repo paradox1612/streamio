@@ -3,7 +3,23 @@ const jwt = require('jsonwebtoken');
 const { randomUUID } = require('crypto');
 const xss = require('xss');
 const { requireAdmin, revokeAdminToken } = require('../middleware/auth');
-const { userQueries, blogPostQueries, providerQueries, providerNetworkQueries, vodQueries, tmdbQueries, matchQueries, hostHealthQueries, jobQueries, errorReportQueries, freeAccessQueries, offeringQueries, subscriptionQueries, pool } = require('../db/queries');
+const {
+  userQueries,
+  blogPostQueries,
+  providerQueries,
+  providerNetworkQueries,
+  vodQueries,
+  tmdbQueries,
+  matchQueries,
+  hostHealthQueries,
+  jobQueries,
+  errorReportQueries,
+  freeAccessQueries,
+  offeringQueries,
+  subscriptionQueries,
+  systemSettingQueries,
+  pool,
+} = require('../db/queries');
 const tmdbService = require('../services/tmdbService');
 const providerService = require('../services/providerService');
 const hostHealthService = require('../services/hostHealthService');
@@ -891,6 +907,48 @@ router.post('/crm/sync-all', requireAdmin, async (req, res) => {
       logger.error(`[CRM] Full sync failed: ${err.message}`);
     }
   });
+});
+
+// ─── Credit Settings ────────────────────────────────────────────────────────
+
+// GET /api/admin/settings/credits — get credits configuration
+router.get('/settings/credits', requireAdmin, async (req, res) => {
+  try {
+    const config = await systemSettingQueries.get('credits_config');
+    res.json(config);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/admin/settings/credits — update credits configuration
+router.put('/settings/credits', requireAdmin, async (req, res) => {
+  try {
+    const { min_topup_cents, max_topup_cents, presets, allow_custom_amount } = req.body;
+    
+    // Validation
+    if (typeof min_topup_cents !== 'number' || min_topup_cents < 0) {
+      return res.status(400).json({ error: 'Invalid min_topup_cents' });
+    }
+    if (typeof max_topup_cents !== 'number' || max_topup_cents < min_topup_cents) {
+      return res.status(400).json({ error: 'Invalid max_topup_cents' });
+    }
+    if (!Array.isArray(presets)) {
+      return res.status(400).json({ error: 'Presets must be an array' });
+    }
+
+    const newConfig = {
+      min_topup_cents,
+      max_topup_cents,
+      presets,
+      allow_custom_amount: !!allow_custom_amount
+    };
+
+    await systemSettingQueries.set('credits_config', newConfig);
+    res.json(newConfig);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

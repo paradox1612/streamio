@@ -1,6 +1,13 @@
 const router = require('express').Router();
 const { requireAuth } = require('../middleware/auth');
-const { offeringQueries, subscriptionQueries, paymentQueries, providerQueries, pool } = require('../db/queries');
+const {
+  offeringQueries,
+  subscriptionQueries,
+  paymentQueries,
+  providerQueries,
+  systemSettingQueries,
+  pool,
+} = require('../db/queries');
 const stripeService = require('../services/stripeService');
 const paygateService = require('../services/paygateService');
 const creditService = require('../services/creditService');
@@ -293,6 +300,27 @@ router.get('/credits/transactions', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/credits/config — get top-up limits and presets
+router.get('/credits/config', requireAuth, async (req, res) => {
+  try {
+    const config = await systemSettingQueries.get('credits_config');
+    res.json(config || {
+      min_topup_cents: 500,
+      max_topup_cents: 100000,
+      presets: [
+        { label: '$10', cents: 1000 },
+        { label: '$25', cents: 2500 },
+        { label: '$50', cents: 5000 },
+        { label: '$100', cents: 10000 },
+      ],
+      allow_custom_amount: true,
+    });
+  } catch (err) {
+    logger.error('GET /credits/config:', err.message);
+    res.status(500).json({ error: 'Failed to load credit configuration' });
+  }
+});
+
 // POST /api/credits/topup — initiate a PayGate credit purchase
 // Body: { amount_cents: number }  (min $5 = 500 cents)
 router.post('/credits/topup', requireAuth, async (req, res) => {
@@ -301,12 +329,21 @@ router.post('/credits/topup', requireAuth, async (req, res) => {
       return res.status(503).json({ error: 'PayGate is not configured' });
     }
 
+    const config = (await systemSettingQueries.get('credits_config')) || {
+      min_topup_cents: 500,
+      max_topup_cents: 100000,
+    };
+
     const { amount_cents } = req.body;
-    if (!amount_cents || amount_cents < 500) {
-      return res.status(400).json({ error: 'Minimum top-up is $5 (500 cents)' });
+    if (!amount_cents || amount_cents < config.min_topup_cents) {
+      return res.status(400).json({
+        error: `Minimum top-up is $${(config.min_topup_cents / 100).toFixed(2)}`,
+      });
     }
-    if (amount_cents > 100000) {
-      return res.status(400).json({ error: 'Maximum top-up is $1,000 per transaction' });
+    if (amount_cents > config.max_topup_cents) {
+      return res.status(400).json({
+        error: `Maximum top-up is $${(config.max_topup_cents / 100).toFixed(2)} per transaction`,
+      });
     }
 
     const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);

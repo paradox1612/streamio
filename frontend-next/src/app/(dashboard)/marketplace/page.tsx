@@ -84,13 +84,6 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-const TOPUP_PRESETS = [
-  { label: '$10', cents: 1000 },
-  { label: '$25', cents: 2500 },
-  { label: '$50', cents: 5000 },
-  { label: '$100', cents: 10000 },
-]
-
 // ─── Payment Method Modal ─────────────────────────────────────────────────────
 
 function PaymentMethodModal({
@@ -252,10 +245,29 @@ function TopupModal({
   onClose: () => void
   onSuccess: (newBalance: number) => void
 }) {
-  const [selected, setSelected] = useState(2500)
+  const [config, setConfig] = useState<{
+    min_topup_cents: number
+    max_topup_cents: number
+    presets: { label: string; cents: number }[]
+    allow_custom_amount: boolean
+  } | null>(null)
+  
+  const [selected, setSelected] = useState<number | 'custom'>(2500)
+  const [customAmount, setCustomAmount] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [pendingTxId, setPendingTxId] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    creditsAPI.getCreditsConfig().then(({ data }) => {
+      setConfig(data)
+      if (data.presets?.length > 0) {
+        setSelected(data.presets[0].cents)
+      }
+    }).catch(() => {
+      toast.error('Failed to load credit configuration')
+    })
+  }, [])
 
   const startPolling = useCallback((txId: string) => {
     pollRef.current = setInterval(async () => {
@@ -275,9 +287,28 @@ function TopupModal({
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
 
   const handleTopup = async () => {
+    let amountCents = 0
+    if (selected === 'custom') {
+      amountCents = Math.round(parseFloat(customAmount) * 100)
+      if (isNaN(amountCents) || amountCents <= 0) {
+        return toast.error('Enter a valid amount')
+      }
+    } else {
+      amountCents = selected
+    }
+
+    if (config) {
+      if (amountCents < config.min_topup_cents) {
+        return toast.error(`Minimum top-up is ${formatPrice(config.min_topup_cents)}`)
+      }
+      if (amountCents > config.max_topup_cents) {
+        return toast.error(`Maximum top-up is ${formatPrice(config.max_topup_cents)}`)
+      }
+    }
+
     setLoading(true)
     try {
-      const { data } = await creditsAPI.topup(selected)
+      const { data } = await creditsAPI.topup(amountCents)
       setPendingTxId(data.credit_transaction_id)
       sessionStorage.setItem('pg_topup_tx', data.credit_transaction_id)
       startPolling(data.credit_transaction_id)
@@ -287,6 +318,16 @@ function TopupModal({
       toast.error(err.response?.data?.error || 'Failed to initiate top-up')
       setLoading(false)
     }
+  }
+
+  if (!config) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+        <div className="flex h-32 w-32 items-center justify-center rounded-3xl bg-surface-900 border border-white/10">
+          <Loader2 className="h-8 w-8 animate-spin text-brand-400" />
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -311,7 +352,7 @@ function TopupModal({
         ) : (
           <>
             <div className="mt-6 grid grid-cols-2 gap-3">
-              {TOPUP_PRESETS.map((p) => (
+              {config.presets.map((p) => (
                 <button
                   key={p.cents}
                   onClick={() => setSelected(p.cents)}
@@ -325,7 +366,42 @@ function TopupModal({
                   <p className="text-xs opacity-70">{p.cents / 100 * 100} credits</p>
                 </button>
               ))}
+              
+              {config.allow_custom_amount && (
+                <button
+                  onClick={() => setSelected('custom')}
+                  className={`rounded-2xl border p-4 text-center transition-all ${
+                    selected === 'custom'
+                      ? 'border-brand-500 bg-brand-500/10 text-white'
+                      : 'border-white/[0.08] text-slate-400 hover:border-white/20 hover:text-white'
+                  }`}
+                >
+                  <p className="text-xl font-bold">Custom</p>
+                  <p className="text-xs opacity-70">Any amount</p>
+                </button>
+              )}
             </div>
+
+            {selected === 'custom' && (
+              <div className="mt-4 animate-in fade-in slide-in-from-top-2">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Amount (USD)</label>
+                <div className="relative mt-1">
+                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400">$</div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    autoFocus
+                    value={customAmount}
+                    onChange={(e) => setCustomAmount(e.target.value)}
+                    placeholder="20.00"
+                    className="w-full rounded-2xl border border-white/[0.08] bg-white/[0.03] py-4 pl-8 pr-4 text-white focus:border-brand-500/50 focus:outline-none"
+                  />
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  Min: {formatPrice(config.min_topup_cents)} · Max: {formatPrice(config.max_topup_cents)}
+                </p>
+              </div>
+            )}
 
             <Button
               onClick={handleTopup}
@@ -333,11 +409,12 @@ function TopupModal({
               className="mt-6 w-full gap-2 rounded-2xl py-6 text-base font-semibold"
             >
               {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wallet className="h-5 w-5" />}
-              Pay {formatPrice(selected)} via PayGate
+              Pay {selected === 'custom' ? (customAmount ? `$${customAmount}` : '...') : formatPrice(selected)} via PayGate
             </Button>
           </>
         )}
       </div>
+
     </div>
   )
 }
