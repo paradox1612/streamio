@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { providerAPI } from '@/utils/api'
-import { Search, X, ChevronLeft, ChevronRight, Film, Sparkles } from 'lucide-react'
+import { Search, X, ChevronLeft, ChevronRight, Film, Sparkles, Play, List } from 'lucide-react'
 import EmptyState from '@/components/EmptyState'
+import WatchModal from '@/components/video/WatchModal'
 import { useAuthStore } from '@/store/auth'
 import toast from 'react-hot-toast'
 
@@ -44,6 +45,7 @@ interface VodItem {
   category?: string
   is_watched?: boolean
   last_watched_at?: string
+  streamUrl?: string | null
 }
 
 interface TmdbResult {
@@ -285,11 +287,13 @@ function FixMatchModal({
 function VodCard({
   item,
   onOpenModal,
+  onWatch,
   animVariants,
   allowManualMatch = true,
 }: {
   item: VodItem
   onOpenModal: (item: VodItem) => void
+  onWatch: (item: VodItem) => void
   animVariants: typeof itemAnim
   allowManualMatch?: boolean
 }) {
@@ -349,6 +353,33 @@ function VodCard({
 
       <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/95 via-black/50 to-black/10 opacity-0 transition-all duration-300 group-hover:opacity-100">
         <div className="p-3">
+          {item.vod_type === 'movie' && item.streamUrl && (
+            <motion.button
+              onClick={(e) => {
+                e.stopPropagation()
+                onWatch(item)
+              }}
+              whileHover={{ scale: 1.12 }}
+              whileTap={{ scale: 0.92 }}
+              className="mb-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-brand-500 text-white shadow-[0_0_15px_rgba(20,145,255,0.4)]"
+            >
+              <Play className="ml-0.5 h-4 w-4 fill-current" />
+            </motion.button>
+          )}
+
+          {item.vod_type === 'series' && (
+            <motion.button
+              onClick={(e) => {
+                e.stopPropagation()
+                onWatch(item)
+              }}
+              whileHover={{ scale: 1.12 }}
+              whileTap={{ scale: 0.92 }}
+              className="mb-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-black shadow-lg"
+            >
+              <List className="h-4 w-4" />
+            </motion.button>
+          )}
           <motion.p
             className="line-clamp-2 text-xs font-bold leading-snug text-white"
             initial={{ y: 12, opacity: 0 }}
@@ -421,6 +452,7 @@ export default function VodBrowserPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [modalItem, setModalItem] = useState<VodItem | null>(null)
   const [modalIndex, setModalIndex] = useState(0)
+  const [watchItem, setWatchItem] = useState<VodItem | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const hasByoProviders = Boolean((user as typeof user & { has_byo_providers?: boolean })?.has_byo_providers)
 
@@ -693,6 +725,7 @@ export default function VodBrowserPage() {
                       animVariants={itemAnim}
                       allowManualMatch={true}
                       onOpenModal={openModal}
+                      onWatch={(item) => setWatchItem(item)}
                     />
                   ))}
                 </AnimatePresence>
@@ -730,6 +763,18 @@ export default function VodBrowserPage() {
           onNavigate={navigateModal}
         />
       )}
+
+      <WatchModal
+        isOpen={Boolean(watchItem)}
+        onClose={() => setWatchItem(null)}
+        src={watchItem?.streamUrl || null}
+        title={watchItem?.raw_title || ''}
+        vodType={watchItem?.vod_type}
+        providerId={selectedProvider}
+        streamId={watchItem?.stream_id}
+        tmdbId={watchItem?.tmdb_id}
+        imdbId={watchItem?.imdb_id}
+      />
     </div>
   )
 }

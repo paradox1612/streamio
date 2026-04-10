@@ -59,6 +59,28 @@ router.get('/watch-history', requireAuth, async (req, res) => {
   res.json(items);
 });
 
+// POST /api/user/watch-history
+// Body: { vodId, rawTitle, tmdbId, imdbId, vodType, progressPct }
+router.post('/watch-history', requireAuth, async (req, res) => {
+  try {
+    const { vodId, rawTitle, tmdbId, imdbId, vodType, progressPct } = req.body;
+    if (!rawTitle) return res.status(400).json({ error: 'rawTitle is required' });
+
+    await watchHistoryQueries.upsertFromVod({
+      userId: req.user.id,
+      vodId,
+      rawTitle,
+      tmdbId,
+      imdbId,
+      vodType,
+      progressPct: progressPct || 0,
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/user/addon-url/regenerate
 router.post('/addon-url/regenerate', requireAuth, async (req, res) => {
   const result = await authService.regenerateAddonToken(req.user.id);

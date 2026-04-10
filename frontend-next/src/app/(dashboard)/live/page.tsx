@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Heart, Search, Sparkles } from 'lucide-react'
 import EmptyState from '@/components/EmptyState'
 import SkeletonCard from '@/components/SkeletonCard'
+import WatchModal from '@/components/video/WatchModal'
 import { homeAPI, providerAPI } from '@/utils/api'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '@/store/auth'
@@ -64,6 +65,7 @@ export default function LiveTVPage() {
   const [favoriteChannels, setFavoriteChannels] = useState<FavoriteItem[]>([])
   const [favoriteCategories, setFavoriteCategories] = useState<FavoriteItem[]>([])
   const [savingFavoriteKey, setSavingFavoriteKey] = useState<string | null>(null)
+  const [watchChannel, setWatchChannel] = useState<{ url: string; title: string; streamId?: string } | null>(null)
 
   const refreshFavorites = useCallback(async () => {
     try {
@@ -369,7 +371,7 @@ export default function LiveTVPage() {
         {categories.length > 1 && (
           <div className="mt-5">
             <p className="field-label">Categories</p>
-            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+            <div className="flex flex-wrap gap-2 sm:flex-nowrap sm:overflow-x-auto sm:pb-2">
               {categories.map((cat) => {
                 const isFavorite = favoriteCategoryMap.has(cat)
                 return (
@@ -377,15 +379,15 @@ export default function LiveTVPage() {
                     key={cat}
                     className={`flex items-center overflow-hidden rounded-full ${
                       selectedCategory === cat
-                        ? 'bg-brand-500 text-white'
-                        : 'border border-white/10 bg-white/[0.04] text-slate-200/[0.76]'
+                        ? 'bg-brand-500 text-white shadow-lg'
+                        : 'border border-white/10 bg-white/[0.04] text-slate-200/[0.76] transition hover:border-white/20'
                     }`}
                   >
                     <button
                       onClick={() => setSelectedCategory(cat)}
-                      className="whitespace-nowrap px-4 py-2 text-sm font-medium"
+                      className="whitespace-nowrap px-4 py-2 text-xs font-semibold uppercase tracking-wider sm:text-sm"
                     >
-                      {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                      {cat}
                     </button>
                     {cat !== 'all' && (
                       <button
@@ -398,7 +400,7 @@ export default function LiveTVPage() {
                         }`}
                         aria-label={isFavorite ? `Remove ${cat} from favorites` : `Add ${cat} to favorites`}
                       >
-                        <Heart className={`h-4 w-4 ${isFavorite ? 'fill-current text-rose-300' : 'text-slate-300/70'}`} />
+                        <Heart className={`h-3.5 w-3.5 ${isFavorite ? 'fill-current text-rose-300' : 'text-slate-300/70'}`} />
                       </button>
                     )}
                   </div>
@@ -495,14 +497,22 @@ export default function LiveTVPage() {
                     <h3 className="line-clamp-2 text-sm font-semibold text-white">{channelName}</h3>
                     {channel.category && <p className="mt-1 text-xs text-slate-300/55">{channel.category}</p>}
                     <div className="mt-3 flex gap-2">
-                      <a
-                        href={channel.streamUrl || '#'}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-semibold text-slate-100"
+                      <button
+                        onClick={() => {
+                          if (channel.streamUrl) {
+                            setWatchChannel({ 
+                              url: channel.streamUrl, 
+                              title: channelName,
+                              streamId: channel.stream_id || channel.id
+                            })
+                          } else {
+                            toast.error('Stream URL not available')
+                          }
+                        }}
+                        className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-semibold text-slate-100 transition hover:bg-white/10"
                       >
-                        Open Stream
-                      </a>
+                        Watch Now
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -529,6 +539,16 @@ export default function LiveTVPage() {
           description="Try adjusting the selected category or search term."
         />
       )}
+
+      <WatchModal
+        isOpen={Boolean(watchChannel)}
+        onClose={() => setWatchChannel(null)}
+        src={watchChannel?.url || null}
+        title={watchChannel?.title || ''}
+        vodType="live"
+        providerId={selectedProvider}
+        streamId={watchChannel?.streamId}
+      />
     </div>
   )
 }

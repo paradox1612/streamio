@@ -68,6 +68,14 @@ export const userAPI = {
   updateProfile: (data: Record<string, unknown>) => api.patch('/api/user/profile', data),
   getAddonUrl: () => api.get('/api/user/addon-url'),
   getWatchHistory: (params?: Record<string, unknown>) => api.get('/api/user/watch-history', { params }),
+  updateWatchHistory: (data: {
+    vodId?: string
+    rawTitle: string
+    tmdbId?: number
+    imdbId?: string
+    vodType?: string
+    progressPct?: number
+  }) => api.post('/api/user/watch-history', data),
   regenerateAddonUrl: () => api.post('/api/user/addon-url/regenerate'),
   deleteAccount: () => api.delete('/api/user/account'),
 }
@@ -123,6 +131,8 @@ export const providerAPI = {
   tmdbSearch: (id: string, q: string, type: string) =>
     api.get(`/api/providers/${id}/tmdb-search`, { params: { q, type } }),
   manualMatch: (id: string, data: Record<string, unknown>) => api.post(`/api/providers/${id}/manual-match`, data),
+  getEpisodes: (id: string, seriesId: string) => api.get(`/api/providers/${id}/series/${seriesId}/episodes`),
+  getWatchUrl: (id: string, vodType: string, streamId: string) => api.get(`/api/providers/${id}/watch/${vodType}/${streamId}`),
 }
 
 // ─── Home / Trending / Favorites ─────────────────────────────────────────────

@@ -291,7 +291,24 @@ router.get('/:id/vod', requireAuth, async (req, res) => {
       search,
       matched: matched === 'true' ? true : matched === 'false' ? false : undefined,
     });
-    res.json(items);
+
+    const host = provider.active_host || provider.hosts?.[0] || null;
+    const username = encodeURIComponent(provider.username);
+    const password = encodeURIComponent(provider.password);
+
+    const mappedItems = items.map(item => {
+      const ext = item.container_extension || (item.vod_type === 'series' ? 'mkv' : 'mp4');
+      const streamUrl = host && item.vod_type !== 'series'
+        ? `${host}/${item.vod_type === 'movie' ? 'movie' : 'live'}/${username}/${password}/${item.stream_id}.${ext}`
+        : null;
+
+      return {
+        ...item,
+        streamUrl,
+      };
+    });
+
+    res.json(mappedItems);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -422,6 +439,54 @@ router.get('/:id/epg', requireAuth, async (req, res) => {
 });
 
 // ─── Manual Match Override ─────────────────────────────────────────────────────
+
+// GET /api/providers/:id/series/:seriesId/episodes
+router.get('/:id/series/:seriesId/episodes', requireAuth, async (req, res) => {
+  try {
+    const provider = await providerQueries.findByIdAndUser(req.params.id, req.user.id);
+    if (!provider) return res.status(404).json({ error: 'Provider not found' });
+
+    const host = provider.active_host || provider.hosts?.[0] || null;
+    if (!host) return res.status(400).json({ error: 'No active host for provider' });
+
+    const episodes = await providerService.getSeriesEpisodes(
+      host,
+      provider.username,
+      provider.password,
+      req.params.seriesId
+    );
+    res.json(episodes);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/providers/:id/watch/:vodType/:streamId
+// Generates a one-time playback URL for any VOD item
+router.get('/:id/watch/:vodType/:streamId', requireAuth, async (req, res) => {
+  try {
+    const provider = await providerQueries.findByIdAndUser(req.params.id, req.user.id);
+    if (!provider) return res.status(404).json({ error: 'Provider not found' });
+
+    const { id, vodType, streamId } = req.params;
+    const { rows } = await pool.query(
+      'SELECT container_extension FROM user_provider_vod WHERE provider_id = $1 AND stream_id = $2 AND vod_type = $3',
+      [id, streamId, vodType]
+    );
+    const item = rows[0];
+    const host = provider.active_host || provider.hosts?.[0] || null;
+    if (!host) return res.status(400).json({ error: 'No active host' });
+
+    const username = encodeURIComponent(provider.username);
+    const password = encodeURIComponent(provider.password);
+    const ext = item?.container_extension || (vodType === 'movie' ? 'mp4' : 'ts');
+    
+    const streamUrl = `${host}/${vodType === 'movie' ? 'movie' : 'live'}/${username}/${password}/${streamId}.${ext}`;
+    res.json({ streamUrl });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // GET /api/providers/:id/tmdb-search?q=title&type=movie|series
 // Searches TMDB for a title so the user can pick the correct match
