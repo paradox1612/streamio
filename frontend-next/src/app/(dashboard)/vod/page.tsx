@@ -76,10 +76,10 @@ export default function VodPage() {
   }, [hasByoProviders])
 
   const mapToVodItem = (item: any): VodItem => ({
-    id: item.id,
-    stream_id: item.stream_id,
-    raw_title: item.raw_title || item.title || item.name,
-    vod_type: item.vod_type || (item.media_type === 'tv' ? 'series' : 'movie'),
+    id: item.id || item.tmdb_id?.toString() || Math.random().toString(),
+    stream_id: item.stream_id || '',
+    raw_title: item.raw_title || item.title || item.name || 'Unknown Title',
+    vod_type: item.vod_type || (item.media_type === 'tv' ? 'series' : item.type === 'series' ? 'series' : 'movie'),
     tmdb_id: item.tmdb_id || item.id,
     imdb_id: item.imdb_id,
     confidence_score: item.confidence_score,
@@ -91,8 +91,8 @@ export default function VodPage() {
     streamUrl: item.streamUrl,
     watch_progress: item.watch_progress_pct,
     overview: item.overview,
-    rating: item.vote_average || (item.confidence_score ? (item.confidence_score * 10) : undefined),
-    year: (item.release_date || item.first_air_date || item.title_year || '').toString().slice(0, 4),
+    rating: item.vote_average || item.rating || (item.confidence_score ? (item.confidence_score * 10) : undefined),
+    year: (item.release_date || item.first_air_date || item.title_year || item.year || '').toString().slice(0, 4),
   })
 
   const loadSections = useCallback(async () => {
@@ -108,16 +108,16 @@ export default function VodPage() {
         seriesRes,
         topRatedRes
       ] = await Promise.all([
-        userAPI.getWatchHistory({ limit: 20 }),
-        providerAPI.getVod(selectedProvider, { limit: 20, sort: 'newest' }),
-        homeAPI.getTrending('movie'),
-        homeAPI.getTrending('tv'),
-        providerAPI.getVod(selectedProvider, { limit: 20, type: 'movie' }),
-        providerAPI.getVod(selectedProvider, { limit: 20, type: 'series' }),
-        providerAPI.getVod(selectedProvider, { limit: 20, sort: 'rating' }),
+        userAPI.getWatchHistory({ limit: 20 }).catch(() => ({ data: [] })),
+        providerAPI.getVod(selectedProvider, { limit: 20, sort: 'newest' }).catch(() => ({ data: [] })),
+        homeAPI.getTrending('movie').catch(() => ({ data: { results: [] } })),
+        homeAPI.getTrending('tv').catch(() => ({ data: { results: [] } })),
+        providerAPI.getVod(selectedProvider, { limit: 20, type: 'movie' }).catch(() => ({ data: [] })),
+        providerAPI.getVod(selectedProvider, { limit: 20, type: 'series' }).catch(() => ({ data: [] })),
+        providerAPI.getVod(selectedProvider, { limit: 20, sort: 'rating' }).catch(() => ({ data: [] })),
       ])
 
-      const featuredItems = [...newRes.data.slice(0, 5)].map(mapToVodItem)
+      const featuredItems = [...(newRes.data || []).slice(0, 5)].map(mapToVodItem)
       
       const richFeatured = await Promise.all(featuredItems.map(async (item) => {
         if (item.tmdb_id && typeof item.tmdb_id === 'number') {
@@ -137,13 +137,13 @@ export default function VodPage() {
       }))
 
       setSections({
-        continueWatching: historyRes.data.map(mapToVodItem),
-        newToStreamio: newRes.data.map(mapToVodItem),
-        trendingMovies: trendingMoviesRes.data.map(mapToVodItem),
-        trendingSeries: trendingSeriesRes.data.map(mapToVodItem),
-        movies: moviesRes.data.map(mapToVodItem),
-        series: seriesRes.data.map(mapToVodItem),
-        topRated: topRatedRes.data.map(mapToVodItem),
+        continueWatching: (historyRes.data || []).map(mapToVodItem),
+        newToStreamio: (newRes.data || []).map(mapToVodItem),
+        trendingMovies: (trendingMoviesRes.data?.results || []).map(mapToVodItem),
+        trendingSeries: (trendingSeriesRes.data?.results || []).map(mapToVodItem),
+        movies: (moviesRes.data || []).map(mapToVodItem),
+        series: (seriesRes.data || []).map(mapToVodItem),
+        topRated: (topRatedRes.data || []).map(mapToVodItem),
         featured: richFeatured,
       })
     } catch (err) {
