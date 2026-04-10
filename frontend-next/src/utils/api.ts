@@ -81,12 +81,23 @@ export const freeAccessAPI = {
 export const marketplaceAPI = {
   listOfferings: () => api.get('/api/marketplace/offerings'),
   getOffering: (id: string) => api.get(`/api/marketplace/offerings/${id}`),
-  createCheckout: (offeringId: string) => api.post('/api/marketplace/checkout', { offering_id: offeringId }),
+  getPaymentProviders: () => api.get('/api/marketplace/payment-providers'),
+  createCheckout: (offeringId: string, paymentProvider: 'stripe' | 'paygate' | 'credits' = 'stripe') =>
+    api.post('/api/marketplace/checkout', { offering_id: offeringId, payment_provider: paymentProvider }),
+  getPaygateStatus: (addressIn: string) => api.get(`/api/marketplace/paygate/status/${addressIn}`),
   getSubscriptions: () => api.get('/api/subscriptions'),
   getPortalUrl: () => api.get('/api/subscriptions/portal'),
   cancelSubscription: (id: string) => api.post(`/api/subscriptions/${id}/cancel`),
   getPaymentHistory: (params?: { limit?: number; offset?: number }) =>
     api.get('/api/payments/history', { params }),
+}
+
+export const creditsAPI = {
+  getBalance: () => api.get('/api/credits/balance'),
+  getTransactions: (params?: { limit?: number; offset?: number }) =>
+    api.get('/api/credits/transactions', { params }),
+  topup: (amountCents: number) => api.post('/api/credits/topup', { amount_cents: amountCents }),
+  getTopupStatus: (creditTxId: string) => api.get(`/api/credits/topup/status/${creditTxId}`),
 }
 
 // ─── Providers ────────────────────────────────────────────────────────────────

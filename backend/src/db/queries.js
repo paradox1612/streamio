@@ -2481,13 +2481,20 @@ const offeringQueries = {
 // ─── Marketplace: Provider Subscriptions ─────────────────────────────────────
 
 const subscriptionQueries = {
-  async create({ user_id, offering_id, stripe_customer_id, stripe_subscription_id, status, current_period_start, current_period_end, trial_end }) {
+  async create({ user_id, offering_id, stripe_customer_id, stripe_subscription_id, status, current_period_start, current_period_end, trial_end, payment_provider, paygate_address_in }) {
     const { rows } = await pool.query(
       `INSERT INTO provider_subscriptions
-         (user_id, offering_id, stripe_customer_id, stripe_subscription_id, status, current_period_start, current_period_end, trial_end)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         (user_id, offering_id, stripe_customer_id, stripe_subscription_id, status,
+          current_period_start, current_period_end, trial_end, payment_provider, paygate_address_in)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        RETURNING *`,
-      [user_id, offering_id, stripe_customer_id, stripe_subscription_id, status || 'active', current_period_start || null, current_period_end || null, trial_end || null]
+      [
+        user_id, offering_id,
+        stripe_customer_id || null, stripe_subscription_id || null,
+        status || 'active',
+        current_period_start || null, current_period_end || null, trial_end || null,
+        payment_provider || 'stripe', paygate_address_in || null,
+      ]
     );
     return rows[0];
   },
@@ -2509,6 +2516,19 @@ const subscriptionQueries = {
     const { rows } = await pool.query(
       `UPDATE provider_subscriptions SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
       values
+    );
+    return rows[0] || null;
+  },
+
+  async findByPaygateAddressIn(paygate_address_in) {
+    const { rows } = await pool.query(
+      `SELECT ps.*, po.name AS offering_name, po.provider_network_id, po.billing_period,
+              po.price_cents, u.email AS user_email, u.twenty_person_id
+       FROM provider_subscriptions ps
+       JOIN provider_offerings po ON po.id = ps.offering_id
+       JOIN users u ON u.id = ps.user_id
+       WHERE ps.paygate_address_in = $1`,
+      [paygate_address_in]
     );
     return rows[0] || null;
   },
@@ -2598,14 +2618,28 @@ const subscriptionQueries = {
 // ─── Marketplace: Payment Transactions ───────────────────────────────────────
 
 const paymentQueries = {
-  async insert({ user_id, subscription_id, amount_cents, currency, status, stripe_payment_intent_id, stripe_invoice_id, failure_reason }) {
+  async insert({ user_id, subscription_id, amount_cents, currency, status, stripe_payment_intent_id, stripe_invoice_id, failure_reason, payment_provider, paygate_address_in }) {
+    // Stripe payments de-dup on stripe_payment_intent_id; PayGate payments always insert
+    if (stripe_payment_intent_id) {
+      const { rows } = await pool.query(
+        `INSERT INTO payment_transactions
+           (user_id, subscription_id, amount_cents, currency, status, stripe_payment_intent_id, stripe_invoice_id, failure_reason, payment_provider)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         ON CONFLICT (stripe_payment_intent_id) DO NOTHING
+         RETURNING *`,
+        [user_id, subscription_id || null, amount_cents, currency || 'usd', status,
+         stripe_payment_intent_id, stripe_invoice_id || null, failure_reason || null,
+         payment_provider || 'stripe']
+      );
+      return rows[0] || null;
+    }
     const { rows } = await pool.query(
       `INSERT INTO payment_transactions
-         (user_id, subscription_id, amount_cents, currency, status, stripe_payment_intent_id, stripe_invoice_id, failure_reason)
+         (user_id, subscription_id, amount_cents, currency, status, failure_reason, payment_provider, paygate_address_in)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-       ON CONFLICT (stripe_payment_intent_id) DO NOTHING
        RETURNING *`,
-      [user_id, subscription_id || null, amount_cents, currency || 'usd', status, stripe_payment_intent_id || null, stripe_invoice_id || null, failure_reason || null]
+      [user_id, subscription_id || null, amount_cents, currency || 'usd', status,
+       failure_reason || null, payment_provider || 'paygate', paygate_address_in || null]
     );
     return rows[0] || null;
   },

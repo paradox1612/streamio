@@ -224,4 +224,6 @@ module.exports = {
   handleSubscriptionCancelled,
   handlePaymentSucceeded,
   handlePaymentFailed,
+  // Exported for use by PayGate/credits checkout paths
+  provisionCredentialsPublic: provisionCredentials,
 };

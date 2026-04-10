@@ -768,3 +768,41 @@ CREATE TABLE IF NOT EXISTS payment_transactions (
 
 CREATE INDEX IF NOT EXISTS idx_payment_tx_user         ON payment_transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_payment_tx_subscription ON payment_transactions(subscription_id);
+
+-- ─────────────────────────────────────────
+-- PayGate + Credits migrations (idempotent)
+-- ─────────────────────────────────────────
+
+-- Make stripe fields nullable so PayGate/credits subscriptions can be stored
+ALTER TABLE provider_subscriptions ALTER COLUMN stripe_customer_id DROP NOT NULL;
+ALTER TABLE provider_subscriptions ALTER COLUMN stripe_subscription_id DROP NOT NULL;
+
+-- Payment provider tracking on subscriptions and transactions
+ALTER TABLE provider_subscriptions ADD COLUMN IF NOT EXISTS payment_provider TEXT NOT NULL DEFAULT 'stripe';
+ALTER TABLE provider_subscriptions ADD COLUMN IF NOT EXISTS paygate_address_in TEXT UNIQUE;
+
+ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS payment_provider TEXT NOT NULL DEFAULT 'stripe';
+ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS paygate_address_in TEXT;
+
+-- ─────────────────────────────────────────
+-- Credits System
+-- ─────────────────────────────────────────
+
+-- Denormalized balance for fast reads; source-of-truth is credit_transactions
+ALTER TABLE users ADD COLUMN IF NOT EXISTS credit_balance_cents INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS credit_transactions (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  amount_cents    INTEGER NOT NULL,  -- positive = credit added, negative = credit spent
+  type            TEXT NOT NULL,     -- 'topup_paygate' | 'topup_stripe' | 'spend_subscription' | 'admin_grant' | 'refund'
+  description     TEXT,
+  reference_id    TEXT,              -- paygate address_in or stripe payment_intent_id
+  subscription_id UUID REFERENCES provider_subscriptions(id) ON DELETE SET NULL,
+  status          TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'completed' | 'failed'
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_credit_tx_user      ON credit_transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_credit_tx_reference ON credit_transactions(reference_id);
+CREATE INDEX IF NOT EXISTS idx_credit_tx_status    ON credit_transactions(status);

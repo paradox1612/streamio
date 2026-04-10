@@ -134,6 +134,8 @@ If you want GitHub to trigger the K3s deploy automatically after the image build
    - `K3S_RELEASE_NAME`
    - `K3S_NAMESPACE`
 
+If you want PayGate enabled in the GitHub-driven K3s deploy, set the repository secret `PAYGATE_WALLET_ADDRESS`. The workflow will inject it into `backend.secrets.paygateWalletAddress` and enable `backend.env.paygateEnabled=true` for that deployment.
+
 The workflow deploys the exact image tags built for the current commit using the `sha-<short-commit>` tag, rather than relying on `latest`.
 
 If GHCR packages remain private, create a Kubernetes image pull secret and set `imagePullSecrets` in your Helm values.

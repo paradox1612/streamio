@@ -1,8 +1,11 @@
 const express = require('express');
 const crypto = require('crypto');
 const { constructWebhookEvent, isEnabled: stripeEnabled } = require('../services/stripeService');
+const paygateService = require('../services/paygateService');
+const creditService = require('../services/creditService');
 const subscriptionService = require('../services/subscriptionService');
-const { subscriptionQueries, providerQueries } = require('../db/queries');
+const { subscriptionQueries, providerQueries, paymentQueries, pool } = require('../db/queries');
+const eventBus = require('../utils/eventBus');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -160,6 +163,97 @@ router.post('/twenty', express.raw({ type: 'application/json' }), async (req, re
     }
   } catch (err) {
     logger.error(`[Webhook] Error processing Twenty event: ${err.message}`);
+  }
+});
+
+// ─── PayGate Callback (GET) ───────────────────────────────────────────────────
+// PayGate.to calls this endpoint when a payment is confirmed on-chain.
+// Responds with plain-text "*ok*" to acknowledge receipt.
+// URL format: GET /webhooks/paygate?invoice_id=<id>&sig=<hmac>&txid_out=<tx>&value_coin=<amount>&coin=<token>
+
+router.get('/paygate', async (req, res) => {
+  const { invoice_id, sig, txid_out, value_coin, coin } = req.query;
+
+  if (!invoice_id || !sig) {
+    logger.warn('[Webhook/PayGate] Missing invoice_id or sig');
+    return res.status(400).send('missing params');
+  }
+
+  // Verify HMAC signature
+  if (!paygateService.verifyCallbackSig(invoice_id, sig)) {
+    logger.warn(`[Webhook/PayGate] Signature mismatch for invoice ${invoice_id}`);
+    return res.status(401).send('invalid sig');
+  }
+
+  // Acknowledge immediately — PayGate requires *ok* response
+  res.set('Content-Type', 'text/plain').send('*ok*');
+
+  logger.info(`[Webhook/PayGate] Payment confirmed: invoice=${invoice_id} txid=${txid_out} amount=${value_coin} ${coin}`);
+
+  try {
+    // invoice_id is prefixed: 'sub_<uuid>' for subscriptions, 'cred_<uuid>' for credit top-ups
+    if (invoice_id.startsWith('sub_')) {
+      const subId = invoice_id.slice(4);
+      const sub = await subscriptionQueries.findById(subId);
+      if (!sub) {
+        logger.error(`[Webhook/PayGate] Subscription ${subId} not found`);
+        return;
+      }
+      if (sub.status !== 'pending_payment') {
+        logger.info(`[Webhook/PayGate] Subscription ${subId} already in status=${sub.status}, skipping`);
+        return;
+      }
+
+      // Activate the subscription
+      const periodEnd = paygateService.calcPeriodEnd(sub.billing_period);
+      await subscriptionQueries.update(subId, {
+        status: 'active',
+        current_period_start: new Date(),
+        current_period_end: periodEnd,
+      });
+
+      // Provision IPTV credentials if not already done
+      if (!sub.user_provider_id && sub.provider_network_id) {
+        try {
+          const userProvider = await subscriptionService.provisionCredentialsPublic(sub.user_id, {
+            name: sub.offering_name,
+            provider_network_id: sub.provider_network_id,
+          });
+          if (userProvider) {
+            await subscriptionQueries.update(subId, { user_provider_id: userProvider.id });
+          }
+        } catch (err) {
+          logger.error(`[Webhook/PayGate] Credential provisioning failed: ${err.message}`);
+        }
+      }
+
+      // Record payment transaction
+      await paymentQueries.insert({
+        user_id: sub.user_id,
+        subscription_id: subId,
+        amount_cents: Math.round(parseFloat(value_coin || 0) * 100),
+        currency: 'usd',
+        status: 'succeeded',
+        payment_provider: 'paygate',
+        paygate_address_in: sub.paygate_address_in,
+      });
+
+      eventBus.emit('subscription.created', { subscription: sub });
+      logger.info(`[Webhook/PayGate] Subscription ${subId} activated`);
+
+    } else if (invoice_id.startsWith('cred_')) {
+      // Credit top-up confirmed
+      const result = await creditService.confirmTopup(invoice_id);
+      if (result) {
+        logger.info(`[Webhook/PayGate] Credit topup confirmed: +${result.amountCents}¢ for user ${result.userId}`);
+      } else {
+        logger.warn(`[Webhook/PayGate] Credit topup ${invoice_id} not found or already processed`);
+      }
+    } else {
+      logger.warn(`[Webhook/PayGate] Unknown invoice_id prefix: ${invoice_id}`);
+    }
+  } catch (err) {
+    logger.error(`[Webhook/PayGate] Error processing callback: ${err.message}`);
   }
 });
 

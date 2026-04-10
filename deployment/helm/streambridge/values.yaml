@@ -31,6 +31,10 @@ backend:
     resolverDebug: "false"
     frontendUrl: "https://stream.example.com"
     baseUrl: "https://stream.example.com"
+    # Public base URL for PayGate callback — must be reachable from the internet.
+    # Typically the same as baseUrl (e.g. https://stream.example.com).
+    apiBaseUrl: "https://stream.example.com"
+    paygateEnabled: "false"
     healthCheckEnabled: "true"
     healthCheckStartupEnabled: "false"
     healthCheckBatchSize: "2"
@@ -53,6 +57,7 @@ backend:
     twentyApiKey: ""
     twentyWebhookSecret: ""
     twoCaptchaApiKey: ""
+    paygateWalletAddress: ""
   resources: {}
   nodeSelector: {}
   tolerations: []

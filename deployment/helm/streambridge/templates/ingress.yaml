@@ -51,6 +51,13 @@ spec:
                 name: {{ include "streambridge.backendName" . }}
                 port:
                   number: {{ .Values.backend.service.port }}
+          - path: /webhooks
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "streambridge.backendName" . }}
+                port:
+                  number: {{ .Values.backend.service.port }}
           - path: /
             pathType: Prefix
             backend:

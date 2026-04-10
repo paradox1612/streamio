@@ -275,6 +275,7 @@ jobs:
         env:
           BACKEND_CHANGED: ${{ needs.build-and-push.outputs.backend_changed }}
           FRONTEND_CHANGED: ${{ needs.build-and-push.outputs.frontend_changed }}
+          PAYGATE_WALLET_ADDRESS: ${{ secrets.PAYGATE_WALLET_ADDRESS }}
           PIA_USERNAME: ${{ secrets.PIA_USERNAME }}
           PIA_PASSWORD: ${{ secrets.PIA_PASSWORD }}
           TWENTY_API_KEY: ${{ secrets.TWENTY_API_KEY }}
@@ -322,6 +323,11 @@ jobs:
             VPN_ARG="--set vpn.enabled=true"
           fi
 
+          PAYGATE_ARGS=""
+          if [ -n "${PAYGATE_WALLET_ADDRESS:-}" ]; then
+            PAYGATE_ARGS="--set-string backend.secrets.paygateWalletAddress=${PAYGATE_WALLET_ADDRESS} --set-string backend.env.paygateEnabled=true"
+          fi
+
           TWENTY_ARGS=""
           if [ -n "${TWENTY_API_KEY:-}" ]; then
             TWENTY_ARGS="--set-string backend.secrets.twentyApiKey=${TWENTY_API_KEY}"
@@ -343,6 +349,7 @@ jobs:
             --set-string backend.image.tag="$BACKEND_TAG" \
             $VPN_ARG \
             $PIA_ARGS \
+            $PAYGATE_ARGS \
             $TWENTY_ARGS \
             $TWENTY_SECRET_ARGS
 
