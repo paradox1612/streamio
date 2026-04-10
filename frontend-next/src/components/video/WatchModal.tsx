@@ -228,9 +228,20 @@ export default function WatchModal({
                   )}
                 </div>
                 <div className="flex flex-col gap-3 w-full max-w-[350px]">
-                   {currentVodType !== 'series' && src && (
+                   {src && (
                      <button 
-                       onClick={() => setActiveStream({ url: src, title: currentTitle })}
+                       onClick={() => {
+                         if (currentVodType === 'series') {
+                           // For series, picking the first available episode stream URL would require the selector
+                           // But since we want "Play" to work, we'll signal the EpisodeSelector or find the first ep
+                           // For now, if it's a series and we hit Play, we scroll to episodes
+                           const epSection = document.getElementById('episodes-section');
+                           if (epSection) epSection.scrollIntoView({ behavior: 'smooth' });
+                           else toast.error('Please select an episode below');
+                         } else {
+                           setActiveStream({ url: src, title: currentTitle });
+                         }
+                       }}
                        className="flex items-center justify-center gap-2 w-full py-4 bg-[#1491ff] text-white font-bold rounded hover:bg-[#0c73db] transition-colors shadow-lg"
                      >
                        <Play className="h-5 w-5 fill-current" /> Play Now
@@ -328,7 +339,7 @@ export default function WatchModal({
 
             {/* Episodes (if series) */}
             {currentVodType === 'series' && providerId && currentStreamId && (
-              <div className="mt-20 px-4 md:px-12 pt-12 border-t border-white/10">
+              <div id="episodes-section" className="mt-20 px-4 md:px-12 pt-12 border-t border-white/10">
                 <EpisodeSelector 
                   providerId={providerId}
                   seriesId={currentStreamId}

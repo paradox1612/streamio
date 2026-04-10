@@ -381,7 +381,7 @@ export default function LiveTVPage() {
                 return (
                   <div
                     key={cat}
-                    className={`flex items-center overflow-hidden rounded-full ${
+                    className={`flex flex-none items-center overflow-hidden rounded-full ${
                       selectedCategory === cat
                         ? 'bg-brand-500 text-white shadow-lg'
                         : 'border border-white/10 bg-white/[0.04] text-slate-200/[0.76] transition hover:border-white/20'

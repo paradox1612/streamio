@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { providerAPI, homeAPI, userAPI, vodAPI } from '@/utils/api'
-import { Search, X, Film, SlidersHorizontal, ChevronDown } from 'lucide-react'
+import { Search, X, Film, SlidersHorizontal, ChevronDown, Loader2 } from 'lucide-react'
 import ContentRow from '@/components/video/ContentRow'
 import HeroBanner from '@/components/video/HeroBanner'
 import WatchModal from '@/components/video/WatchModal'
@@ -76,7 +76,7 @@ export default function VodPage() {
       .finally(() => setLoadingProviders(false))
   }, [hasByoProviders])
 
-  const mapToVodItem = (item: any): VodItem => ({
+  const mapToVodItem = useCallback((item: any): VodItem => ({
     id: item.id || item.tmdb_id?.toString() || Math.random().toString(),
     stream_id: item.stream_id || '',
     raw_title: item.raw_title || item.title || item.name || 'Unknown Title',
@@ -94,7 +94,7 @@ export default function VodPage() {
     overview: item.overview,
     rating: item.vote_average || item.rating || (item.confidence_score ? (item.confidence_score * 10) : undefined),
     year: (item.release_date || item.first_air_date || item.title_year || item.year || '').toString().slice(0, 4),
-  })
+  }), [])
 
   const handleOpenModal = (item: VodItem, play = false) => {
     setWatchItem(item)
@@ -117,12 +117,28 @@ export default function VodPage() {
         homeAPI.getTrending('tv').catch(() => ({ data: { results: [] } })),
       ])
 
-      const browseData = browseRes.data
-      const featuredItems = [...(browseData.newest || []).slice(0, 5)].map(mapToVodItem)
+      const browseData = browseRes.data || { newest: [], movies: [], series: [], rating: [] }
+      const historyData = historyRes.data || []
+      const trendingMoviesData = trendingMoviesRes.data?.results || []
+      const trendingSeriesData = trendingSeriesRes.data?.results || []
+
+      // Initial featured items without rich metadata
+      const initialFeatured = (browseData.newest || []).slice(0, 5).map(mapToVodItem)
+      setSections(prev => ({
+        ...prev,
+        continueWatching: historyData.map(mapToVodItem),
+        newToStreamio: (browseData.newest || []).map(mapToVodItem),
+        trendingMovies: trendingMoviesData.map(mapToVodItem),
+        trendingSeries: trendingSeriesData.map(mapToVodItem),
+        movies: (browseData.movies || []).map(mapToVodItem),
+        series: (browseData.series || []).map(mapToVodItem),
+        topRated: (browseData.rating || []).map(mapToVodItem),
+        featured: initialFeatured,
+      }))
       
-      // Fetch rich metadata sequentially with small delay to stay under rate limits
+      // Fetch rich metadata sequentially with small delay
       const richFeatured: VodItem[] = []
-      for (const item of featuredItems) {
+      for (const item of initialFeatured) {
         if (item.tmdb_id && typeof item.tmdb_id === 'number') {
           try {
             const details = await vodAPI.getDetails(item.tmdb_id, item.vod_type)
@@ -134,28 +150,18 @@ export default function VodPage() {
               genres: details.data.genres?.map((g: any) => g.name),
               runtime: details.data.runtime ? `${details.data.runtime}m` : undefined,
             })
-            // Small delay between rich metadata calls
-            await new Promise(resolve => setTimeout(resolve, 200))
+            // Update featured section progressively
+            setSections(prev => ({ ...prev, featured: [...richFeatured, ...initialFeatured.slice(richFeatured.length)] }))
+            await new Promise(resolve => setTimeout(resolve, 150))
           } catch { richFeatured.push(item) }
         } else {
           richFeatured.push(item)
         }
       }
-
-      setSections({
-        continueWatching: (historyRes.data || []).map(mapToVodItem),
-        newToStreamio: (browseData.newest || []).map(mapToVodItem),
-        trendingMovies: (trendingMoviesRes.data?.results || []).map(mapToVodItem),
-        trendingSeries: (trendingSeriesRes.data?.results || []).map(mapToVodItem),
-        movies: (browseData.movies || []).map(mapToVodItem),
-        series: (browseData.series || []).map(mapToVodItem),
-        topRated: (browseData.rating || []).map(mapToVodItem),
-        featured: richFeatured,
-      })
     } catch (err) {
       console.error('Failed to load VOD sections', err)
     }
-  }, [selectedProvider])
+  }, [selectedProvider, mapToVodItem])
 
   const loadBrowse = useCallback(async (page: number, refresh = false) => {
     if (!selectedProvider) return
@@ -169,15 +175,16 @@ export default function VodPage() {
         sort: activeSort || undefined,
       }
       const res = await providerAPI.getVod(selectedProvider, params)
-      const newItems = res.data.map(mapToVodItem)
+      const data = res.data || []
+      const newItems = data.map(mapToVodItem)
       setBrowseItems(prev => refresh ? newItems : [...prev, ...newItems])
-      setHasMore(res.data.length === 40)
+      setHasMore(data.length === 40)
     } catch {
       toast.error('Failed to load items')
     } finally {
       setBrowseLoading(false)
     }
-  }, [selectedProvider, activeType, searchQuery, activeSort])
+  }, [selectedProvider, activeType, searchQuery, activeSort, mapToVodItem])
 
   useEffect(() => {
     if (selectedProvider) {
@@ -217,7 +224,7 @@ export default function VodPage() {
   if (loadingProviders) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#141414]">
-        <div className="h-12 w-12 animate-spin rounded-full border-t-2 border-[#1491ff]" />
+        <Loader2 className="h-12 w-12 animate-spin text-[#1491ff]" />
       </div>
     )
   }
@@ -238,6 +245,8 @@ export default function VodPage() {
      )
   }
 
+  const isInitialPopulating = sections.featured.length === 0 && browseItems.length === 0 && browseLoading
+
   return (
     <div className="min-h-screen bg-[#141414] text-white pb-24 overflow-x-hidden">
       {/* Hero Banner */}
@@ -248,10 +257,19 @@ export default function VodPage() {
           onInfo={(item) => handleOpenModal(item, false)}
         />
       ) : (
-        <div className="h-[50vh] flex items-center justify-center bg-zinc-900/20">
-           <div className="animate-pulse flex flex-col items-center gap-4">
-              <Film className="h-12 w-12 text-zinc-800" />
-              <p className="text-zinc-600 font-bold">Populating library...</p>
+        <div className="h-[70vh] flex items-center justify-center bg-zinc-900/20 border-b border-white/5">
+           <div className="flex flex-col items-center gap-4">
+              {isInitialPopulating ? (
+                <>
+                  <Loader2 className="h-12 w-12 animate-spin text-[#1491ff]" />
+                  <p className="text-zinc-500 font-bold animate-pulse">Loading cinematic library...</p>
+                </>
+              ) : (
+                <>
+                  <Film className="h-12 w-12 text-zinc-800" />
+                  <p className="text-zinc-600 font-bold">Populating library...</p>
+                </>
+              )}
            </div>
         </div>
       )}
@@ -415,7 +433,7 @@ export default function VodPage() {
           </div>
           {browseLoading && (
             <div className="flex justify-center mt-20">
-              <div className="h-10 w-10 animate-spin rounded-full border-t-2 border-[#1491ff]" />
+              <Loader2 className="h-10 w-10 animate-spin text-[#1491ff]" />
             </div>
           )}
           <div ref={loaderRef} className="h-40" />
