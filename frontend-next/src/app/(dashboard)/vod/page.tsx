@@ -107,49 +107,49 @@ export default function VodPage() {
     try {
       const [
         historyRes,
-        newRes,
+        browseRes,
         trendingMoviesRes,
         trendingSeriesRes,
-        moviesRes,
-        seriesRes,
-        topRatedRes
       ] = await Promise.all([
         userAPI.getWatchHistory({ limit: 20 }).catch(() => ({ data: [] })),
-        providerAPI.getVod(selectedProvider, { limit: 20, sort: 'newest' }).catch(() => ({ data: [] })),
+        vodAPI.getBrowse(selectedProvider).catch(() => ({ data: { newest: [], movies: [], series: [], rating: [] } })),
         homeAPI.getTrending('movie').catch(() => ({ data: { results: [] } })),
         homeAPI.getTrending('tv').catch(() => ({ data: { results: [] } })),
-        providerAPI.getVod(selectedProvider, { limit: 20, type: 'movie' }).catch(() => ({ data: [] })),
-        providerAPI.getVod(selectedProvider, { limit: 20, type: 'series' }).catch(() => ({ data: [] })),
-        providerAPI.getVod(selectedProvider, { limit: 20, sort: 'rating' }).catch(() => ({ data: [] })),
       ])
 
-      const featuredItems = [...(newRes.data || []).slice(0, 5)].map(mapToVodItem)
+      const browseData = browseRes.data
+      const featuredItems = [...(browseData.newest || []).slice(0, 5)].map(mapToVodItem)
       
-      const richFeatured = await Promise.all(featuredItems.map(async (item) => {
+      // Fetch rich metadata sequentially with small delay to stay under rate limits
+      const richFeatured: VodItem[] = []
+      for (const item of featuredItems) {
         if (item.tmdb_id && typeof item.tmdb_id === 'number') {
           try {
             const details = await vodAPI.getDetails(item.tmdb_id, item.vod_type)
-            return {
+            richFeatured.push({
               ...item,
               backdrop_url: details.data.backdrop_path ? `https://image.tmdb.org/t/p/w1280${details.data.backdrop_path}` : item.backdrop_url,
               overview: details.data.overview,
               rating: details.data.vote_average,
               genres: details.data.genres?.map((g: any) => g.name),
               runtime: details.data.runtime ? `${details.data.runtime}m` : undefined,
-            }
-          } catch { return item }
+            })
+            // Small delay between rich metadata calls
+            await new Promise(resolve => setTimeout(resolve, 200))
+          } catch { richFeatured.push(item) }
+        } else {
+          richFeatured.push(item)
         }
-        return item
-      }))
+      }
 
       setSections({
         continueWatching: (historyRes.data || []).map(mapToVodItem),
-        newToStreamio: (newRes.data || []).map(mapToVodItem),
+        newToStreamio: (browseData.newest || []).map(mapToVodItem),
         trendingMovies: (trendingMoviesRes.data?.results || []).map(mapToVodItem),
         trendingSeries: (trendingSeriesRes.data?.results || []).map(mapToVodItem),
-        movies: (moviesRes.data || []).map(mapToVodItem),
-        series: (seriesRes.data || []).map(mapToVodItem),
-        topRated: (topRatedRes.data || []).map(mapToVodItem),
+        movies: (browseData.movies || []).map(mapToVodItem),
+        series: (browseData.series || []).map(mapToVodItem),
+        topRated: (browseData.rating || []).map(mapToVodItem),
         featured: richFeatured,
       })
     } catch (err) {

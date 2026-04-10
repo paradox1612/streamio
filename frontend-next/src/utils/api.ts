@@ -139,6 +139,7 @@ export const providerAPI = {
 export const vodAPI = {
   getDetails: (tmdbId: number, type: string) => api.get('/api/vod/details', { params: { tmdbId, type } }),
   getSimilar: (tmdbId: number, type: string) => api.get('/api/vod/similar', { params: { tmdbId, type } }),
+  getBrowse: (providerId: string) => api.get('/api/vod/browse', { params: { providerId } }),
 }
 
 // ─── Home / Trending / Favorites ─────────────────────────────────────────────
