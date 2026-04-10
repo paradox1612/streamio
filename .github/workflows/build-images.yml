@@ -347,6 +347,9 @@ jobs:
             -f "$VALUES_FILE" \
             --set-string frontend.image.tag="$FRONTEND_TAG" \
             --set-string backend.image.tag="$BACKEND_TAG" \
+            --set-string backend.env.frontendUrl="${{ vars.NEXT_PUBLIC_API_URL || env.DEFAULT_FRONTEND_URL }}" \
+            --set-string backend.env.baseUrl="${{ vars.NEXT_PUBLIC_API_URL || env.DEFAULT_API_URL }}" \
+            --set-string backend.env.apiBaseUrl="${{ vars.NEXT_PUBLIC_API_URL || env.DEFAULT_API_URL }}" \
             $VPN_ARG \
             $PIA_ARGS \
             $PAYGATE_ARGS \

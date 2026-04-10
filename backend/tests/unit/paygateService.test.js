@@ -71,4 +71,17 @@ describe('paygateService', () => {
     expect(url.searchParams.get('currency')).toBe('USD');
     expect(url.searchParams.get('email')).toBe('test@example.com');
   });
+
+  it('avoids double-encoding a PayGate tracking address', () => {
+    const paygateService = require('../../src/services/paygateService');
+    const checkoutUrl = paygateService.buildCheckoutUrl('abc%3D%3D', {
+      amountCents: 500,
+      currency: 'USD',
+    });
+
+    const url = new URL(checkoutUrl);
+    expect(url.searchParams.get('address')).toBe('abc==');
+    expect(url.toString()).toContain('address=abc%3D%3D');
+    expect(url.toString()).not.toContain('%253D');
+  });
 });

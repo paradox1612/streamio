@@ -8,6 +8,19 @@ function getWalletAddress() {
   return process.env.PAYGATE_WALLET_ADDRESS;
 }
 
+function normalizeCheckoutAddress(address) {
+  if (!address) return address;
+
+  // PayGate `address_in` values can already be URL-encoded when returned by
+  // the session API. Decode once here so URLSearchParams does not encode `%`
+  // again when building the hosted checkout URL.
+  try {
+    return decodeURIComponent(address);
+  } catch {
+    return address;
+  }
+}
+
 /**
  * Generate HMAC signature for callback URL verification.
  * Uses the same algo as the PayGate.to PHP plugin reference implementation.
@@ -84,7 +97,7 @@ async function createPaymentSession(invoiceId, callbackBase) {
  */
 function buildCheckoutUrl(addressIn, { amountCents, currency = 'USD', email, logoUrl } = {}) {
   const url = new URL('https://checkout.paygate.to/pay.php');
-  url.searchParams.set('address', addressIn);
+  url.searchParams.set('address', normalizeCheckoutAddress(addressIn));
   url.searchParams.set('amount', (amountCents / 100).toFixed(2));
   url.searchParams.set('currency', currency.toUpperCase());
   if (email) url.searchParams.set('email', email);
@@ -129,4 +142,5 @@ module.exports = {
   buildCheckoutUrl,
   getPaymentStatus,
   calcPeriodEnd,
+  normalizeCheckoutAddress,
 };

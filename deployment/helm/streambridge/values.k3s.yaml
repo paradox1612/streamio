@@ -13,9 +13,9 @@ backend:
     nodeEnv: production
     logLevel: info
     resolverDebug: "false"
-    frontendUrl: "https://stream.example.com"
-    baseUrl: "https://stream.example.com"
-    apiBaseUrl: "https://stream.example.com"
+    frontendUrl: "https://streambridge.thekush.dev"
+    baseUrl: "https://streambridge.thekush.dev"
+    apiBaseUrl: "https://streambridge.thekush.dev"
     paygateEnabled: "false"  # GitHub deploy workflow flips this to true when PAYGATE_WALLET_ADDRESS is present
     healthCheckEnabled: "true"
     healthCheckStartupEnabled: "false"
