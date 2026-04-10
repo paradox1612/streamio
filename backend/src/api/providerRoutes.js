@@ -615,7 +615,9 @@ router.post('/:id/manual-match',
       );
 
       // Flush any cached streams for this user
-      const { vodQueries: vq } = require('../db/queries');
+      const addonHandler = require('../addon/addonHandler');
+      await addonHandler.clearResolvedCache(req.user.id, imdbId || `tmdb:${tmdbId}`);
+      
       res.json({ success: true, rawTitle, tmdbId, tmdbType, imdbId });
     } catch (err) {
       res.status(500).json({ error: err.message });

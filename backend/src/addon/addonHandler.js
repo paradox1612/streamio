@@ -765,27 +765,23 @@ async function tryOnDemandMatch(userId, baseId, type) {
       reason: result.reason || 'matched',
     });
   }
-async clearResolvedCache(userId, baseId) {
-  await cache.del('resolvedVodLookup', buildLookupCacheKey(userId, baseId, 'single'));
-  await cache.del('resolvedVodLookupMiss', buildLookupCacheKey(userId, baseId, 'single'));
-  await cache.del('resolvedVodLookup', buildLookupCacheKey(userId, baseId, 'all'));
-  await cache.del('resolvedVodLookupMiss', buildLookupCacheKey(userId, baseId, 'all'));
-},
-    const resolvedItem = await resolveVodItem(userId, baseId);
+
+  if (!matchedAny) {
+    logger.info(`On-demand match found no candidate for ${baseId} (${targetNormalized})`);
+    logResolverDebug('on-demand match completed without a match', {
+      userId,
+      baseId,
+      type,
+      targetTmdbId: target.id,
+      targetNormalized,
+    });
     recordLookupMetric('slowPathMs', Date.now() - startedAt);
-    return resolvedItem || firstMatchedCandidate;
+    return null;
   }
 
-  logger.info(`On-demand match found no candidate for ${baseId} (${targetNormalized})`);
-  logResolverDebug('on-demand match completed without a match', {
-    userId,
-    baseId,
-    type,
-    targetTmdbId: target.id,
-    targetNormalized,
-  });
+  const resolvedItem = await resolveVodItem(userId, baseId);
   recordLookupMetric('slowPathMs', Date.now() - startedAt);
-  return null;
+  return resolvedItem || firstMatchedCandidate;
 }
 
 async function resolveOnDemandMatchShared(userId, baseId, type) {
@@ -1232,6 +1228,12 @@ module.exports = {
   handleMeta,
   handleStream,
   handleLiveStream,
+  async clearResolvedCache(userId, baseId) {
+    await cache.del('resolvedVodLookup', buildLookupCacheKey(userId, baseId, 'single'));
+    await cache.del('resolvedVodLookupMiss', buildLookupCacheKey(userId, baseId, 'single'));
+    await cache.del('resolvedVodLookup', buildLookupCacheKey(userId, baseId, 'all'));
+    await cache.del('resolvedVodLookupMiss', buildLookupCacheKey(userId, baseId, 'all'));
+  },
   __test__: {
     applyLanguagePreferences,
     getTargetTmdbRecord,
