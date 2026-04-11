@@ -3,6 +3,59 @@ const { from } = require('pg-copy-streams');
 const { pipeline } = require('stream/promises');
 const { Transform } = require('stream');
 
+/**
+ * Resolves hosts for a user_providers row aliased as `p`.
+ * - Network-attached providers (p.network_id IS NOT NULL): always read live
+ *   from provider_network_hosts so admin host changes propagate instantly.
+ * - BYO / legacy providers (p.network_id IS NULL): use the stored hosts[] column.
+ * Falls back to stored hosts[] if the network has no active hosts configured yet.
+ */
+const PROVIDER_HOSTS_EXPR = `
+  CASE WHEN p.network_id IS NOT NULL THEN
+    COALESCE(
+      NULLIF(
+        ARRAY(
+          SELECT h.host_url
+          FROM   provider_network_hosts h
+          WHERE  h.provider_network_id = p.network_id
+            AND  h.is_active = true
+          ORDER BY h.id
+        ),
+        ARRAY[]::TEXT[]
+      ),
+      p.hosts
+    )
+  ELSE p.hosts END
+`;
+
+/**
+ * Full column list for user_providers (alias p) with live host resolution.
+ * Use this instead of p.* in any query that needs host data to ensure
+ * network-managed providers always return up-to-date hosts.
+ */
+const PROVIDER_COLS = `
+  p.id,
+  p.user_id,
+  p.name,
+  ${PROVIDER_HOSTS_EXPR} AS hosts,
+  p.username,
+  p.password,
+  p.active_host,
+  p.status,
+  p.last_checked,
+  p.created_at,
+  p.network_id,
+  p.catalog_variant,
+  p.network_attached_at,
+  p.twenty_provider_access_id,
+  p.account_status,
+  p.account_expires_at,
+  p.account_is_trial,
+  p.account_max_connections,
+  p.account_active_connections,
+  p.account_last_synced_at
+`;
+
 function pickFirstDefined(entry, ...keys) {
   for (const key of keys) {
     if (entry[key] !== undefined) return entry[key];
@@ -392,7 +445,7 @@ const providerQueries = {
 
   async findById(id) {
     const { rows } = await pool.query(
-      `SELECT p.*, n.name AS network_name
+      `SELECT ${PROVIDER_COLS}, n.name AS network_name, n.adapter_type AS network_adapter_type
        FROM user_providers p
        LEFT JOIN provider_networks n ON n.id = p.network_id
        WHERE p.id = $1`,
@@ -403,7 +456,7 @@ const providerQueries = {
 
   async findByIdAndUser(id, userId) {
     const { rows } = await pool.query(
-      `SELECT p.*, n.name AS network_name
+      `SELECT ${PROVIDER_COLS}, n.name AS network_name, n.adapter_type AS network_adapter_type
        FROM user_providers p
        LEFT JOIN provider_networks n ON n.id = p.network_id
        WHERE p.id = $1 AND p.user_id = $2`,
@@ -436,8 +489,9 @@ const providerQueries = {
 
   async findByUser(userId) {
     const { rows } = await pool.query(
-      `SELECT p.*,
+      `SELECT ${PROVIDER_COLS},
               n.name AS network_name,
+              n.adapter_type AS network_adapter_type,
               COALESCE(
                 (SELECT COUNT(*) FROM network_vod nv WHERE nv.provider_network_id = p.network_id),
                 (SELECT COUNT(*) FROM user_provider_vod v WHERE v.provider_id = p.id)
@@ -465,7 +519,7 @@ const providerQueries = {
 
   async listAll({ limit = 100, offset = 0 } = {}) {
     const { rows } = await pool.query(
-      `SELECT p.*, u.email as user_email, n.name AS network_name,
+      `SELECT ${PROVIDER_COLS}, u.email AS user_email, n.name AS network_name,
               COALESCE(
                 (SELECT COUNT(*) FROM network_vod nv WHERE nv.provider_network_id = p.network_id),
                 (SELECT COUNT(*) FROM user_provider_vod v WHERE v.provider_id = p.id)
@@ -497,6 +551,84 @@ const providerQueries = {
        JOIN users u ON u.id = p.user_id
        LEFT JOIN provider_networks n ON n.id = p.network_id
        ORDER BY p.created_at ASC`
+    );
+    return rows;
+  },
+
+  /**
+   * All lines provisioned for a specific network (admin view).
+   * Returns provider row + linked user + active subscription info.
+   */
+  async findNetworkLines(networkId, { limit = 200, offset = 0 } = {}) {
+    const { rows } = await pool.query(
+      `SELECT
+         p.id,
+         p.username,
+         p.password,
+         p.status,
+         p.created_at,
+         p.account_expires_at,
+         p.account_max_connections,
+         u.id   AS user_id,
+         u.email AS user_email,
+         ps.id   AS subscription_id,
+         ps.selected_plan_name,
+         ps.current_period_end,
+         ps.status AS subscription_status,
+         ps.provisioning_status,
+         ps.payment_provider
+       FROM user_providers p
+       JOIN users u ON u.id = p.user_id
+       LEFT JOIN provider_subscriptions ps ON ps.user_provider_id = p.id
+                                          AND ps.status NOT IN ('cancelled')
+       WHERE p.network_id = $1
+       ORDER BY p.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [networkId, limit, offset]
+    );
+    return rows;
+  },
+
+  /**
+   * All lines across ALL networks (admin global view).
+   */
+  async findAllNetworkLines({ limit = 200, offset = 0, networkId = null } = {}) {
+    const conditions = ['p.network_id IS NOT NULL'];
+    const values = [];
+    let idx = 1;
+    if (networkId) {
+      conditions.push(`p.network_id = $${idx++}`);
+      values.push(networkId);
+    }
+    values.push(limit, offset);
+    const { rows } = await pool.query(
+      `SELECT
+         p.id,
+         p.username,
+         p.password,
+         p.status,
+         p.created_at,
+         p.account_expires_at,
+         p.account_max_connections,
+         n.id   AS network_id,
+         n.name AS network_name,
+         u.id   AS user_id,
+         u.email AS user_email,
+         ps.id   AS subscription_id,
+         ps.selected_plan_name,
+         ps.current_period_end,
+         ps.status AS subscription_status,
+         ps.provisioning_status,
+         ps.payment_provider
+       FROM user_providers p
+       JOIN provider_networks n ON n.id = p.network_id
+       JOIN users u ON u.id = p.user_id
+       LEFT JOIN provider_subscriptions ps ON ps.user_provider_id = p.id
+                                          AND ps.status NOT IN ('cancelled')
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY p.created_at DESC
+       LIMIT $${idx++} OFFSET $${idx++}`,
+      values
     );
     return rows;
   },
@@ -2562,7 +2694,7 @@ const subscriptionQueries = {
   },
 
   async update(id, fields) {
-    const allowed = ['status', 'current_period_start', 'current_period_end', 'cancel_at_period_end', 'cancelled_at', 'trial_end', 'user_provider_id', 'twenty_subscription_id', 'auto_renew', 'selected_plan_code', 'selected_plan_name', 'selected_price_cents', 'selected_currency', 'selected_billing_period', 'selected_interval_count'];
+    const allowed = ['status', 'current_period_start', 'current_period_end', 'cancel_at_period_end', 'cancelled_at', 'trial_end', 'user_provider_id', 'twenty_subscription_id', 'auto_renew', 'selected_plan_code', 'selected_plan_name', 'selected_price_cents', 'selected_currency', 'selected_billing_period', 'selected_interval_count', 'provisioning_status', 'provisioning_error'];
     const sets = [];
     const values = [];
     let idx = 1;
@@ -2578,6 +2710,36 @@ const subscriptionQueries = {
     const { rows } = await pool.query(
       `UPDATE provider_subscriptions SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
       values
+    );
+    return rows[0] || null;
+  },
+
+  async updateProvisioningStatus(id, status, error = null) {
+    const { rows } = await pool.query(
+      `UPDATE provider_subscriptions
+       SET provisioning_status = $1,
+           provisioning_error   = $2,
+           updated_at           = NOW()
+       WHERE id = $3
+       RETURNING id, provisioning_status, provisioning_error, user_provider_id`,
+      [status, error || null, id]
+    );
+    return rows[0] || null;
+  },
+
+  async findProvisionStatus(id, userId) {
+    const { rows } = await pool.query(
+      `SELECT ps.id,
+              ps.provisioning_status,
+              ps.provisioning_error,
+              ps.status AS subscription_status,
+              ps.user_provider_id,
+              ps.payment_provider,
+              ps.selected_plan_name,
+              ps.current_period_end
+       FROM provider_subscriptions ps
+       WHERE ps.id = $1 AND ps.user_id = $2`,
+      [id, userId]
     );
     return rows[0] || null;
   },

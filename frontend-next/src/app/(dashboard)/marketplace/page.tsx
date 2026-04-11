@@ -151,9 +151,14 @@ function PaymentMethodModal({
       }
 
       if (method === 'credits') {
-        toast.success('Subscription activated with credits!')
-        onSuccess()
-        onClose()
+        // Credits are instant — go to provisioning page to show live status
+        if (data.subscription_id) {
+          window.location.href = `/subscriptions/provisioning/${data.subscription_id}`
+        } else {
+          toast.success('Subscription activated with credits!')
+          onSuccess()
+          onClose()
+        }
       }
     } catch (err: any) {
       if (err.response?.status === 409 && err.response?.data?.warning === 'already_subscribed') {

@@ -85,7 +85,7 @@ async function createCheckoutSession(user, offering) {
     customer: customer.id,
     mode: 'subscription',
     line_items: [lineItem],
-    success_url: `${process.env.FRONTEND_URL}/dashboard/subscriptions?session_id={CHECKOUT_SESSION_ID}`,
+    success_url: `${process.env.FRONTEND_URL}/subscriptions/provisioning?stripe_session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${process.env.FRONTEND_URL}/dashboard/marketplace`,
     metadata: {
       streamio_user_id: user.id,
@@ -220,6 +220,15 @@ async function syncOffering(offering, previousOffering = null) {
   return { productId, priceId: price.id };
 }
 
+async function retrieveCheckoutSession(sessionId) {
+  if (!stripe) return null;
+  try {
+    return await stripe.checkout.sessions.retrieve(sessionId, { expand: ['subscription'] });
+  } catch (err) {
+    return null;
+  }
+}
+
 module.exports = {
   isEnabled: STRIPE_ENABLED,
   createOrGetCustomer,
@@ -229,4 +238,5 @@ module.exports = {
   constructWebhookEvent,
   createProductAndPrice,
   syncOffering,
+  retrieveCheckoutSession,
 };

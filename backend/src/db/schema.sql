@@ -861,6 +861,23 @@ CREATE TABLE IF NOT EXISTS system_settings (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ─────────────────────────────────────────
+-- Provider Network Adapter Type
+-- ─────────────────────────────────────────
+ALTER TABLE provider_networks
+  ADD COLUMN IF NOT EXISTS adapter_type TEXT NOT NULL DEFAULT 'xtream_ui_scraper';
+
+-- ─────────────────────────────────────────
+-- Provisioning Status on Subscriptions
+-- ─────────────────────────────────────────
+ALTER TABLE provider_subscriptions
+  ADD COLUMN IF NOT EXISTS provisioning_status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE provider_subscriptions
+  ADD COLUMN IF NOT EXISTS provisioning_error TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_provider_subs_provisioning
+  ON provider_subscriptions(provisioning_status);
+
 -- Default credit settings
 INSERT INTO system_settings (key, value)
 VALUES (

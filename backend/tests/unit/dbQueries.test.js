@@ -124,3 +124,44 @@ describe('vodQueries batch upserts', () => {
     expect(calls.some(call => call[0] && call[0].includes('DELETE FROM user_provider_vod existing'))).toBeTruthy();
   });
 });
+
+describe('providerQueries network lines', () => {
+  it('findNetworkLines queries for lines belonging to a specific network', async () => {
+    const { providerQueries } = require('../../src/db/queries');
+    await providerQueries.findNetworkLines('net-1', { limit: 10, offset: 0 });
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE p.network_id = $1'),
+      ['net-1', 10, 0]
+    );
+  });
+
+  it('findAllNetworkLines queries for lines across all networks', async () => {
+    const { providerQueries } = require('../../src/db/queries');
+    await providerQueries.findAllNetworkLines({ limit: 20, offset: 10 });
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE p.network_id IS NOT NULL'),
+      [20, 10]
+    );
+  });
+});
+
+describe('subscriptionQueries provisioning status', () => {
+  it('updateProvisioningStatus sets status and error', async () => {
+    const { subscriptionQueries } = require('../../src/db/queries');
+    await subscriptionQueries.updateProvisioningStatus('sub-1', 'active', null);
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('provisioning_status = $1'),
+      ['active', null, 'sub-1']
+    );
+  });
+
+  it('findProvisionStatus selects the required fields', async () => {
+    const { subscriptionQueries } = require('../../src/db/queries');
+    await subscriptionQueries.findProvisionStatus('sub-1', 'user-1');
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('ps.provisioning_status'),
+      ['sub-1', 'user-1']
+    );
+  });
+});
+

@@ -200,6 +200,46 @@ router.get('/subscriptions', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/subscriptions/resolve?stripe_session_id=cs_xxx
+// Called by the provisioning page when returning from Stripe checkout.
+// Resolves a Stripe checkout session ID → our subscription ID.
+router.get('/subscriptions/resolve', requireAuth, async (req, res) => {
+  try {
+    const { stripe_session_id } = req.query;
+    if (!stripe_session_id) return res.status(400).json({ error: 'stripe_session_id required' });
+
+    // Retrieve the session from Stripe to get the subscription ID
+    const session = await stripeService.retrieveCheckoutSession(stripe_session_id);
+    if (!session?.subscription) {
+      // Webhook may not have fired yet — return 202 so frontend can retry
+      return res.status(202).json({ pending: true, message: 'Payment processing, please wait…' });
+    }
+
+    const sub = await subscriptionQueries.findByStripeSubscriptionId(session.subscription);
+    if (!sub || sub.user_id !== req.user.id) {
+      return res.status(202).json({ pending: true, message: 'Setting up your subscription…' });
+    }
+
+    res.json({ subscription_id: sub.id });
+  } catch (err) {
+    logger.error('GET /subscriptions/resolve:', err.message);
+    res.status(500).json({ error: 'Failed to resolve subscription' });
+  }
+});
+
+// GET /api/subscriptions/:id/provision-status
+// Polled by the frontend spinner after checkout to track async provisioning.
+router.get('/subscriptions/:id/provision-status', requireAuth, async (req, res) => {
+  try {
+    const row = await subscriptionQueries.findProvisionStatus(req.params.id, req.user.id);
+    if (!row) return res.status(404).json({ error: 'Subscription not found' });
+    res.json(row);
+  } catch (err) {
+    logger.error('GET /subscriptions/:id/provision-status:', err.message);
+    res.status(500).json({ error: 'Failed to fetch provisioning status' });
+  }
+});
+
 // GET /api/subscriptions/portal — must come BEFORE /:id to avoid route conflict
 router.get('/subscriptions/portal', requireAuth, async (req, res) => {
   try {

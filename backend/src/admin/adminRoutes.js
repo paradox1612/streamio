@@ -840,6 +840,38 @@ router.post('/networks/:id/refresh-session', requireAdmin, async (req, res) => {
   }
 });
 
+// ─── Network Lines (Admin) ───────────────────────────────────────────────────
+
+// GET /admin/networks/:id/lines — all lines provisioned for a specific network
+router.get('/networks/:id/lines', requireAdmin, async (req, res) => {
+  try {
+    const network = await providerNetworkQueries.findById(req.params.id);
+    if (!network) return res.status(404).json({ error: 'Network not found' });
+    const limit = Math.min(parseInt(req.query.limit, 10) || 200, 500);
+    const offset = parseInt(req.query.offset, 10) || 0;
+    const lines = await providerQueries.findNetworkLines(req.params.id, { limit, offset });
+    res.json({ network: { id: network.id, name: network.name }, lines, limit, offset });
+  } catch (err) {
+    logger.error(`GET /admin/networks/:id/lines: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /admin/networks/lines — all lines across all networks (global view)
+// Note: must be defined BEFORE /networks/:id to avoid param collision
+router.get('/networks-lines', requireAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 200, 500);
+    const offset = parseInt(req.query.offset, 10) || 0;
+    const networkId = req.query.network_id || null;
+    const lines = await providerQueries.findAllNetworkLines({ limit, offset, networkId });
+    res.json({ lines, limit, offset });
+  } catch (err) {
+    logger.error(`GET /admin/networks-lines: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── CRM Admin ────────────────────────────────────────────────────────────────
 
 // GET /api/admin/crm/status — connection health + sync stats

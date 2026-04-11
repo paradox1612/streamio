@@ -1,10 +1,11 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
+import { useSearchParams } from 'next/navigation'
 import { providerAPI } from '@/utils/api'
-import { Plus, Check, RefreshCw, Signal, Trash2, ArrowRight } from 'lucide-react'
+import { Plus, Check, RefreshCw, Signal, Trash2, ArrowRight, Sparkles } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge'
 import EmptyState from '@/components/EmptyState'
 import ConfirmDialog from '@/components/ConfirmDialog'
@@ -217,11 +218,16 @@ function ProviderRow({ provider, onRefresh, onDelete }: { provider: Provider; on
 }
 
 export default function ProvidersPage() {
+  const searchParams = useSearchParams()
+  const newProviderId = searchParams.get('new')
+
   const [providers, setProviders] = useState<Provider[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Provider | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [highlightId, setHighlightId] = useState<string | null>(newProviderId)
+  const highlightRef = useRef<HTMLDivElement | null>(null)
 
   const load = () => {
     providerAPI.list()
@@ -231,6 +237,14 @@ export default function ProvidersPage() {
   }
 
   useEffect(() => { load() }, [])
+
+  // Scroll to and clear highlight after a few seconds
+  useEffect(() => {
+    if (!highlightId || !highlightRef.current) return
+    highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const t = setTimeout(() => setHighlightId(null), 5000)
+    return () => clearTimeout(t)
+  }, [highlightId, providers])
 
   const handleDeleteProvider = async () => {
     if (!deleteTarget) return
@@ -288,9 +302,29 @@ export default function ProvidersPage() {
         />
       ) : (
         <section className="space-y-4">
-          {providers.map(p => (
-            <ProviderRow key={p.id} provider={p} onRefresh={load} onDelete={setDeleteTarget} />
-          ))}
+          {providers.map(p => {
+            const isNew = p.id === highlightId
+            return (
+              <div
+                key={p.id}
+                ref={isNew ? highlightRef : null}
+                className={[
+                  'rounded-2xl transition-all duration-700',
+                  isNew
+                    ? 'ring-2 ring-blue-500/60 shadow-[0_0_24px_rgba(59,130,246,0.25)]'
+                    : '',
+                ].join(' ')}
+              >
+                {isNew && (
+                  <div className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-blue-400">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Just provisioned — your new subscription
+                  </div>
+                )}
+                <ProviderRow provider={p} onRefresh={load} onDelete={setDeleteTarget} />
+              </div>
+            )
+          })}
         </section>
       )}
 

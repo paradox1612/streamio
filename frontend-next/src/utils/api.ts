@@ -109,6 +109,10 @@ export const marketplaceAPI = {
   cancelSubscription: (id: string) => api.post(`/api/subscriptions/${id}/cancel`),
   getPaymentHistory: (params?: { limit?: number; offset?: number }) =>
     api.get('/api/payments/history', { params }),
+  getProvisionStatus: (subscriptionId: string) =>
+    api.get(`/api/subscriptions/${subscriptionId}/provision-status`),
+  resolveStripeSession: (stripeSessionId: string) =>
+    api.get('/api/subscriptions/resolve', { params: { stripe_session_id: stripeSessionId } }),
 }
 
 export const creditsAPI = {

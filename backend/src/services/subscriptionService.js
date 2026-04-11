@@ -3,7 +3,7 @@ const { pool, offeringQueries, subscriptionQueries, paymentQueries, providerNetw
 const logger = require('../utils/logger');
 const eventBus = require('../utils/eventBus');
 const providerService = require('./providerService');
-const xtreamUiScraper = require('../utils/xtreamUiScraper');
+const ProviderAdapterFactory = require('../providers/ProviderAdapterFactory');
 const { resolveSelectedPlan } = require('../utils/marketplacePlans');
 
 function sanitizeTokenPart(value, fallback = 'user') {
@@ -24,33 +24,45 @@ function buildMarketplaceLinePassword() {
   return crypto.randomBytes(8).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
 }
 
-async function ensureManagedNetworkSession(network, panelHost) {
-  if (!network.xtream_ui_scraped) return null;
-  if (!panelHost) throw new Error('No reseller portal URL or customer hosts configured');
-
-  const tryRefresh = async () => {
-    if (!network.reseller_username || !network.reseller_password) {
-      throw new Error('Reseller username and password required for auto-login');
+/**
+ * Returns a ProviderAdapter for the given network and, for scraper-type networks,
+ * ensures the session is valid — persisting any refreshed cookie back to the DB.
+ */
+async function getNetworkAdapter(network) {
+  const adapter = ProviderAdapterFactory.create(network);
+  // For session-based adapters, eagerly validate/refresh so callers don't need to.
+  if (network.xtream_ui_scraped || network.adapter_type === 'xtream_ui_scraper') {
+    await adapter.ensureSession();
+    // Persist updated session cookie if it changed
+    if (adapter.network.reseller_session_cookie !== network.reseller_session_cookie) {
+      await providerNetworkQueries.update(network.id, {
+        reseller_session_cookie: adapter.network.reseller_session_cookie,
+      });
     }
-    const session = await xtreamUiScraper.autoLogin(
-      panelHost,
-      network.reseller_username,
-      network.reseller_password
-    );
-    await providerNetworkQueries.update(network.id, { reseller_session_cookie: session });
-    network.reseller_session_cookie = session;
-    return session;
-  };
-
-  if (!network.reseller_session_cookie) {
-    return tryRefresh();
   }
+  return adapter;
+}
 
-  const isValid = await xtreamUiScraper.isSessionValid(panelHost, network.reseller_session_cookie);
-  if (isValid) return network.reseller_session_cookie;
-
-  logger.info(`[SubscriptionService] Refreshing stale reseller session for network ${network.id}`);
-  return tryRefresh();
+/**
+ * Fire-and-forget wrapper around provisionCredentials.
+ * Updates provisioning_status on the subscription so the frontend can poll.
+ */
+async function provisionInBackground(subscriptionId, userId, offering, opts) {
+  try {
+    await subscriptionQueries.updateProvisioningStatus(subscriptionId, 'provisioning');
+    const userProvider = await provisionCredentials(userId, offering, { ...opts, subscriptionId });
+    if (userProvider) {
+      await subscriptionQueries.update(subscriptionId, { user_provider_id: userProvider.id });
+      await subscriptionQueries.updateProvisioningStatus(subscriptionId, 'active');
+      logger.info(`[SubscriptionService] Provisioning complete for sub ${subscriptionId}, provider ${userProvider.id}`);
+    } else {
+      await subscriptionQueries.updateProvisioningStatus(subscriptionId, 'failed', 'No credentials returned from provider');
+      logger.warn(`[SubscriptionService] Provisioning returned null for sub ${subscriptionId}`);
+    }
+  } catch (err) {
+    logger.error(`[SubscriptionService] Provisioning failed for sub ${subscriptionId}: ${err.message}`);
+    await subscriptionQueries.updateProvisioningStatus(subscriptionId, 'failed', err.message);
+  }
 }
 
 /**
@@ -110,23 +122,17 @@ async function handlePurchase({ stripeSession, stripeSubscription }) {
     selected_interval_count: selectedPlan.billing_interval_count,
   });
 
-  // Provision IPTV credentials if linked to a provider network
-  let userProvider = null;
+  // Kick off provisioning in the background — user is redirected immediately
+  // and polls /provision-status/:id for updates.
   if (offering.provider_network_id) {
-    try {
-      userProvider = await provisionCredentials(userId, offering, {
-        user,
-        expiresAt: sub.current_period_end,
-        subscriptionId: sub.id,
-        selectedPlan,
-      });
-      if (userProvider) {
-        await subscriptionQueries.update(sub.id, { user_provider_id: userProvider.id });
-        sub.user_provider_id = userProvider.id;
-      }
-    } catch (err) {
-      logger.error(`[SubscriptionService] Credential provisioning failed: ${err.message}`);
-    }
+    provisionInBackground(sub.id, userId, offering, {
+      user,
+      expiresAt: sub.current_period_end,
+      selectedPlan,
+    });
+  } else {
+    // No network linked — nothing to provision, mark complete immediately.
+    await subscriptionQueries.updateProvisioningStatus(sub.id, 'not_required');
   }
 
   // Emit event for CRM sync (fire and forget)
@@ -142,7 +148,7 @@ async function handlePurchase({ stripeSession, stripeSubscription }) {
     }
   }
 
-  logger.info(`[SubscriptionService] Subscription ${sub.id} created for user ${userId}`);
+  logger.info(`[SubscriptionService] Subscription ${sub.id} created for user ${userId}, provisioning started`);
   return sub;
 }
 
@@ -231,42 +237,18 @@ async function provisionManagedResellerLine(userId, offering, { user = null, exp
   const maxConnections = selectedPlan?.max_connections || offering.max_connections || 1;
   const isTrial = selectedPlan?.is_trial === true || (selectedPlan?.trial_days || 0) > 0;
 
-  if (network.xtream_ui_scraped) {
-    const session = await ensureManagedNetworkSession(network, panelHost);
-    const result = await xtreamUiScraper.createLine(panelHost, session, {
-      username: lineUsername,
-      password: linePassword,
-      maxConnections,
-      expDate: unixExpiry,
-      bouquetIds,
-      trial: isTrial,
-      notes,
-    });
-    if (!result?.success) {
-      throw new Error(result?.message || 'Failed to create reseller line');
-    }
-  } else {
-    if (!network.reseller_username || !network.reseller_password) {
-      throw new Error('Reseller credentials not configured for this network');
-    }
-
-    const result = await providerService.createResellerUser(
-      panelHost,
-      network.reseller_username,
-      network.reseller_password,
-      {
-        username: lineUsername,
-        password: linePassword,
-        maxConnections,
-        expDate: unixExpiry,
-        bouquetIds,
-      }
-    );
-
-    const resultText = JSON.stringify(result || {}).toLowerCase();
-    if (result?.success === false || resultText.includes('error')) {
-      throw new Error(result?.message || 'Failed to create reseller line');
-    }
+  const adapter = await getNetworkAdapter(network);
+  const result = await adapter.createLine({
+    username: lineUsername,
+    password: linePassword,
+    maxConnections,
+    expDate: unixExpiry,
+    bouquetIds,
+    trial: isTrial,
+    notes,
+  });
+  if (!result?.success) {
+    throw new Error(result?.message || 'Failed to create reseller line');
   }
 
   return providerQueries.create({
@@ -420,22 +402,15 @@ async function createSubscriptionFromCredits(userId, offeringId, { planCode = nu
     selected_interval_count: selectedPlan.billing_interval_count,
   });
 
-  // Provision IPTV credentials
+  // Kick off provisioning in the background
   if (offering.provider_network_id) {
-    try {
-      const userProvider = await provisionCredentials(userId, offering, {
-        user,
-        expiresAt: sub.current_period_end,
-        subscriptionId: sub.id,
-        selectedPlan,
-      });
-      if (userProvider) {
-        await subscriptionQueries.update(sub.id, { user_provider_id: userProvider.id });
-        sub.user_provider_id = userProvider.id;
-      }
-    } catch (err) {
-      logger.error(`[SubscriptionService] Credential provisioning failed for credits sub ${sub.id}: ${err.message}`);
-    }
+    provisionInBackground(sub.id, userId, offering, {
+      user,
+      expiresAt: sub.current_period_end,
+      selectedPlan,
+    });
+  } else {
+    await subscriptionQueries.updateProvisioningStatus(sub.id, 'not_required');
   }
 
   // Emit event for CRM sync
