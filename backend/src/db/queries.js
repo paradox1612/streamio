@@ -23,9 +23,9 @@ const PROVIDER_HOSTS_EXPR = `
         ),
         ARRAY[]::TEXT[]
       ),
-      p.hosts
+      p.hosts::TEXT[]
     )
-  ELSE p.hosts END
+  ELSE p.hosts::TEXT[] END
 `;
 
 /**
