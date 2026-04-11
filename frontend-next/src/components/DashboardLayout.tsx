@@ -12,15 +12,30 @@ import BrandMark from './BrandMark'
 import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
 
-const baseNavItems = [
-  { path: '/dashboard',   label: 'Home',        mobileLabel: 'Home',    icon: LayoutDashboard },
-  { path: '/marketplace', label: 'Marketplace', mobileLabel: 'Shop',    icon: ShoppingCart },
-  { path: '/subscriptions', label: 'Billing',   mobileLabel: 'Billing', icon: CreditCard },
-  { path: '/providers',   label: 'Providers',    mobileLabel: 'Sources', icon: Server },
-  { path: '/vod',         label: 'Browse VOD',   mobileLabel: 'VOD',     icon: Film },
-  { path: '/live',        label: 'Live TV',      mobileLabel: 'Live',    icon: Tv2 },
-  { path: '/addon',       label: 'Addon',        mobileLabel: 'Addon',   icon: Settings },
-  { path: '/account',     label: 'Account',      mobileLabel: 'Account', icon: User },
+const navGroups = [
+  {
+    title: 'General',
+    items: [
+      { path: '/dashboard', label: 'Home', mobileLabel: 'Home', icon: LayoutDashboard },
+      { path: '/addon', label: 'Stremio Addon', mobileLabel: 'Addon', icon: Settings },
+    ],
+  },
+  {
+    title: 'Discovery',
+    items: [
+      { path: '/marketplace', label: 'Marketplace', mobileLabel: 'Shop', icon: ShoppingCart },
+      { path: '/vod', label: 'Browse VOD', mobileLabel: 'VOD', icon: Film },
+      { path: '/live', label: 'Live TV', mobileLabel: 'Live', icon: Tv2 },
+    ],
+  },
+  {
+    title: 'Management',
+    items: [
+      { path: '/providers', label: 'My Providers', mobileLabel: 'Sources', icon: Server },
+      { path: '/subscriptions', label: 'Billing', mobileLabel: 'Billing', icon: CreditCard },
+      { path: '/account', label: 'Account', mobileLabel: 'Profile', icon: User },
+    ],
+  },
 ]
 
 function SidebarNavItem({ to, icon: Icon, label, onClick }: { to: string; icon: React.ElementType; label: string; onClick?: () => void }) {
@@ -93,12 +108,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push('/login')
   }
 
-  /* eslint-disable @typescript-eslint/no-explicit-any */
-  const navItems = baseNavItems.filter((item) => {
-    if (item.path === '/live') return Boolean((user as any)?.can_use_live_tv)
-    if (item.path === '/vod') return Boolean((user as any)?.canBrowseWebCatalog ?? (user as any)?.can_browse_web_catalog ?? (user as any)?.has_byo_providers)
-    return true
-  })
+  const filteredGroups = navGroups.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => {
+      if (item.path === '/live') return Boolean((user as any)?.can_use_live_tv)
+      if (item.path === '/vod') return Boolean((user as any)?.canBrowseWebCatalog ?? (user as any)?.can_browse_web_catalog ?? (user as any)?.has_byo_providers)
+      return true
+    }),
+  })).filter(g => g.items.length > 0)
+
+  const flatNavItems = filteredGroups.flatMap(g => g.items)
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
   return (
@@ -127,15 +146,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Workspace">
-          <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">Workspace</p>
-          <ul className="space-y-1" role="list">
-            {navItems.map((item) => (
-              <li key={item.path}>
-                <SidebarNavItem to={item.path} icon={item.icon} label={item.label} onClick={() => setSidebarOpen(false)} />
-              </li>
-            ))}
-          </ul>
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6" aria-label="Workspace">
+          {filteredGroups.map((group) => (
+            <div key={group.title}>
+              <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">{group.title}</p>
+              <ul className="space-y-1" role="list">
+                {group.items.map((item) => (
+                  <li key={item.path}>
+                    <SidebarNavItem to={item.path} icon={item.icon} label={item.label} onClick={() => setSidebarOpen(false)} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </nav>
 
         <div className="border-t border-white/[0.08] p-3 space-y-2">
@@ -200,7 +223,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           aria-label="Mobile navigation"
         >
           <ul className="flex min-w-max gap-1" role="list">
-            {navItems.map((item) => {
+            {flatNavItems.map((item) => {
               const Icon = item.icon
               const isActive = pathname === item.path || pathname.startsWith(item.path + '/')
               return (
