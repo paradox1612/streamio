@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { marketplaceAPI } from '@/utils/api'
 import { CheckCircle2, XCircle, Tv2 } from 'lucide-react'
@@ -21,7 +21,7 @@ const MAX_WAIT_MS = 3 * 60 * 1000 // 3 minutes
 
 type ProvisionStatus = 'pending' | 'provisioning' | 'active' | 'failed' | 'not_required'
 
-export default function ProvisioningPage() {
+function ProvisioningContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -188,3 +188,22 @@ export default function ProvisioningPage() {
     </div>
   )
 }
+
+export default function ProvisioningPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-surface-950 p-6">
+        <div className="w-full max-w-md text-center">
+          <div className="relative mx-auto mb-8 flex h-24 w-24 items-center justify-center">
+            <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-blue-500" />
+            <Tv2 className="h-10 w-10 text-blue-400" />
+          </div>
+          <h1 className="text-xl font-semibold text-white">Loading…</h1>
+        </div>
+      </div>
+    }>
+      <ProvisioningContent />
+    </Suspense>
+  )
+}
+

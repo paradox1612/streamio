@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, Suspense } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { useSearchParams } from 'next/navigation'
@@ -153,7 +153,9 @@ function ProviderRow({ provider, onRefresh, onDelete }: { provider: Provider; on
           <div className="min-w-0 flex-1">
             <div className="mb-3 flex flex-wrap items-center gap-3">
               <h3 className="text-2xl font-bold text-white">{provider.name}</h3>
-              <StatusBadge status={provider.status} pulse={online} />
+              <span className="flex-shrink-0">
+                <StatusBadge status={provider.status} pulse={online} />
+              </span>
             </div>
             <p className="break-all text-sm text-slate-300/60">{provider.active_host || 'Not connected yet'}</p>
 
@@ -217,7 +219,7 @@ function ProviderRow({ provider, onRefresh, onDelete }: { provider: Provider; on
   )
 }
 
-export default function ProvidersPage() {
+function ProvidersContent() {
   const searchParams = useSearchParams()
   const newProviderId = searchParams.get('new')
 
@@ -350,3 +352,16 @@ export default function ProvidersPage() {
     </div>
   )
 }
+
+export default function ProvidersPage() {
+  return (
+    <Suspense fallback={
+      <div className="mx-auto max-w-7xl">
+        <Card className="p-8 text-center text-slate-300/60">Loading your providers…</Card>
+      </div>
+    }>
+      <ProvidersContent />
+    </Suspense>
+  )
+}
+
