@@ -17,6 +17,7 @@ import {
   PlugZap,
   Settings,
   Shield,
+  ShoppingCart,
   Users,
   UserSquare2,
   X,
@@ -27,22 +28,43 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { persistAdminToken } from '@/lib/auth-cookies'
 
-const navItems = [
-  { path: '/admin/dashboard', label: 'Overview', icon: LayoutDashboard, description: 'System posture' },
-  { path: '/admin/blog', label: 'Blog', icon: FileText, description: 'Publishing workflow' },
-  { path: '/admin/users', label: 'Users', icon: Users, description: 'Access and lifecycle' },
-  { path: '/admin/networks', label: 'Networks', icon: Globe, description: 'Managed panels' },
-  { path: '/admin/providers', label: 'Providers', icon: PlugZap, description: 'Catalog sources' },
-  { path: '/admin/free-access', label: 'Free Access', icon: Gift, description: 'Promotions and trials' },
-  { path: '/admin/health', label: 'Host Health', icon: HeartPulse, description: 'Routing confidence' },
-  { path: '/admin/errors', label: 'Errors', icon: OctagonAlert, description: 'Crash reports' },
-  { path: '/admin/tmdb', label: 'TMDB Matching', icon: Crosshair, description: 'Catalog integrity' },
-  { path: '/admin/system', label: 'System', icon: Settings, description: 'Infrastructure' },
-  { path: '/admin/settings/crm', label: 'CRM', icon: UserSquare2, description: 'Twenty CRM sync' },
-  { path: '/admin/settings/credits', label: 'Credits', icon: Shield, description: 'Top-up rules' },
+const navGroups = [
+  {
+    title: 'Core',
+    items: [
+      { path: '/admin/dashboard', label: 'Overview', icon: LayoutDashboard, description: 'System posture' },
+      { path: '/admin/system', label: 'System', icon: Settings, description: 'Infrastructure' },
+      { path: '/admin/users', label: 'Users', icon: Users, description: 'Access and lifecycle' },
+    ]
+  },
+  {
+    title: 'Content & Marketplace',
+    items: [
+      { path: '/admin/marketplace', label: 'Marketplace', icon: ShoppingCart, description: 'Product catalog' },
+      { path: '/admin/blog', label: 'Blog', icon: FileText, description: 'Publishing workflow' },
+      { path: '/admin/tmdb', label: 'TMDB Matching', icon: Crosshair, description: 'Catalog integrity' },
+    ]
+  },
+  {
+    title: 'Infrastructure',
+    items: [
+      { path: '/admin/providers', label: 'Providers', icon: PlugZap, description: 'Catalog sources' },
+      { path: '/admin/networks', label: 'Networks', icon: Globe, description: 'Managed panels' },
+      { path: '/admin/health', label: 'Host Health', icon: HeartPulse, description: 'Routing confidence' },
+      { path: '/admin/errors', label: 'Errors', icon: OctagonAlert, description: 'Crash reports' },
+    ]
+  },
+  {
+    title: 'Growth & Billing',
+    items: [
+      { path: '/admin/free-access', label: 'Free Access', icon: Gift, description: 'Promotions and trials' },
+      { path: '/admin/settings/credits', label: 'Credits', icon: Shield, description: 'Top-up rules' },
+      { path: '/admin/settings/crm', label: 'CRM', icon: UserSquare2, description: 'Twenty CRM sync' },
+    ]
+  }
 ]
 
-function AdminNavItem({ item, onClick }: { item: (typeof navItems)[number]; onClick?: () => void }) {
+function AdminNavItem({ item, onClick }: { item: typeof navGroups[0]['items'][0]; onClick?: () => void }) {
   const pathname = usePathname()
   const isActive = pathname === item.path || pathname.startsWith(item.path + '/')
   const Icon = item.icon
@@ -52,7 +74,7 @@ function AdminNavItem({ item, onClick }: { item: (typeof navItems)[number]; onCl
       href={item.path}
       onClick={onClick}
       className={cn(
-        'group flex items-center gap-3 rounded-[22px] border px-3 py-3 transition-all duration-200',
+        'group flex items-center gap-3 rounded-[22px] border px-3 py-2.5 transition-all duration-200',
         isActive
           ? 'border-brand-400/25 bg-brand-500/12 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]'
           : 'border-transparent bg-transparent text-slate-300/70 hover:border-white/[0.08] hover:bg-white/[0.05] hover:text-white'
@@ -60,7 +82,7 @@ function AdminNavItem({ item, onClick }: { item: (typeof navItems)[number]; onCl
     >
       <span
         className={cn(
-          'flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border transition-colors',
+          'flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border transition-colors',
           isActive
             ? 'border-brand-400/25 bg-brand-500/12 text-brand-200'
             : 'border-white/[0.08] bg-white/[0.04] text-slate-400 group-hover:text-slate-100'
@@ -69,8 +91,8 @@ function AdminNavItem({ item, onClick }: { item: (typeof navItems)[number]; onCl
         <Icon className="h-4 w-4" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold">{item.label}</span>
-        <span className="block truncate text-xs text-slate-400/75">{item.description}</span>
+        <span className="block text-sm font-semibold leading-tight">{item.label}</span>
+        <span className="block truncate text-[10px] text-slate-400/75 leading-tight mt-0.5">{item.description}</span>
       </span>
     </Link>
   )
@@ -129,14 +151,18 @@ export default function AdminProtectedLayout({ children }: { children: React.Rea
             </button>
           </div>
 
-          <div className="mt-4 rounded-[24px] border border-white/[0.08] bg-white/[0.03] p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400/85">Control scope</p>
-            <p className="mt-2 text-sm text-slate-200">Users, providers, routing health, and catalog operations.</p>
-          </div>
-
-          <nav className="mt-4 flex-1 space-y-2 overflow-y-auto pr-1">
-            {navItems.map((item) => (
-              <AdminNavItem key={item.path} item={item} onClick={() => setSidebarOpen(false)} />
+          <nav className="mt-4 flex-1 space-y-6 overflow-y-auto pr-1">
+            {navGroups.map((group) => (
+              <div key={group.title} className="space-y-1.5">
+                <p className="px-3 text-[10px] font-bold uppercase tracking-widest text-slate-500/80">
+                  {group.title}
+                </p>
+                <div className="space-y-1">
+                  {group.items.map((item) => (
+                    <AdminNavItem key={item.path} item={item} onClick={() => setSidebarOpen(false)} />
+                  ))}
+                </div>
+              </div>
             ))}
           </nav>
 

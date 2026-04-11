@@ -4,7 +4,7 @@ const { requireAuth } = require('../middleware/auth');
 const providerService = require('../services/providerService');
 const hostHealthService = require('../services/hostHealthService');
 const epgService = require('../services/epgService');
-const { providerQueries, vodQueries, jobQueries } = require('../db/queries');
+const { providerQueries, vodQueries, jobQueries, pool } = require('../db/queries');
 const cache = require('../utils/cache');
 const logger = require('../utils/logger');
 const eventBus = require('../utils/eventBus');
@@ -608,7 +608,6 @@ router.post('/:id/manual-match',
       });
 
       // Mark as manually matched so auto-job won't overwrite
-      const { pool } = require('../db/queries');
       await pool.query(
         `UPDATE matched_content SET manually_matched = true WHERE raw_title = $1`,
         [rawTitle]

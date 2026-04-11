@@ -110,6 +110,7 @@ const xtreamUiScraper = {
 
   /**
    * Fetch bouquets (packages) from the user_reseller.php page.
+   * Tries to find packages and fetch their associated bouquets via API.
    */
   async getBouquets(host, phpsessid) {
     const url = `${host}/user_reseller.php`;
@@ -123,44 +124,63 @@ const xtreamUiScraper = {
       });
       const body = await res.text();
 
-      // Find the bouquet multi-select or checkboxes using regex
-      // Pattern: <option value="(\d+)">([^<]+)</option> inside a bouquet-related select
-      // Or looking for names in the ALL_BOUQUETS style
-      
       const bouquets = [];
-      const seen = new Set();
+      const seenIds = new Set();
 
-      const pushBouquet = (id, name) => {
+      const addBouquet = (id, name) => {
         const cleanId = String(id || '').trim();
         const cleanName = String(name || '').replace(/&nbsp;/g, ' ').trim();
         if (!cleanId || !cleanName || /select/i.test(cleanName)) return;
-        if (seen.has(cleanId)) return;
-        seen.add(cleanId);
+        if (seenIds.has(cleanId)) return;
+        seenIds.add(cleanId);
         bouquets.push({ id: cleanId, bouquet_name: cleanName });
       };
 
-      const selectRegex = /<select[^>]+(?:name|id)="[^"]*bouquet[^"]*"[^>]*>([\s\S]*?)<\/select>/gi;
-      const optionRegex = /<option[^>]+value="([^"]+)"[^>]*>([^<]+)<\/option>/gi;
-      let selectMatch;
-      while ((selectMatch = selectRegex.exec(body)) !== null) {
-        let optionMatch;
-        while ((optionMatch = optionRegex.exec(selectMatch[1])) !== null) {
-          pushBouquet(optionMatch[1], optionMatch[2]);
+      // 1. Try to find package IDs in the HTML to fetch bouquets via API
+      const packageRegex = /<option[^>]+value="(\d+)"[^>]*>([^<]+(CREDIT|OFFICIAL|TRIAL)[^<]*)<\/option>/gi;
+      let pkgMatch;
+      const packageIds = [];
+      while ((pkgMatch = packageRegex.exec(body)) !== null) {
+        packageIds.push(pkgMatch[1]);
+      }
+
+      if (packageIds.length > 0) {
+        logger.info(`[Scraper] Found ${packageIds.length} packages, fetching bouquets via API...`);
+        for (const pkgId of packageIds.slice(0, 5)) { // Limit to first few to avoid over-fetching
+          try {
+            const apiRes = await fetch(`${host}/api.php?action=get_package&package_id=${pkgId}`, {
+              headers: { ...BROWSER_HEADERS, 'Cookie': `PHPSESSID=${phpsessid}` },
+            });
+            const apiData = await apiRes.json();
+            if (apiData && apiData.result && Array.isArray(apiData.bouquets)) {
+              apiData.bouquets.forEach(b => addBouquet(b.id, b.bouquet_name));
+            }
+          } catch (err) {
+            logger.warn(`[Scraper] Failed to fetch bouquets for package ${pkgId}: ${err.message}`);
+          }
         }
       }
 
-      const checkboxRegex = /<input[^>]+name="bouquet\[\]"[^>]+value="([^"]+)"[^>]*>[\s\S]{0,200}?<[^>]*>([^<]+)</gi;
-      let checkboxMatch;
-      while ((checkboxMatch = checkboxRegex.exec(body)) !== null) {
-        pushBouquet(checkboxMatch[1], checkboxMatch[2]);
+      // 2. Fallback: Traditional regex scraping of the page
+      if (bouquets.length === 0) {
+        const selectRegex = /<select[^>]+(?:name|id)="[^"]*bouquet[^"]*"[^>]*>([\s\S]*?)<\/select>/gi;
+        const optionRegex = /<option[^>]+value="([^"]+)"[^>]*>([^<]+)<\/option>/gi;
+        let selectMatch;
+        while ((selectMatch = selectRegex.exec(body)) !== null) {
+          let optionMatch;
+          while ((optionMatch = optionRegex.exec(selectMatch[1])) !== null) {
+            addBouquet(optionMatch[1], optionMatch[2]);
+          }
+        }
+
+        const checkboxRegex = /<input[^>]+type="checkbox"[^>]+name="bouquet\[\]"[^>]+value="(\d+)"[^>]*>([\s\S]*?)(?:<br|<\/td)/gi;
+        let checkboxMatch;
+        while ((checkboxMatch = checkboxRegex.exec(body)) !== null) {
+          addBouquet(checkboxMatch[1], checkboxMatch[2].replace(/<[^>]+>/g, '').trim());
+        }
       }
 
-      const objectRegex = /["']?(\d+)["']?\s*:\s*["']([^"']+)["']/g;
-      let objectMatch;
-      while ((objectMatch = objectRegex.exec(body)) !== null) {
-        pushBouquet(objectMatch[1], objectMatch[2]);
-      }
-
+      logger.info(`[Scraper] Successfully found ${bouquets.length} bouquets`);
       return bouquets;
     } catch (err) {
       logger.error(`Xtream UI getBouquets failed: ${err.message}`);
