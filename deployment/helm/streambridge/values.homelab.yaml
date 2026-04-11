@@ -29,6 +29,8 @@ backend:
     healthCheckStartupEnabled: "false"
     healthCheckBatchSize: "2"
     healthCheckProviderMinIntervalMs: "3600000"
+    twoCaptchaPollIntervalMs: "5000"
+    twoCaptchaPollAttempts: "48"
     accountLookupSuccessTtlSeconds: "600"
     accountLookupFailureTtlSeconds: "300"
     tmdbMatchBatchSize: "1000"

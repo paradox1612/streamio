@@ -19,6 +19,8 @@ backend:
     paygateEnabled: "false"  # GitHub deploy workflow flips this to true when PAYGATE_WALLET_ADDRESS is present
     healthCheckEnabled: "true"
     healthCheckStartupEnabled: "false"
+    twoCaptchaPollIntervalMs: "5000"
+    twoCaptchaPollAttempts: "48"
     tmdbMatchBatchSize: "1000"
     tmdbMatchConcurrency: "2"
     tmdbMatchBatchPauseMs: "250"

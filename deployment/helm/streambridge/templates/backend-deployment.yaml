@@ -81,6 +81,10 @@ spec:
               value: {{ .Values.backend.env.healthCheckBatchSize | quote }}
             - name: HEALTH_CHECK_PROVIDER_MIN_INTERVAL_MS
               value: {{ .Values.backend.env.healthCheckProviderMinIntervalMs | quote }}
+            - name: TWO_CAPTCHA_POLL_INTERVAL_MS
+              value: {{ .Values.backend.env.twoCaptchaPollIntervalMs | quote }}
+            - name: TWO_CAPTCHA_POLL_ATTEMPTS
+              value: {{ .Values.backend.env.twoCaptchaPollAttempts | quote }}
             - name: ACCOUNT_LOOKUP_SUCCESS_TTL_SECONDS
               value: {{ .Values.backend.env.accountLookupSuccessTtlSeconds | quote }}
             - name: ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS
