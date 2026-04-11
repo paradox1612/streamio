@@ -13,6 +13,7 @@ const paygateService = require('../services/paygateService');
 const creditService = require('../services/creditService');
 const subscriptionService = require('../services/subscriptionService');
 const logger = require('../utils/logger');
+const { resolveSelectedPlan } = require('../utils/marketplacePlans');
 
 // ─── Provider Offerings (catalog) ────────────────────────────────────────────
 
@@ -51,7 +52,7 @@ router.get('/marketplace/payment-providers', requireAuth, async (req, res) => {
 // Body: { offering_id, payment_provider: 'stripe' | 'paygate' | 'credits' }
 router.post('/marketplace/checkout', requireAuth, async (req, res) => {
   try {
-    const { offering_id, payment_provider = 'stripe', confirm_duplicate = false } = req.body;
+    const { offering_id, payment_provider = 'stripe', confirm_duplicate = false, plan_code = null, auto_renew = true } = req.body;
     if (!offering_id) return res.status(400).json({ error: 'offering_id is required' });
 
     const offering = await offeringQueries.findById(offering_id);
@@ -72,16 +73,16 @@ router.post('/marketplace/checkout', requireAuth, async (req, res) => {
 
     const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
     const user = rows[0];
+    const selectedPlan = resolveSelectedPlan(offering, plan_code);
+    const effectiveAutoRenew = payment_provider === 'stripe' ? auto_renew !== false : false;
+    const checkoutOffering = { ...offering, selected_plan: selectedPlan, auto_renew: effectiveAutoRenew };
 
     // ── Stripe checkout ──
     if (payment_provider === 'stripe') {
       if (!stripeService.isEnabled) {
         return res.status(503).json({ error: 'Stripe is not configured' });
       }
-      if (!offering.stripe_price_id) {
-        return res.status(400).json({ error: 'Offering is not yet linked to Stripe' });
-      }
-      const { url } = await stripeService.createCheckoutSession(user, offering);
+      const { url } = await stripeService.createCheckoutSession(user, checkoutOffering);
       return res.json({ payment_provider: 'stripe', checkout_url: url });
     }
 
@@ -98,7 +99,14 @@ router.post('/marketplace/checkout', requireAuth, async (req, res) => {
         status: 'pending_payment',
         payment_provider: 'paygate',
         current_period_start: new Date(),
-        current_period_end: paygateService.calcPeriodEnd(offering.billing_period),
+        current_period_end: paygateService.calcPeriodEnd(selectedPlan.billing_period, selectedPlan.billing_interval_count),
+        auto_renew: false,
+        selected_plan_code: selectedPlan.code,
+        selected_plan_name: selectedPlan.name,
+        selected_price_cents: selectedPlan.price_cents,
+        selected_currency: selectedPlan.currency,
+        selected_billing_period: selectedPlan.billing_period,
+        selected_interval_count: selectedPlan.billing_interval_count,
       });
 
       const callbackBase = `${process.env.API_BASE_URL || process.env.BASE_URL || 'http://localhost:3001'}/webhooks/paygate`;
@@ -118,8 +126,8 @@ router.post('/marketplace/checkout', requireAuth, async (req, res) => {
       await subscriptionQueries.update(sub.id, { paygate_address_in: session.addressIn });
 
       const checkoutUrl = paygateService.buildCheckoutUrl(session.addressIn, {
-        amountCents: offering.price_cents,
-        currency: offering.currency || 'USD',
+        amountCents: selectedPlan.price_cents,
+        currency: selectedPlan.currency || offering.currency || 'USD',
         email: user.email,
       });
 
@@ -133,61 +141,29 @@ router.post('/marketplace/checkout', requireAuth, async (req, res) => {
 
     // ── Credits checkout ──
     if (payment_provider === 'credits') {
-      const balance = await creditService.getBalance(user.id);
-      if (balance < offering.price_cents) {
-        return res.status(402).json({
-          error: 'Insufficient credits',
-          balance_cents: balance,
-          required_cents: offering.price_cents,
+      try {
+        const sub = await subscriptionService.createSubscriptionFromCredits(user.id, offering.id, {
+          planCode: selectedPlan.code,
+          autoRenew: auto_renew !== false,
         });
-      }
-
-      // Create active subscription immediately
-      const sub = await subscriptionQueries.create({
-        user_id: user.id,
-        offering_id: offering.id,
-        status: 'active',
-        payment_provider: 'credits',
-        current_period_start: new Date(),
-        current_period_end: paygateService.calcPeriodEnd(offering.billing_period),
-      });
-
-      // Deduct credits
-      await creditService.spendCredits(user.id, offering.price_cents, {
-        description: `Subscription: ${offering.name}`,
-        subscriptionId: sub.id,
-      });
-
-      // Provision credentials
-      if (offering.provider_network_id) {
-        try {
-          const userProvider = await subscriptionService.provisionCredentialsPublic(user.id, offering, {
-            user,
-            expiresAt: sub.current_period_end,
+        return res.json({
+          payment_provider: 'credits',
+          subscription_id: sub.id,
+          status: 'active',
+          message: 'Subscription activated with credits',
+        });
+      } catch (err) {
+        if (err.status === 402) {
+          const balance = await creditService.getBalance(user.id);
+          return res.status(402).json({
+            error: 'Insufficient credits',
+            balance_cents: balance,
+            required_cents: selectedPlan.price_cents,
           });
-          if (userProvider) {
-            await subscriptionQueries.update(sub.id, { user_provider_id: userProvider.id });
-          }
-        } catch (err) {
-          logger.error(`[Credits checkout] Credential provisioning failed: ${err.message}`);
         }
+        logger.error('[Credits checkout] Failed:', err.message);
+        return res.status(err.status || 500).json({ error: err.message || 'Failed to process credits payment' });
       }
-
-      // Record transaction
-      await paymentQueries.insert({
-        user_id: user.id,
-        subscription_id: sub.id,
-        amount_cents: offering.price_cents,
-        currency: offering.currency || 'usd',
-        status: 'succeeded',
-        payment_provider: 'credits',
-      });
-
-      return res.json({
-        payment_provider: 'credits',
-        subscription_id: sub.id,
-        message: 'Subscription activated with credits',
-      });
     }
 
     return res.status(400).json({ error: `Unknown payment_provider: ${payment_provider}` });

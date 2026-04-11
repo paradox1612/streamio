@@ -128,18 +128,37 @@ const xtreamUiScraper = {
       // Or looking for names in the ALL_BOUQUETS style
       
       const bouquets = [];
-      const optionRegex = /<option value="(\d+)"[^>]*>([^<]+)<\/option>/g;
-      let match;
-      
-      // We look for options specifically in sections that might be bouquets
-      // (This is a bit loose but works for many XC/UI panels)
-      while ((match = optionRegex.exec(body)) !== null) {
-        const id = match[1];
-        const name = match[2].trim();
-        // Skip common non-bouquet IDs if necessary
-        if (name && !name.includes('Select') && !['0', '1'].includes(id)) {
-          bouquets.push({ id, bouquet_name: name });
+      const seen = new Set();
+
+      const pushBouquet = (id, name) => {
+        const cleanId = String(id || '').trim();
+        const cleanName = String(name || '').replace(/&nbsp;/g, ' ').trim();
+        if (!cleanId || !cleanName || /select/i.test(cleanName)) return;
+        if (seen.has(cleanId)) return;
+        seen.add(cleanId);
+        bouquets.push({ id: cleanId, bouquet_name: cleanName });
+      };
+
+      const selectRegex = /<select[^>]+(?:name|id)="[^"]*bouquet[^"]*"[^>]*>([\s\S]*?)<\/select>/gi;
+      const optionRegex = /<option[^>]+value="([^"]+)"[^>]*>([^<]+)<\/option>/gi;
+      let selectMatch;
+      while ((selectMatch = selectRegex.exec(body)) !== null) {
+        let optionMatch;
+        while ((optionMatch = optionRegex.exec(selectMatch[1])) !== null) {
+          pushBouquet(optionMatch[1], optionMatch[2]);
         }
+      }
+
+      const checkboxRegex = /<input[^>]+name="bouquet\[\]"[^>]+value="([^"]+)"[^>]*>[\s\S]{0,200}?<[^>]*>([^<]+)</gi;
+      let checkboxMatch;
+      while ((checkboxMatch = checkboxRegex.exec(body)) !== null) {
+        pushBouquet(checkboxMatch[1], checkboxMatch[2]);
+      }
+
+      const objectRegex = /["']?(\d+)["']?\s*:\s*["']([^"']+)["']/g;
+      let objectMatch;
+      while ((objectMatch = objectRegex.exec(body)) !== null) {
+        pushBouquet(objectMatch[1], objectMatch[2]);
       }
 
       return bouquets;
@@ -173,7 +192,7 @@ const xtreamUiScraper = {
     formData.append('username', userData.username || '');
     formData.append('password', userData.password || '');
     formData.append('member_id', memberId || '0');
-    formData.append('package', userData.packageId || '3'); // Default 1 month
+    formData.append('package', userData.packageId || '');
     formData.append('mac_address_mag', '');
     formData.append('mac_address_e2', '');
     formData.append('reseller_notes', userData.notes || 'StreamBridge Automation');

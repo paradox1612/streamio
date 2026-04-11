@@ -4,6 +4,7 @@ const logger = require('../utils/logger');
 const eventBus = require('../utils/eventBus');
 const providerService = require('./providerService');
 const xtreamUiScraper = require('../utils/xtreamUiScraper');
+const { resolveSelectedPlan } = require('../utils/marketplacePlans');
 
 function sanitizeTokenPart(value, fallback = 'user') {
   const cleaned = String(value || '')
@@ -59,6 +60,7 @@ async function ensureManagedNetworkSession(network, panelHost) {
 async function handlePurchase({ stripeSession, stripeSubscription }) {
   const { streamio_user_id: userId, streamio_offering_id: offeringId } =
     stripeSession.metadata || {};
+  const autoRenew = (stripeSession.metadata?.streamio_auto_renew || 'true') !== 'false';
 
   if (!userId || !offeringId) {
     logger.warn('[SubscriptionService] Missing metadata on checkout session — skipping provision');
@@ -81,6 +83,7 @@ async function handlePurchase({ stripeSession, stripeSubscription }) {
     logger.error(`[SubscriptionService] Offering ${offeringId} not found`);
     return;
   }
+  const selectedPlan = resolveSelectedPlan(offering, stripeSession.metadata?.streamio_plan_code);
 
   // Persist subscription record
   const sub = await subscriptionQueries.create({
@@ -98,6 +101,13 @@ async function handlePurchase({ stripeSession, stripeSubscription }) {
     trial_end: stripeSubscription.trial_end
       ? new Date(stripeSubscription.trial_end * 1000)
       : null,
+    auto_renew: autoRenew,
+    selected_plan_code: selectedPlan.code,
+    selected_plan_name: selectedPlan.name,
+    selected_price_cents: selectedPlan.price_cents,
+    selected_currency: selectedPlan.currency,
+    selected_billing_period: selectedPlan.billing_period,
+    selected_interval_count: selectedPlan.billing_interval_count,
   });
 
   // Provision IPTV credentials if linked to a provider network
@@ -108,6 +118,7 @@ async function handlePurchase({ stripeSession, stripeSubscription }) {
         user,
         expiresAt: sub.current_period_end,
         subscriptionId: sub.id,
+        selectedPlan,
       });
       if (userProvider) {
         await subscriptionQueries.update(sub.id, { user_provider_id: userProvider.id });
@@ -121,6 +132,16 @@ async function handlePurchase({ stripeSession, stripeSubscription }) {
   // Emit event for CRM sync (fire and forget)
   eventBus.emit('subscription.created', { subscription: { ...sub, twenty_person_id: user.twenty_person_id }, user, offering });
 
+  if (!autoRenew && stripeSubscription.id) {
+    try {
+      const stripeService = require('./stripeService');
+      await stripeService.cancelSubscription(stripeSubscription.id);
+      await subscriptionQueries.update(sub.id, { cancel_at_period_end: true, auto_renew: false });
+    } catch (err) {
+      logger.error(`[SubscriptionService] Failed to disable auto-renew for ${sub.id}: ${err.message}`);
+    }
+  }
+
   logger.info(`[SubscriptionService] Subscription ${sub.id} created for user ${userId}`);
   return sub;
 }
@@ -129,11 +150,11 @@ async function handlePurchase({ stripeSession, stripeSubscription }) {
  * Provision IPTV provider credentials from free_access_provider_accounts
  * or the provider_network_hosts pool.
  */
-async function provisionCredentials(userId, offering, { user = null, expiresAt = null } = {}) {
+async function provisionCredentials(userId, offering, { user = null, expiresAt = null, selectedPlan = null } = {}) {
   const provisioningMode = offering.provisioning_mode || 'pooled_account';
 
   if (provisioningMode === 'reseller_line') {
-    return provisionManagedResellerLine(userId, offering, { user, expiresAt });
+    return provisionManagedResellerLine(userId, offering, { user, expiresAt, selectedPlan });
   }
 
   // Find an available account in the free_access pool linked to this network
@@ -182,7 +203,7 @@ async function provisionCredentials(userId, offering, { user = null, expiresAt =
   return userProvider;
 }
 
-async function provisionManagedResellerLine(userId, offering, { user = null, expiresAt = null } = {}) {
+async function provisionManagedResellerLine(userId, offering, { user = null, expiresAt = null, selectedPlan = null } = {}) {
   const purchaser = user || (await pool.query('SELECT id, email FROM users WHERE id = $1', [userId])).rows[0];
   if (!purchaser) {
     throw new Error(`User ${userId} not found for marketplace provisioning`);
@@ -203,18 +224,22 @@ async function provisionManagedResellerLine(userId, offering, { user = null, exp
   const lineUsername = buildMarketplaceLineUsername(purchaser, offering);
   const linePassword = buildMarketplaceLinePassword();
   const unixExpiry = expiresAt ? Math.floor(new Date(expiresAt).getTime() / 1000) : null;
-  const bouquetIds = Array.isArray(offering.reseller_bouquet_ids) ? offering.reseller_bouquet_ids : [];
+  const bouquetIds = Array.isArray(selectedPlan?.reseller_bouquet_ids)
+    ? selectedPlan.reseller_bouquet_ids
+    : Array.isArray(offering.reseller_bouquet_ids) ? offering.reseller_bouquet_ids : [];
   const notes = offering.reseller_notes || `Marketplace provisioned for ${purchaser.email}`;
+  const maxConnections = selectedPlan?.max_connections || offering.max_connections || 1;
+  const isTrial = selectedPlan?.is_trial === true || (selectedPlan?.trial_days || 0) > 0;
 
   if (network.xtream_ui_scraped) {
     const session = await ensureManagedNetworkSession(network, panelHost);
     const result = await xtreamUiScraper.createLine(panelHost, session, {
       username: lineUsername,
       password: linePassword,
-      maxConnections: offering.max_connections || 1,
+      maxConnections,
       expDate: unixExpiry,
       bouquetIds,
-      trial: false,
+      trial: isTrial,
       notes,
     });
     if (!result?.success) {
@@ -232,7 +257,7 @@ async function provisionManagedResellerLine(userId, offering, { user = null, exp
       {
         username: lineUsername,
         password: linePassword,
-        maxConnections: offering.max_connections || 1,
+        maxConnections,
         expDate: unixExpiry,
         bouquetIds,
       }
@@ -350,12 +375,92 @@ async function handlePaymentFailed(invoice) {
   }
 }
 
+/**
+ * Create a subscription using the user's credit balance.
+ * Returns the new subscription record.
+ */
+async function createSubscriptionFromCredits(userId, offeringId, { planCode = null, autoRenew = true } = {}) {
+  const { rows: userRows } = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+  const user = userRows[0];
+  if (!user) throw new Error('User not found');
+
+  const offering = await offeringQueries.findById(offeringId);
+  if (!offering) throw new Error('Offering not found');
+
+  const selectedPlan = resolveSelectedPlan(offering, planCode);
+  const priceCents = selectedPlan.price_cents;
+
+  const creditService = require('./creditService');
+  const balance = await creditService.getBalance(userId);
+  if (balance < priceCents) {
+    const err = new Error('Insufficient credits');
+    err.status = 402;
+    throw err;
+  }
+
+  // Atomically spend credits
+  await creditService.spendCredits(userId, priceCents, {
+    description: `Subscription: ${offering.name} (${selectedPlan.name})`,
+  });
+
+  // Create the subscription record
+  const sub = await subscriptionQueries.create({
+    user_id: userId,
+    offering_id: offeringId,
+    status: 'active',
+    payment_provider: 'credits',
+    current_period_start: new Date(),
+    current_period_end: resolveSelectedPlanEnd(selectedPlan),
+    auto_renew: autoRenew,
+    selected_plan_code: selectedPlan.code,
+    selected_plan_name: selectedPlan.name,
+    selected_price_cents: selectedPlan.price_cents,
+    selected_currency: selectedPlan.currency,
+    selected_billing_period: selectedPlan.billing_period,
+    selected_interval_count: selectedPlan.billing_interval_count,
+  });
+
+  // Provision IPTV credentials
+  if (offering.provider_network_id) {
+    try {
+      const userProvider = await provisionCredentials(userId, offering, {
+        user,
+        expiresAt: sub.current_period_end,
+        subscriptionId: sub.id,
+        selectedPlan,
+      });
+      if (userProvider) {
+        await subscriptionQueries.update(sub.id, { user_provider_id: userProvider.id });
+        sub.user_provider_id = userProvider.id;
+      }
+    } catch (err) {
+      logger.error(`[SubscriptionService] Credential provisioning failed for credits sub ${sub.id}: ${err.message}`);
+    }
+  }
+
+  // Emit event for CRM sync
+  eventBus.emit('subscription.created', { subscription: { ...sub, twenty_person_id: user.twenty_person_id }, user, offering });
+
+  return sub;
+}
+
+function resolveSelectedPlanEnd(plan) {
+  const end = new Date();
+  const count = plan.billing_interval_count || 1;
+  if (plan.billing_period === 'day') end.setDate(end.getDate() + count);
+  else if (plan.billing_period === 'week') end.setDate(end.getDate() + (count * 7));
+  else if (plan.billing_period === 'month') end.setMonth(end.getMonth() + count);
+  else if (plan.billing_period === 'year') end.setFullYear(end.getFullYear() + count);
+  return end;
+}
+
 module.exports = {
   handlePurchase,
   handleSubscriptionUpdated,
   handleSubscriptionCancelled,
   handlePaymentSucceeded,
   handlePaymentFailed,
+  createSubscriptionFromCredits,
   // Exported for use by PayGate/credits checkout paths
   provisionCredentialsPublic: provisionCredentials,
 };

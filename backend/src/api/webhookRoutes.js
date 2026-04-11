@@ -205,7 +205,10 @@ router.get('/paygate', async (req, res) => {
       }
 
       // Activate the subscription
-      const periodEnd = paygateService.calcPeriodEnd(sub.billing_period);
+      const periodEnd = paygateService.calcPeriodEnd(
+        sub.selected_billing_period || sub.billing_period,
+        sub.selected_interval_count || sub.billing_interval_count || 1
+      );
       await subscriptionQueries.update(subId, {
         status: 'active',
         current_period_start: new Date(),
@@ -222,7 +225,19 @@ router.get('/paygate', async (req, res) => {
               name: sub.offering_name,
               provider_network_id: sub.provider_network_id,
             },
-            { expiresAt: periodEnd }
+            {
+              expiresAt: periodEnd,
+              selectedPlan: offering
+                ? {
+                  code: sub.selected_plan_code,
+                  name: sub.selected_plan_name,
+                  price_cents: sub.selected_price_cents,
+                  currency: sub.selected_currency,
+                  billing_period: sub.selected_billing_period,
+                  billing_interval_count: sub.selected_interval_count,
+                }
+                : null,
+            }
           );
           if (userProvider) {
             await subscriptionQueries.update(subId, { user_provider_id: userProvider.id });
@@ -236,8 +251,8 @@ router.get('/paygate', async (req, res) => {
       await paymentQueries.insert({
         user_id: sub.user_id,
         subscription_id: subId,
-        amount_cents: Math.round(parseFloat(value_coin || 0) * 100),
-        currency: 'usd',
+        amount_cents: sub.selected_price_cents || sub.price_cents || 0,
+        currency: sub.selected_currency || 'usd',
         status: 'succeeded',
         payment_provider: 'paygate',
         paygate_address_in: sub.paygate_address_in,

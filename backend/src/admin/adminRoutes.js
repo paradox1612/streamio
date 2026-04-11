@@ -28,6 +28,7 @@ const creditService = require('../services/creditService');
 const { jobs } = require('../jobs/scheduler');
 const logger = require('../utils/logger');
 const { getRuntimeInfo } = require('../utils/runtimeInfo');
+const { normalizePlanOptions, resolveSelectedPlan } = require('../utils/marketplacePlans');
 
 function slugify(value = '') {
   return String(value)
@@ -51,6 +52,28 @@ async function resolveManagedNetworkHosts(network) {
     panelHost: network.reseller_portal_url || activeCustomerHost || legacyCustomerHost || null,
     networkHosts,
   };
+}
+
+async function ensureManagedSessionCookie(network, panelHost) {
+  if (!network.xtream_ui_scraped) return null;
+  const xtreamUiScraper = require('../utils/xtreamUiScraper');
+
+  if (network.reseller_session_cookie) {
+    const valid = await xtreamUiScraper.isSessionValid(panelHost, network.reseller_session_cookie);
+    if (valid) return network.reseller_session_cookie;
+  }
+
+  if (!network.reseller_username || !network.reseller_password) {
+    throw new Error('Reseller username and password required for auto-login');
+  }
+
+  const session = await xtreamUiScraper.autoLogin(
+    panelHost,
+    network.reseller_username,
+    network.reseller_password
+  );
+  await providerNetworkQueries.update(network.id, { reseller_session_cookie: session });
+  return session;
 }
 
 // ─── Admin Auth ───────────────────────────────────────────────────────────────
@@ -536,9 +559,14 @@ router.post('/marketplace', requireAdmin, async (req, res) => {
       price_cents,
       currency,
       billing_period,
+      billing_interval_count,
       trial_days,
       max_connections,
       features,
+      plan_options,
+      catalog_tags,
+      country_codes,
+      provider_stats,
       provider_network_id,
       is_featured,
       provisioning_mode,
@@ -546,8 +574,20 @@ router.post('/marketplace', requireAdmin, async (req, res) => {
       reseller_notes,
     } = req.body;
 
-    if (!name || !price_cents) {
-      return res.status(400).json({ error: 'name and price_cents are required' });
+    const normalizedPlans = normalizePlanOptions({
+      price_cents,
+      currency,
+      billing_period,
+      billing_interval_count,
+      trial_days,
+      max_connections,
+      reseller_bouquet_ids,
+      plan_options,
+    });
+    const primaryPlan = resolveSelectedPlan({ ...req.body, plan_options: normalizedPlans }, normalizedPlans[0]?.code);
+
+    if (!name || !primaryPlan?.price_cents) {
+      return res.status(400).json({ error: 'name and at least one priced plan are required' });
     }
     if (provisioning_mode === 'reseller_line' && !provider_network_id) {
       return res.status(400).json({ error: 'provider_network_id is required for reseller line provisioning' });
@@ -555,8 +595,21 @@ router.post('/marketplace', requireAdmin, async (req, res) => {
 
     // Create in DB first (without Stripe IDs)
     let offering = await offeringQueries.create({
-      name, description, price_cents, currency, billing_period, trial_days,
-      max_connections, features, provider_network_id, is_featured,
+      name,
+      description,
+      price_cents: primaryPlan.price_cents,
+      currency: primaryPlan.currency,
+      billing_period: primaryPlan.billing_period,
+      billing_interval_count: primaryPlan.billing_interval_count,
+      trial_days: primaryPlan.trial_days,
+      max_connections: primaryPlan.max_connections,
+      features,
+      plan_options: normalizedPlans,
+      catalog_tags,
+      country_codes,
+      provider_stats,
+      provider_network_id,
+      is_featured,
       provisioning_mode,
       reseller_bouquet_ids,
       reseller_notes,
@@ -588,6 +641,23 @@ router.patch('/marketplace/:id', requireAdmin, async (req, res) => {
     const nextProviderNetworkId = req.body.provider_network_id ?? existing.provider_network_id;
     if (nextProvisioningMode === 'reseller_line' && !nextProviderNetworkId) {
       return res.status(400).json({ error: 'provider_network_id is required for reseller line provisioning' });
+    }
+
+    if ('plan_options' in req.body || 'price_cents' in req.body || 'billing_period' in req.body || 'billing_interval_count' in req.body || 'trial_days' in req.body || 'max_connections' in req.body || 'currency' in req.body) {
+      const normalizedPlans = normalizePlanOptions({
+        ...existing,
+        ...req.body,
+        reseller_bouquet_ids: req.body.reseller_bouquet_ids ?? existing.reseller_bouquet_ids,
+        plan_options: req.body.plan_options ?? existing.plan_options,
+      });
+      const primaryPlan = normalizedPlans[0];
+      req.body.plan_options = normalizedPlans;
+      req.body.price_cents = primaryPlan.price_cents;
+      req.body.currency = primaryPlan.currency;
+      req.body.billing_period = primaryPlan.billing_period;
+      req.body.billing_interval_count = primaryPlan.billing_interval_count;
+      req.body.trial_days = primaryPlan.trial_days;
+      req.body.max_connections = primaryPlan.max_connections;
     }
 
     let updated = await offeringQueries.update(req.params.id, req.body);
@@ -677,11 +747,9 @@ router.get('/networks/:id/bouquets', requireAdmin, async (req, res) => {
     }
 
     if (network.xtream_ui_scraped) {
-      if (!network.reseller_session_cookie) {
-        return res.status(400).json({ error: 'PHPSESSID not configured for this managed network' });
-      }
       const xtreamUiScraper = require('../utils/xtreamUiScraper');
-      const bouquets = await xtreamUiScraper.getBouquets(panelHost, network.reseller_session_cookie);
+      const sessionCookie = await ensureManagedSessionCookie(network, panelHost);
+      const bouquets = await xtreamUiScraper.getBouquets(panelHost, sessionCookie);
       return res.json(bouquets);
     }
 
@@ -709,11 +777,9 @@ router.post('/networks/:id/create-line', requireAdmin, async (req, res) => {
     }
 
     if (network.xtream_ui_scraped) {
-      if (!network.reseller_session_cookie) {
-        return res.status(400).json({ error: 'PHPSESSID not configured for this managed network' });
-      }
       const xtreamUiScraper = require('../utils/xtreamUiScraper');
-      const result = await xtreamUiScraper.createLine(panelHost, network.reseller_session_cookie, {
+      const sessionCookie = await ensureManagedSessionCookie(network, panelHost);
+      const result = await xtreamUiScraper.createLine(panelHost, sessionCookie, {
         username, password, maxConnections, expDate, bouquetIds, trial, notes
       });
       return res.json(result);
@@ -766,14 +832,7 @@ router.post('/networks/:id/refresh-session', requireAdmin, async (req, res) => {
     const { panelHost } = await resolveManagedNetworkHosts(network);
     if (!panelHost) return res.status(400).json({ error: 'No reseller portal URL or customer hosts configured' });
 
-    const xtreamUiScraper = require('../utils/xtreamUiScraper');
-    const newSession = await xtreamUiScraper.autoLogin(
-      panelHost,
-      network.reseller_username,
-      network.reseller_password
-    );
-
-    await providerNetworkQueries.update(network.id, { reseller_session_cookie: newSession });
+    const newSession = await ensureManagedSessionCookie({ ...network, reseller_session_cookie: null }, panelHost);
     res.json({ success: true, session: newSession.substring(0, 8) + '...' });
   } catch (err) {
     logger.error(`[Scraper] Auto-login failed: ${err.message}`);

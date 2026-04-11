@@ -1,13 +1,15 @@
 'use client'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   DollarSign, Package, ShoppingCart, TrendingUp,
-  Plus, Pencil, Trash2, ToggleLeft, ToggleRight, X, Check, Loader2,
+  Plus, Pencil, Trash2, ToggleLeft, ToggleRight, Loader2,
+  Globe2,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { adminAPI } from '@/utils/api'
+import { COUNTRY_OPTIONS, getCountryOption } from '@/lib/countries'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,6 +18,16 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+
+type PlanOption = {
+  code: string
+  name: string
+  price_cents: string
+  billing_period: 'day' | 'month' | 'year'
+  billing_interval_count: string
+  trial_days: string
+  max_connections: string
+}
 
 function formatCents(cents: number, currency = 'usd') {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(cents / 100)
@@ -40,20 +52,36 @@ function MetricCard({ label, value, detail, icon: Icon, tone }: any) {
   )
 }
 
+function createBlankPlan(index = 1): PlanOption {
+  return {
+    code: `plan_${index}`,
+    name: '',
+    price_cents: '',
+    billing_period: 'month',
+    billing_interval_count: '1',
+    trial_days: '0',
+    max_connections: '1',
+  }
+}
+
 const EMPTY_FORM = {
   name: '',
   description: '',
-  price_cents: '',
   currency: 'usd',
-  billing_period: 'month',
-  trial_days: '0',
-  max_connections: '1',
   features: '',
-  is_featured: false,
-  provisioning_mode: 'pooled_account',
+  catalog_tags: '',
   provider_network_id: '',
+  is_featured: false,
+  is_trial: false,
+  group_id: '',
+  provisioning_mode: 'pooled_account',
   reseller_bouquet_ids: [] as string[],
   reseller_notes: '',
+  country_codes: [] as string[],
+  provider_stats_vod: '',
+  provider_stats_live: '',
+  provider_stats_series: '',
+  plans: [createBlankPlan(1)],
 }
 
 export default function AdminMarketplacePage() {
@@ -88,33 +116,8 @@ export default function AdminMarketplacePage() {
 
   function openCreate() {
     setEditingId(null)
-    setForm({ ...EMPTY_FORM })
+    setForm({ ...EMPTY_FORM, plans: [createBlankPlan(1)] })
     setBouquets([])
-    setShowModal(true)
-  }
-
-  async function openEdit(o: any) {
-    setEditingId(o.id)
-    setForm({
-      name: o.name || '',
-      description: o.description || '',
-      price_cents: String(o.price_cents || ''),
-      currency: o.currency || 'usd',
-      billing_period: o.billing_period || 'month',
-      trial_days: String(o.trial_days || 0),
-      max_connections: String(o.max_connections || 1),
-      features: Array.isArray(o.features) ? o.features.join(', ') : '',
-      is_featured: o.is_featured || false,
-      provisioning_mode: o.provisioning_mode || 'pooled_account',
-      provider_network_id: o.provider_network_id || '',
-      reseller_bouquet_ids: Array.isArray(o.reseller_bouquet_ids) ? o.reseller_bouquet_ids : [],
-      reseller_notes: o.reseller_notes || '',
-    })
-    if (o.provisioning_mode === 'reseller_line' && o.provider_network_id) {
-      await loadBouquets(o.provider_network_id, true)
-    } else {
-      setBouquets([])
-    }
     setShowModal(true)
   }
 
@@ -123,9 +126,7 @@ export default function AdminMarketplacePage() {
       setBouquets([])
       return
     }
-    if (!force && networkId === form.provider_network_id && bouquets.length > 0) {
-      return
-    }
+    if (!force && networkId === form.provider_network_id && bouquets.length > 0) return
     setLoadingBouquets(true)
     try {
       const { data } = await adminAPI.getNetworkBouquets(networkId)
@@ -138,34 +139,136 @@ export default function AdminMarketplacePage() {
     }
   }
 
+  async function openEdit(offering: any) {
+    setEditingId(offering.id)
+    const plans = Array.isArray(offering.plan_options) && offering.plan_options.length > 0
+      ? offering.plan_options
+      : [{
+        code: 'default',
+        name: offering.trial_days > 0 ? `${offering.trial_days} Day Trial` : offering.name,
+        price_cents: offering.price_cents,
+        billing_period: offering.billing_period || 'month',
+        billing_interval_count: offering.billing_interval_count || 1,
+        trial_days: offering.trial_days || 0,
+        max_connections: offering.max_connections || 1,
+      }]
+
+    setForm({
+      name: offering.name || '',
+      description: offering.description || '',
+      currency: offering.currency || 'usd',
+      features: Array.isArray(offering.features) ? offering.features.join(', ') : '',
+      catalog_tags: Array.isArray(offering.catalog_tags) ? offering.catalog_tags.join(', ') : '',
+      provider_network_id: offering.provider_network_id || '',
+      is_featured: offering.is_featured || false,
+      is_trial: offering.is_trial || false,
+      group_id: offering.group_id || '',
+      provisioning_mode: offering.provisioning_mode || 'pooled_account',
+      reseller_bouquet_ids: Array.isArray(offering.reseller_bouquet_ids) ? offering.reseller_bouquet_ids : [],
+      reseller_notes: offering.reseller_notes || '',
+      country_codes: Array.isArray(offering.country_codes) ? offering.country_codes : [],
+      provider_stats_vod: String(offering.provider_stats?.vod ?? ''),
+      provider_stats_live: String(offering.provider_stats?.live ?? ''),
+      provider_stats_series: String(offering.provider_stats?.series ?? ''),
+      plans: plans.map((plan: any, index: number) => ({
+        code: String(plan.code || `plan_${index + 1}`),
+        name: String(plan.name || ''),
+        price_cents: String(plan.price_cents || ''),
+        billing_period: (plan.billing_period || 'month') as 'day' | 'month' | 'year',
+        billing_interval_count: String(plan.billing_interval_count || 1),
+        trial_days: String(plan.trial_days || 0),
+        max_connections: String(plan.max_connections || offering.max_connections || 1),
+      })),
+    })
+
+    if (offering.provisioning_mode === 'reseller_line' && offering.provider_network_id) {
+      await loadBouquets(offering.provider_network_id, true)
+    } else {
+      setBouquets([])
+    }
+    setShowModal(true)
+  }
+
+  function updatePlan(index: number, patch: Partial<PlanOption>) {
+    setForm((current) => ({
+      ...current,
+      plans: current.plans.map((plan, planIndex) => planIndex === index ? { ...plan, ...patch } : plan),
+    }))
+  }
+
+  function addPlan() {
+    setForm((current) => ({
+      ...current,
+      plans: [...current.plans, createBlankPlan(current.plans.length + 1)],
+    }))
+  }
+
+  function removePlan(index: number) {
+    setForm((current) => ({
+      ...current,
+      plans: current.plans.filter((_, planIndex) => planIndex !== index),
+    }))
+  }
+
+  const normalizedPlans = useMemo(() => (
+    form.plans
+      .map((plan, index) => ({
+        code: (plan.code || `plan_${index + 1}`).trim(),
+        name: plan.name.trim(),
+        price_cents: parseInt(plan.price_cents, 10),
+        billing_period: plan.billing_period,
+        billing_interval_count: parseInt(plan.billing_interval_count, 10) || 1,
+        trial_days: parseInt(plan.trial_days, 10) || 0,
+        max_connections: parseInt(plan.max_connections, 10) || 1,
+      }))
+      .filter((plan) => plan.name && Number.isFinite(plan.price_cents))
+  ), [form.plans])
+
   async function handleSave() {
-    if (!form.name || !form.price_cents) {
-      toast.error('Name and price are required')
+    if (!form.name.trim()) {
+      toast.error('Offering name is required')
+      return
+    }
+    if (normalizedPlans.length === 0) {
+      toast.error('Add at least one valid plan')
       return
     }
     setSaving(true)
     try {
+      const primaryPlan = normalizedPlans[0]
       const payload = {
-        name: form.name,
-        description: form.description || null,
-        price_cents: parseInt(form.price_cents),
-        currency: form.currency,
-        billing_period: form.billing_period,
-        trial_days: parseInt(form.trial_days) || 0,
-        max_connections: parseInt(form.max_connections) || 1,
-        features: form.features ? form.features.split(',').map((f) => f.trim()).filter(Boolean) : [],
+        name: form.name.trim(),
+        description: form.description.trim() || null,
+        currency: form.currency.trim() || 'usd',
+        price_cents: primaryPlan.price_cents,
+        billing_period: primaryPlan.billing_period,
+        billing_interval_count: primaryPlan.billing_interval_count,
+        trial_days: primaryPlan.trial_days,
+        max_connections: primaryPlan.max_connections,
+        features: form.features.split(',').map((item) => item.trim()).filter(Boolean),
+        catalog_tags: form.catalog_tags.split(',').map((item) => item.trim()).filter(Boolean),
+        country_codes: form.country_codes,
+        provider_stats: {
+          vod: parseInt(form.provider_stats_vod, 10) || 0,
+          live: parseInt(form.provider_stats_live, 10) || 0,
+          series: parseInt(form.provider_stats_series, 10) || 0,
+        },
         is_featured: form.is_featured,
+        is_trial: form.is_trial,
+        group_id: form.group_id.trim() || null,
         provisioning_mode: form.provisioning_mode,
         provider_network_id: form.provider_network_id || null,
         reseller_bouquet_ids: form.reseller_bouquet_ids,
-        reseller_notes: form.reseller_notes || null,
+        reseller_notes: form.reseller_notes.trim() || null,
+        plan_options: normalizedPlans,
       }
+
       if (editingId) {
         await adminAPI.updateOffering(editingId, payload)
         toast.success('Offering updated')
       } else {
         await adminAPI.createOffering(payload)
-        toast.success('Offering created and synced to Stripe')
+        toast.success('Offering created')
       }
       setShowModal(false)
       load()
@@ -176,20 +279,20 @@ export default function AdminMarketplacePage() {
     }
   }
 
-  async function handleToggleActive(o: any) {
+  async function handleToggleActive(offering: any) {
     try {
-      await adminAPI.updateOffering(o.id, { is_active: !o.is_active })
-      toast.success(o.is_active ? 'Offering deactivated' : 'Offering activated')
+      await adminAPI.updateOffering(offering.id, { is_active: !offering.is_active })
+      toast.success(offering.is_active ? 'Offering deactivated' : 'Offering activated')
       load()
     } catch {
       toast.error('Failed to update offering')
     }
   }
 
-  async function handleDelete(o: any) {
-    if (!confirm(`Deactivate "${o.name}"? It will no longer appear in the marketplace.`)) return
+  async function handleDelete(offering: any) {
+    if (!confirm(`Deactivate "${offering.name}"? It will no longer appear in the marketplace.`)) return
     try {
-      await adminAPI.deleteOffering(o.id)
+      await adminAPI.deleteOffering(offering.id)
       toast.success('Offering deactivated')
       load()
     } catch {
@@ -200,21 +303,19 @@ export default function AdminMarketplacePage() {
   const mrrDisplay = analytics?.mrr_cents
     ? formatCents(Number(analytics.mrr_cents))
     : '$0.00'
-  const selectedNetwork = networks.find((network) => network.id === form.provider_network_id)
 
   return (
     <div className="space-y-8 p-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Marketplace</h1>
-          <p className="mt-1 text-sm text-slate-400">Manage provider offerings and subscription analytics</p>
+          <p className="mt-1 text-sm text-slate-400">Manage plans, countries, tags, pricing, and provider stats</p>
         </div>
         <Button onClick={openCreate} className="gap-2">
           <Plus className="h-4 w-4" /> Add Offering
         </Button>
       </div>
 
-      {/* Analytics */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <MetricCard
           label="Active Subs"
@@ -226,7 +327,7 @@ export default function AdminMarketplacePage() {
         <MetricCard
           label="Trialing"
           value={analytics?.trialing_count ?? '—'}
-          detail="in trial period"
+          detail="trial or short-term"
           icon={ShoppingCart}
           tone="border-blue-500/30 bg-blue-500/10 text-blue-400"
         />
@@ -240,13 +341,12 @@ export default function AdminMarketplacePage() {
         <MetricCard
           label="MRR"
           value={mrrDisplay}
-          detail="monthly recurring revenue"
+          detail="selected-plan revenue"
           icon={Package}
           tone="border-purple-500/30 bg-purple-500/10 text-purple-400"
         />
       </div>
 
-      {/* Offerings table */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base font-semibold text-white">Provider Offerings</CardTitle>
@@ -262,85 +362,84 @@ export default function AdminMarketplacePage() {
                 <thead>
                   <tr className="border-b border-white/5 text-left text-[11px] uppercase tracking-wider text-slate-400">
                     <th className="px-5 py-3">Name</th>
-                    <th className="px-5 py-3">Price</th>
-                    <th className="px-5 py-3">Billing</th>
+                    <th className="px-5 py-3">Plans</th>
+                    <th className="px-5 py-3">Coverage</th>
+                    <th className="px-5 py-3">Stats</th>
                     <th className="px-5 py-3">Provisioning</th>
-                    <th className="px-5 py-3">Trial</th>
-                    <th className="px-5 py-3">Stripe</th>
                     <th className="px-5 py-3">Status</th>
                     <th className="px-5 py-3">Featured</th>
                     <th className="px-5 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {offerings.map((o) => (
-                    <tr key={o.id} className="hover:bg-white/[0.02]">
-                      <td className="px-5 py-3">
-                        <div className="font-medium text-white">{o.name}</div>
-                        {o.network_name && (
-                          <div className="text-xs text-slate-400">{o.network_name}</div>
-                        )}
-                      </td>
-                      <td className="px-5 py-3 text-white">
-                        {formatCents(o.price_cents, o.currency)}
-                      </td>
-                      <td className="px-5 py-3 text-slate-300 capitalize">{o.billing_period}</td>
-                      <td className="px-5 py-3 text-slate-300">
-                        {o.provisioning_mode === 'reseller_line' ? 'Reseller line' : 'Pooled account'}
-                      </td>
-                      <td className="px-5 py-3 text-slate-300">
-                        {o.trial_days > 0 ? `${o.trial_days}d` : '—'}
-                      </td>
-                      <td className="px-5 py-3">
-                        {o.stripe_price_id ? (
-                          <Check className="h-4 w-4 text-green-400" />
-                        ) : (
-                          <X className="h-4 w-4 text-slate-500" />
-                        )}
-                      </td>
-                      <td className="px-5 py-3">
-                        <Badge
-                          className={o.is_active
-                            ? 'border-green-500/20 bg-green-500/10 text-green-400'
-                            : 'border-slate-500/20 bg-slate-500/10 text-slate-400'}
-                        >
-                          {o.is_active ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </td>
-                      <td className="px-5 py-3">
-                        {o.is_featured ? (
-                          <Badge className="border-yellow-500/20 bg-yellow-500/10 text-yellow-400">Featured</Badge>
-                        ) : '—'}
-                      </td>
-                      <td className="px-5 py-3">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => openEdit(o)}
-                            className="rounded p-1 text-slate-400 hover:bg-white/5 hover:text-white"
-                            title="Edit"
+                  {offerings.map((offering) => {
+                    const plans = Array.isArray(offering.plan_options) && offering.plan_options.length > 0
+                      ? offering.plan_options
+                      : [{ name: offering.name, price_cents: offering.price_cents, billing_period: offering.billing_period, billing_interval_count: offering.billing_interval_count || 1 }]
+                    const countries = Array.isArray(offering.country_codes) ? offering.country_codes : []
+                    const countryFlags = countries.slice(0, 4).map((code: string) => getCountryOption(code)?.flag || code).join(' ')
+                    return (
+                      <tr key={offering.id} className="hover:bg-white/[0.02]">
+                        <td className="px-5 py-3">
+                          <div className="font-medium text-white">{offering.name}</div>
+                          {offering.network_name && <div className="text-xs text-slate-400">{offering.network_name}</div>}
+                        </td>
+                        <td className="px-5 py-3 text-slate-300">
+                          <div className="font-medium text-white">{plans.length} configured</div>
+                          <div className="text-xs text-slate-400">
+                            {plans.slice(0, 2).map((plan: any) => `${plan.name} · ${formatCents(plan.price_cents, offering.currency)}`).join(' | ')}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 text-slate-300">
+                          <div className="flex items-center gap-2">
+                            <Globe2 className="h-4 w-4 text-slate-500" />
+                            <span>{countries.length > 0 ? countryFlags || `${countries.length} countries` : 'Global'}</span>
+                          </div>
+                          <div className="mt-1 text-xs text-slate-400">
+                            {(offering.catalog_tags || []).slice(0, 3).join(' · ') || 'No tags'}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 text-slate-300">
+                          <div className="text-xs text-slate-400">
+                            VOD {Number(offering.provider_stats?.vod || 0).toLocaleString()}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            Live {Number(offering.provider_stats?.live || 0).toLocaleString()}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 text-slate-300">
+                          {offering.provisioning_mode === 'reseller_line' ? 'Reseller line' : 'Pooled account'}
+                        </td>
+                        <td className="px-5 py-3">
+                          <Badge
+                            className={offering.is_active
+                              ? 'border-green-500/20 bg-green-500/10 text-green-400'
+                              : 'border-slate-500/20 bg-slate-500/10 text-slate-400'}
                           >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleToggleActive(o)}
-                            className="rounded p-1 text-slate-400 hover:bg-white/5 hover:text-white"
-                            title={o.is_active ? 'Deactivate' : 'Activate'}
-                          >
-                            {o.is_active
-                              ? <ToggleRight className="h-4 w-4 text-green-400" />
-                              : <ToggleLeft className="h-4 w-4" />}
-                          </button>
-                          <button
-                            onClick={() => handleDelete(o)}
-                            className="rounded p-1 text-slate-400 hover:bg-white/5 hover:text-red-400"
-                            title="Deactivate"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            {offering.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </td>
+                        <td className="px-5 py-3">
+                          {offering.is_featured ? (
+                            <Badge className="border-yellow-500/20 bg-yellow-500/10 text-yellow-400">Featured</Badge>
+                          ) : '—'}
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center justify-end gap-2">
+                            <button onClick={() => openEdit(offering)} className="rounded p-1 text-slate-400 hover:bg-white/5 hover:text-white" title="Edit">
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button onClick={() => handleToggleActive(offering)} className="rounded p-1 text-slate-400 hover:bg-white/5 hover:text-white" title={offering.is_active ? 'Deactivate' : 'Activate'}>
+                              {offering.is_active ? <ToggleRight className="h-4 w-4 text-green-400" /> : <ToggleLeft className="h-4 w-4" />}
+                            </button>
+                            <button onClick={() => handleDelete(offering)} className="rounded p-1 text-slate-400 hover:bg-white/5 hover:text-red-400" title="Deactivate">
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -348,193 +447,227 @@ export default function AdminMarketplacePage() {
         </CardContent>
       </Card>
 
-      {/* Add / Edit Modal */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId ? 'Edit Offering' : 'Add Offering'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+
+          <div className="space-y-6">
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2 space-y-1">
                 <Label>Name *</Label>
-                <Input
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="Provider Alpha — Premium"
-                />
+                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Provider Alpha — Premium" />
               </div>
               <div className="col-span-2 space-y-1">
                 <Label>Description</Label>
-                <Input
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  placeholder="Optional description"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Price (cents) *</Label>
-                <Input
-                  type="number"
-                  value={form.price_cents}
-                  onChange={(e) => setForm({ ...form, price_cents: e.target.value })}
-                  placeholder="999"
-                />
-                <p className="text-xs text-slate-400">e.g. 999 = $9.99. Stripe pricing is refreshed on save.</p>
+                <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Premium IPTV with multi-country coverage" />
               </div>
               <div className="space-y-1">
                 <Label>Currency</Label>
-                <Input
-                  value={form.currency}
-                  onChange={(e) => setForm({ ...form, currency: e.target.value })}
-                  placeholder="usd"
-                />
+                <Input value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} placeholder="usd" />
               </div>
               <div className="space-y-1">
-                <Label>Billing Period</Label>
-                <select
-                  className="w-full rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
-                  value={form.billing_period}
-                  onChange={(e) => setForm({ ...form, billing_period: e.target.value })}
-                >
-                  <option value="month">Monthly</option>
-                  <option value="year">Yearly</option>
-                </select>
+                <Label>Featured</Label>
+                <div className="flex h-10 items-center rounded-md border border-white/10 bg-slate-900 px-3">
+                  <input type="checkbox" checked={form.is_featured} onChange={(e) => setForm({ ...form, is_featured: e.target.checked })} className="h-4 w-4" />
+                  <span className="ml-3 text-sm text-slate-300">Highlight on marketplace</span>
+                </div>
               </div>
               <div className="space-y-1">
-                <Label>Trial Days</Label>
-                <Input
-                  type="number"
-                  value={form.trial_days}
-                  onChange={(e) => setForm({ ...form, trial_days: e.target.value })}
-                  placeholder="0"
-                />
+                <Label>Tags</Label>
+                <Input value={form.catalog_tags} onChange={(e) => setForm({ ...form, catalog_tags: e.target.value })} placeholder="4K, M3U, VOD, Sports" />
               </div>
               <div className="space-y-1">
-                <Label>Max Connections</Label>
-                <Input
-                  type="number"
-                  value={form.max_connections}
-                  onChange={(e) => setForm({ ...form, max_connections: e.target.value })}
-                  placeholder="1"
-                />
+                <Label>Features</Label>
+                <Input value={form.features} onChange={(e) => setForm({ ...form, features: e.target.value })} placeholder="Fast channel switch, Catch-up, EPG" />
               </div>
-              <div className="col-span-2 space-y-1">
-                <Label>Features (comma-separated)</Label>
-                <Input
-                  value={form.features}
-                  onChange={(e) => setForm({ ...form, features: e.target.value })}
-                  placeholder="4K, VOD, Live TV"
-                />
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-white">Plan Options</h3>
+                  <p className="text-sm text-slate-400">User-facing plans like 1 day trial, 1 month, 3 months, 6 months, or 1 year.</p>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={addPlan} className="gap-2">
+                  <Plus className="h-4 w-4" /> Add plan
+                </Button>
               </div>
-              <div className="col-span-2 space-y-1">
+
+              <div className="mt-4 space-y-4">
+                {form.plans.map((plan, index) => (
+                  <div key={`${plan.code}-${index}`} className="grid grid-cols-12 gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                    <div className="col-span-12 md:col-span-2">
+                      <Label>Code</Label>
+                      <Input value={plan.code} onChange={(e) => updatePlan(index, { code: e.target.value })} placeholder="1m" />
+                    </div>
+                    <div className="col-span-12 md:col-span-3">
+                      <Label>Name</Label>
+                      <Input value={plan.name} onChange={(e) => updatePlan(index, { name: e.target.value })} placeholder="1 Month" />
+                    </div>
+                    <div className="col-span-6 md:col-span-2">
+                      <Label>Price (cents)</Label>
+                      <Input type="number" value={plan.price_cents} onChange={(e) => updatePlan(index, { price_cents: e.target.value })} placeholder="999" />
+                    </div>
+                    <div className="col-span-6 md:col-span-2">
+                      <Label>Period</Label>
+                      <select className="w-full rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" value={plan.billing_period} onChange={(e) => updatePlan(index, { billing_period: e.target.value as 'day' | 'month' | 'year' })}>
+                        <option value="day">Day</option>
+                        <option value="month">Month</option>
+                        <option value="year">Year</option>
+                      </select>
+                    </div>
+                    <div className="col-span-4 md:col-span-1">
+                      <Label>Count</Label>
+                      <Input type="number" value={plan.billing_interval_count} onChange={(e) => updatePlan(index, { billing_interval_count: e.target.value })} />
+                    </div>
+                    <div className="col-span-4 md:col-span-1">
+                      <Label>Trial</Label>
+                      <Input type="number" value={plan.trial_days} onChange={(e) => updatePlan(index, { trial_days: e.target.value })} />
+                    </div>
+                    <div className="col-span-4 md:col-span-1">
+                      <Label>Conn.</Label>
+                      <Input type="number" value={plan.max_connections} onChange={(e) => updatePlan(index, { max_connections: e.target.value })} />
+                    </div>
+                    <div className="col-span-12 flex justify-end">
+                      <Button type="button" variant="ghost" size="sm" onClick={() => removePlan(index)} disabled={form.plans.length === 1}>
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="space-y-1">
+                <Label>VOD Count</Label>
+                <Input type="number" value={form.provider_stats_vod} onChange={(e) => setForm({ ...form, provider_stats_vod: e.target.value })} placeholder="100000" />
+              </div>
+              <div className="space-y-1">
+                <Label>Live Count</Label>
+                <Input type="number" value={form.provider_stats_live} onChange={(e) => setForm({ ...form, provider_stats_live: e.target.value })} placeholder="24000" />
+              </div>
+              <div className="space-y-1">
+                <Label>Series Count</Label>
+                <Input type="number" value={form.provider_stats_series} onChange={(e) => setForm({ ...form, provider_stats_series: e.target.value })} placeholder="5000" />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Countries</Label>
+              <details className="rounded-xl border border-white/10 bg-slate-950/60">
+                <summary className="cursor-pointer list-none px-4 py-3 text-sm text-slate-300">
+                  {form.country_codes.length > 0
+                    ? form.country_codes.map((code) => getCountryOption(code)?.flag || code).join(' ')
+                    : 'Select countries'}
+                </summary>
+                <div className="grid max-h-64 grid-cols-2 gap-2 overflow-y-auto border-t border-white/10 p-4 md:grid-cols-3">
+                  {COUNTRY_OPTIONS.map((country) => (
+                    <label key={country.code} className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm text-slate-300 hover:bg-white/5">
+                      <input
+                        type="checkbox"
+                        checked={form.country_codes.includes(country.code)}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...form.country_codes, country.code]
+                            : form.country_codes.filter((code) => code !== country.code)
+                          setForm({ ...form, country_codes: next })
+                        }}
+                        className="h-4 w-4"
+                      />
+                      <span>{country.flag}</span>
+                      <span>{country.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </details>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-1">
                 <Label>Provisioning Mode</Label>
                 <select
                   className="w-full rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
                   value={form.provisioning_mode}
-                  onChange={(e) => setForm({
-                    ...form,
-                    provisioning_mode: e.target.value,
-                    reseller_bouquet_ids: e.target.value === 'reseller_line' ? form.reseller_bouquet_ids : [],
-                  })}
+                  onChange={async (e) => {
+                    const nextMode = e.target.value
+                    setForm({ ...form, provisioning_mode: nextMode })
+                    if (nextMode === 'reseller_line' && form.provider_network_id) {
+                      await loadBouquets(form.provider_network_id, true)
+                    }
+                  }}
                 >
                   <option value="pooled_account">Pooled account</option>
-                  <option value="reseller_line">Create reseller line</option>
+                  <option value="reseller_line">Reseller line</option>
                 </select>
               </div>
-              <div className="col-span-2 space-y-1">
+              <div className="space-y-1">
                 <Label>Provider Network</Label>
                 <select
                   className="w-full rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
                   value={form.provider_network_id}
                   onChange={async (e) => {
                     const provider_network_id = e.target.value
-                    setForm({ ...form, provider_network_id, reseller_bouquet_ids: [] })
-                    setBouquets([])
-                    if (provider_network_id && form.provisioning_mode === 'reseller_line') {
+                    setForm({ ...form, provider_network_id })
+                    if (form.provisioning_mode === 'reseller_line' && provider_network_id) {
                       await loadBouquets(provider_network_id, true)
                     }
                   }}
                 >
-                  <option value="">No network</option>
+                  <option value="">Not linked</option>
                   {networks.map((network) => (
-                    <option key={network.id} value={network.id}>
-                      {network.name}
-                    </option>
+                    <option key={network.id} value={network.id}>{network.name}</option>
                   ))}
                 </select>
-                {selectedNetwork ? (
-                  <p className="text-xs text-slate-400">
-                    {selectedNetwork.xtream_ui_scraped ? 'Uses Xtream UI session flow.' : 'Uses reseller API credentials.'}
-                  </p>
-                ) : null}
-              </div>
-              {form.provisioning_mode === 'reseller_line' && (
-                <>
-                  <div className="col-span-2 space-y-2 rounded-lg border border-white/10 bg-slate-950/40 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <Label>Reseller Bouquets</Label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={!form.provider_network_id || loadingBouquets}
-                        onClick={() => loadBouquets(form.provider_network_id, true)}
-                      >
-                        {loadingBouquets ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Load bouquets'}
-                      </Button>
-                    </div>
-                    {!form.provider_network_id ? (
-                      <p className="text-xs text-slate-400">Choose a provider network first.</p>
-                    ) : bouquets.length === 0 ? (
-                      <p className="text-xs text-slate-400">No bouquets loaded.</p>
-                    ) : (
-                      <div className="grid max-h-44 gap-2 overflow-y-auto">
-                        {bouquets.map((bouquet) => (
-                          <label key={bouquet.id} className="flex items-center gap-2 text-sm text-slate-200">
-                            <input
-                              type="checkbox"
-                              checked={form.reseller_bouquet_ids.includes(bouquet.id)}
-                              onChange={(e) => setForm({
-                                ...form,
-                                reseller_bouquet_ids: e.target.checked
-                                  ? [...form.reseller_bouquet_ids, bouquet.id]
-                                  : form.reseller_bouquet_ids.filter((id) => id !== bouquet.id),
-                              })}
-                              className="h-4 w-4 rounded"
-                            />
-                            <span>{bouquet.bouquet_name}</span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <Label>Provisioning Notes</Label>
-                    <Input
-                      value={form.reseller_notes}
-                      onChange={(e) => setForm({ ...form, reseller_notes: e.target.value })}
-                      placeholder="Optional notes attached during reseller line creation"
-                    />
-                  </div>
-                </>
-              )}
-              <div className="col-span-2 flex items-center gap-2">
-                <input
-                  id="is_featured"
-                  type="checkbox"
-                  checked={form.is_featured}
-                  onChange={(e) => setForm({ ...form, is_featured: e.target.checked })}
-                  className="h-4 w-4 rounded"
-                />
-                <Label htmlFor="is_featured">Featured offering</Label>
               </div>
             </div>
+
+            {form.provisioning_mode === 'reseller_line' && (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Bouquets</Label>
+                  <div className="h-56 overflow-y-auto rounded-xl border border-white/10 bg-slate-950/60 p-3">
+                    {loadingBouquets ? (
+                      <div className="flex h-full items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-slate-500" /></div>
+                    ) : bouquets.length === 0 ? (
+                      <div className="flex h-full items-center justify-center text-sm text-slate-500">No bouquets found for this network</div>
+                    ) : bouquets.map((bouquet) => (
+                      <label key={bouquet.id} className="flex items-center gap-3 rounded-md px-2 py-2 text-sm text-slate-300 hover:bg-white/5">
+                        <input
+                          type="checkbox"
+                          checked={form.reseller_bouquet_ids.includes(bouquet.id)}
+                          onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...form.reseller_bouquet_ids, bouquet.id]
+                              : form.reseller_bouquet_ids.filter((id) => id !== bouquet.id)
+                            setForm({ ...form, reseller_bouquet_ids: next })
+                          }}
+                          className="h-4 w-4"
+                        />
+                        <span>{bouquet.bouquet_name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label>Provisioning Notes</Label>
+                  <textarea
+                    value={form.reseller_notes}
+                    onChange={(e) => setForm({ ...form, reseller_notes: e.target.value })}
+                    placeholder="Applied when reseller lines are created"
+                    className="min-h-[224px] w-full rounded-xl border border-white/10 bg-slate-950/60 p-3 text-sm text-white outline-none"
+                  />
+                </div>
+              </div>
+            )}
           </div>
+
           <DialogFooter>
             <Button variant="ghost" onClick={() => setShowModal(false)}>Cancel</Button>
             <Button onClick={handleSave} disabled={saving}>
-              {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Create Offering'}
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editingId ? 'Save Changes' : 'Create Offering'}
             </Button>
           </DialogFooter>
         </DialogContent>

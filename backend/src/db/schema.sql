@@ -713,9 +713,14 @@ CREATE TABLE IF NOT EXISTS provider_offerings (
   price_cents         INTEGER NOT NULL,
   currency            TEXT NOT NULL DEFAULT 'usd',
   billing_period      TEXT NOT NULL DEFAULT 'month',
+  billing_interval_count INTEGER NOT NULL DEFAULT 1,
   trial_days          INTEGER NOT NULL DEFAULT 0,
   max_connections     INTEGER NOT NULL DEFAULT 1,
   features            JSONB DEFAULT '[]',
+  plan_options        JSONB DEFAULT '[]',
+  catalog_tags        TEXT[] DEFAULT ARRAY[]::TEXT[],
+  country_codes       TEXT[] DEFAULT ARRAY[]::TEXT[],
+  provider_stats      JSONB DEFAULT '{}'::jsonb,
   provisioning_mode   TEXT NOT NULL DEFAULT 'pooled_account',
   reseller_bouquet_ids TEXT[] DEFAULT ARRAY[]::TEXT[],
   reseller_notes      TEXT,
@@ -732,7 +737,19 @@ CREATE INDEX IF NOT EXISTS idx_provider_offerings_active  ON provider_offerings(
 CREATE INDEX IF NOT EXISTS idx_provider_offerings_network ON provider_offerings(provider_network_id);
 
 ALTER TABLE provider_offerings
+  ADD COLUMN IF NOT EXISTS billing_interval_count INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE provider_offerings
+  ADD COLUMN IF NOT EXISTS plan_options JSONB DEFAULT '[]';
+ALTER TABLE provider_offerings
+  ADD COLUMN IF NOT EXISTS catalog_tags TEXT[] DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE provider_offerings
+  ADD COLUMN IF NOT EXISTS country_codes TEXT[] DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE provider_offerings
+  ADD COLUMN IF NOT EXISTS provider_stats JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE provider_offerings
   ADD COLUMN IF NOT EXISTS provisioning_mode TEXT NOT NULL DEFAULT 'pooled_account';
+ALTER TABLE provider_offerings
+  ALTER COLUMN billing_interval_count SET DEFAULT 1;
 ALTER TABLE provider_offerings
   ADD COLUMN IF NOT EXISTS reseller_bouquet_ids TEXT[] DEFAULT ARRAY[]::TEXT[];
 ALTER TABLE provider_offerings
@@ -752,8 +769,15 @@ CREATE TABLE IF NOT EXISTS provider_subscriptions (
   current_period_start    TIMESTAMPTZ,
   current_period_end      TIMESTAMPTZ,
   cancel_at_period_end    BOOLEAN NOT NULL DEFAULT false,
+  auto_renew              BOOLEAN NOT NULL DEFAULT true,
   cancelled_at            TIMESTAMPTZ,
   trial_end               TIMESTAMPTZ,
+  selected_plan_code      TEXT,
+  selected_plan_name      TEXT,
+  selected_price_cents    INTEGER,
+  selected_currency       TEXT,
+  selected_billing_period TEXT,
+  selected_interval_count INTEGER,
   twenty_subscription_id  TEXT,
   created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -794,6 +818,13 @@ ALTER TABLE provider_subscriptions ALTER COLUMN stripe_subscription_id DROP NOT 
 -- Payment provider tracking on subscriptions and transactions
 ALTER TABLE provider_subscriptions ADD COLUMN IF NOT EXISTS payment_provider TEXT NOT NULL DEFAULT 'stripe';
 ALTER TABLE provider_subscriptions ADD COLUMN IF NOT EXISTS paygate_address_in TEXT UNIQUE;
+ALTER TABLE provider_subscriptions ADD COLUMN IF NOT EXISTS auto_renew BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE provider_subscriptions ADD COLUMN IF NOT EXISTS selected_plan_code TEXT;
+ALTER TABLE provider_subscriptions ADD COLUMN IF NOT EXISTS selected_plan_name TEXT;
+ALTER TABLE provider_subscriptions ADD COLUMN IF NOT EXISTS selected_price_cents INTEGER;
+ALTER TABLE provider_subscriptions ADD COLUMN IF NOT EXISTS selected_currency TEXT;
+ALTER TABLE provider_subscriptions ADD COLUMN IF NOT EXISTS selected_billing_period TEXT;
+ALTER TABLE provider_subscriptions ADD COLUMN IF NOT EXISTS selected_interval_count INTEGER;
 
 ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS payment_provider TEXT NOT NULL DEFAULT 'stripe';
 ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS paygate_address_in TEXT;

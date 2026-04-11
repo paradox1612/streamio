@@ -2431,14 +2431,22 @@ const freeAccessQueries = {
 const offeringQueries = {
   async list() {
     const { rows } = await pool.query(
-      `SELECT * FROM provider_offerings WHERE is_active = true ORDER BY is_featured DESC, created_at ASC`
+      `SELECT o.*, pn.name AS network_name,
+        (SELECT COUNT(*) FROM network_vod WHERE provider_network_id = o.provider_network_id AND vod_type = 'live') as live_count,
+        (SELECT COUNT(*) FROM network_vod WHERE provider_network_id = o.provider_network_id AND (vod_type = 'movie' OR vod_type = 'series')) as vod_count
+       FROM provider_offerings o
+       LEFT JOIN provider_networks pn ON pn.id = o.provider_network_id
+       WHERE o.is_active = true
+       ORDER BY o.is_featured DESC, o.created_at ASC`
     );
     return rows;
   },
 
   async listAll() {
     const { rows } = await pool.query(
-      `SELECT o.*, pn.name AS network_name
+      `SELECT o.*, pn.name AS network_name,
+        (SELECT COUNT(*) FROM network_vod WHERE provider_network_id = o.provider_network_id AND vod_type = 'live') as live_count,
+        (SELECT COUNT(*) FROM network_vod WHERE provider_network_id = o.provider_network_id AND (vod_type = 'movie' OR vod_type = 'series')) as vod_count
        FROM provider_offerings o
        LEFT JOIN provider_networks pn ON pn.id = o.provider_network_id
        ORDER BY o.is_featured DESC, o.created_at ASC`
@@ -2448,7 +2456,9 @@ const offeringQueries = {
 
   async findById(id) {
     const { rows } = await pool.query(
-      `SELECT o.*, pn.name AS network_name
+      `SELECT o.*, pn.name AS network_name,
+        (SELECT COUNT(*) FROM network_vod WHERE provider_network_id = o.provider_network_id AND vod_type = 'live') as live_count,
+        (SELECT COUNT(*) FROM network_vod WHERE provider_network_id = o.provider_network_id AND (vod_type = 'movie' OR vod_type = 'series')) as vod_count
        FROM provider_offerings o
        LEFT JOIN provider_networks pn ON pn.id = o.provider_network_id
        WHERE o.id = $1`,
@@ -2457,11 +2467,11 @@ const offeringQueries = {
     return rows[0] || null;
   },
 
-  async create({ name, description, price_cents, currency, billing_period, trial_days, max_connections, features, provisioning_mode, reseller_bouquet_ids, reseller_notes, stripe_price_id, stripe_product_id, provider_network_id, is_featured }) {
+  async create({ name, description, price_cents, currency, billing_period, billing_interval_count, trial_days, max_connections, features, plan_options, catalog_tags, country_codes, provider_stats, provisioning_mode, reseller_bouquet_ids, reseller_notes, stripe_price_id, stripe_product_id, provider_network_id, is_featured, group_id, is_trial }) {
     const { rows } = await pool.query(
       `INSERT INTO provider_offerings
-         (name, description, price_cents, currency, billing_period, trial_days, max_connections, features, provisioning_mode, reseller_bouquet_ids, reseller_notes, stripe_price_id, stripe_product_id, provider_network_id, is_featured)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         (name, description, price_cents, currency, billing_period, billing_interval_count, trial_days, max_connections, features, plan_options, catalog_tags, country_codes, provider_stats, provisioning_mode, reseller_bouquet_ids, reseller_notes, stripe_price_id, stripe_product_id, provider_network_id, is_featured, group_id, is_trial)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
        RETURNING *`,
       [
         name,
@@ -2469,9 +2479,14 @@ const offeringQueries = {
         price_cents,
         currency || 'usd',
         billing_period || 'month',
+        billing_interval_count || 1,
         trial_days || 0,
         max_connections || 1,
         JSON.stringify(features || []),
+        JSON.stringify(plan_options || []),
+        catalog_tags || [],
+        country_codes || [],
+        JSON.stringify(provider_stats || {}),
         provisioning_mode || 'pooled_account',
         reseller_bouquet_ids || [],
         reseller_notes || null,
@@ -2479,20 +2494,22 @@ const offeringQueries = {
         stripe_product_id || null,
         provider_network_id || null,
         is_featured || false,
+        group_id || null,
+        is_trial || false,
       ]
     );
     return rows[0];
   },
 
   async update(id, fields) {
-    const allowed = ['name', 'description', 'price_cents', 'currency', 'billing_period', 'trial_days', 'max_connections', 'features', 'provisioning_mode', 'reseller_bouquet_ids', 'reseller_notes', 'stripe_price_id', 'stripe_product_id', 'provider_network_id', 'is_featured', 'is_active'];
+    const allowed = ['name', 'description', 'price_cents', 'currency', 'billing_period', 'billing_interval_count', 'trial_days', 'max_connections', 'features', 'plan_options', 'catalog_tags', 'country_codes', 'provider_stats', 'provisioning_mode', 'reseller_bouquet_ids', 'reseller_notes', 'stripe_price_id', 'stripe_product_id', 'provider_network_id', 'is_featured', 'is_active', 'group_id', 'is_trial'];
     const sets = [];
     const values = [];
     let idx = 1;
     for (const key of allowed) {
       if (key in fields) {
         sets.push(`${key} = $${idx++}`);
-        values.push(key === 'features' ? JSON.stringify(fields[key]) : fields[key]);
+        values.push(['features', 'plan_options', 'provider_stats'].includes(key) ? JSON.stringify(fields[key]) : fields[key]);
       }
     }
     if (!sets.length) return null;
@@ -2517,12 +2534,14 @@ const offeringQueries = {
 // ─── Marketplace: Provider Subscriptions ─────────────────────────────────────
 
 const subscriptionQueries = {
-  async create({ user_id, offering_id, stripe_customer_id, stripe_subscription_id, status, current_period_start, current_period_end, trial_end, payment_provider, paygate_address_in }) {
+  async create({ user_id, offering_id, stripe_customer_id, stripe_subscription_id, status, current_period_start, current_period_end, trial_end, payment_provider, paygate_address_in, auto_renew, selected_plan_code, selected_plan_name, selected_price_cents, selected_currency, selected_billing_period, selected_interval_count }) {
     const { rows } = await pool.query(
       `INSERT INTO provider_subscriptions
          (user_id, offering_id, stripe_customer_id, stripe_subscription_id, status,
-          current_period_start, current_period_end, trial_end, payment_provider, paygate_address_in)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+          current_period_start, current_period_end, trial_end, payment_provider, paygate_address_in,
+          auto_renew, selected_plan_code, selected_plan_name, selected_price_cents, selected_currency,
+          selected_billing_period, selected_interval_count)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
        RETURNING *`,
       [
         user_id, offering_id,
@@ -2530,13 +2549,20 @@ const subscriptionQueries = {
         status || 'active',
         current_period_start || null, current_period_end || null, trial_end || null,
         payment_provider || 'stripe', paygate_address_in || null,
+        auto_renew !== false,
+        selected_plan_code || null,
+        selected_plan_name || null,
+        selected_price_cents || null,
+        selected_currency || null,
+        selected_billing_period || null,
+        selected_interval_count || null,
       ]
     );
     return rows[0];
   },
 
   async update(id, fields) {
-    const allowed = ['status', 'current_period_start', 'current_period_end', 'cancel_at_period_end', 'cancelled_at', 'trial_end', 'user_provider_id', 'twenty_subscription_id'];
+    const allowed = ['status', 'current_period_start', 'current_period_end', 'cancel_at_period_end', 'cancelled_at', 'trial_end', 'user_provider_id', 'twenty_subscription_id', 'auto_renew', 'selected_plan_code', 'selected_plan_name', 'selected_price_cents', 'selected_currency', 'selected_billing_period', 'selected_interval_count'];
     const sets = [];
     const values = [];
     let idx = 1;
@@ -2559,7 +2585,7 @@ const subscriptionQueries = {
   async findByPaygateAddressIn(paygate_address_in) {
     const { rows } = await pool.query(
       `SELECT ps.*, po.name AS offering_name, po.provider_network_id, po.billing_period,
-              po.price_cents, u.email AS user_email, u.twenty_person_id
+              po.billing_interval_count, po.price_cents, u.email AS user_email, u.twenty_person_id
        FROM provider_subscriptions ps
        JOIN provider_offerings po ON po.id = ps.offering_id
        JOIN users u ON u.id = ps.user_id
@@ -2570,7 +2596,7 @@ const subscriptionQueries = {
   },
 
   async updateByStripeId(stripe_subscription_id, fields) {
-    const allowed = ['status', 'current_period_start', 'current_period_end', 'cancel_at_period_end', 'cancelled_at', 'trial_end', 'user_provider_id', 'twenty_subscription_id'];
+    const allowed = ['status', 'current_period_start', 'current_period_end', 'cancel_at_period_end', 'cancelled_at', 'trial_end', 'user_provider_id', 'twenty_subscription_id', 'auto_renew', 'selected_plan_code', 'selected_plan_name', 'selected_price_cents', 'selected_currency', 'selected_billing_period', 'selected_interval_count'];
     const sets = [];
     const values = [];
     let idx = 1;
@@ -2605,7 +2631,8 @@ const subscriptionQueries = {
   async findByUserId(user_id) {
     const { rows } = await pool.query(
       `SELECT ps.*, po.name AS offering_name, po.description AS offering_description,
-              po.price_cents, po.currency, po.billing_period, po.features
+              po.price_cents, po.currency, po.billing_period, po.billing_interval_count, po.features,
+              po.plan_options, po.catalog_tags, po.country_codes, po.provider_stats
        FROM provider_subscriptions ps
        JOIN provider_offerings po ON po.id = ps.offering_id
        WHERE ps.user_id = $1
@@ -2643,7 +2670,7 @@ const subscriptionQueries = {
          COUNT(*) FILTER (WHERE status = 'trialing') AS trialing_count,
          COUNT(*) FILTER (WHERE status = 'past_due') AS past_due_count,
          COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled_count,
-         SUM(po.price_cents) FILTER (WHERE ps.status IN ('active','trialing')) AS mrr_cents
+         SUM(COALESCE(ps.selected_price_cents, po.price_cents)) FILTER (WHERE ps.status IN ('active','trialing')) AS mrr_cents
        FROM provider_subscriptions ps
        JOIN provider_offerings po ON po.id = ps.offering_id`
     );

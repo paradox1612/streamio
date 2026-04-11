@@ -90,8 +90,19 @@ export const marketplaceAPI = {
   listOfferings: () => api.get('/api/marketplace/offerings'),
   getOffering: (id: string) => api.get(`/api/marketplace/offerings/${id}`),
   getPaymentProviders: () => api.get('/api/marketplace/payment-providers'),
-  createCheckout: (offeringId: string, paymentProvider: 'stripe' | 'paygate' | 'credits' = 'stripe', confirmDuplicate = false) =>
-    api.post('/api/marketplace/checkout', { offering_id: offeringId, payment_provider: paymentProvider, confirm_duplicate: confirmDuplicate }),
+  createCheckout: (
+    offeringId: string,
+    paymentProvider: 'stripe' | 'paygate' | 'credits' = 'stripe',
+    confirmDuplicate = false,
+    options?: { plan_code?: string; auto_renew?: boolean }
+  ) =>
+    api.post('/api/marketplace/checkout', {
+      offering_id: offeringId,
+      payment_provider: paymentProvider,
+      confirm_duplicate: confirmDuplicate,
+      plan_code: options?.plan_code,
+      auto_renew: options?.auto_renew,
+    }),
   getPaygateStatus: (addressIn: string) => api.get(`/api/marketplace/paygate/status/${addressIn}`),
   getSubscriptions: () => api.get('/api/subscriptions'),
   getPortalUrl: () => api.get('/api/subscriptions/portal'),

@@ -46,27 +46,65 @@ async function createOrGetCustomer(user) {
 async function createCheckoutSession(user, offering) {
   const stripe = getStripe();
   const customer = await createOrGetCustomer(user);
+  const selectedPlan = offering.selected_plan;
+
+  const recurring = {
+    interval: selectedPlan?.billing_period === 'year'
+      ? 'year'
+      : selectedPlan?.billing_period === 'day'
+        ? 'day'
+        : 'month',
+    interval_count: selectedPlan?.billing_interval_count || 1,
+  };
+
+  const lineItem = offering.stripe_product_id
+    ? {
+      price_data: {
+        product: offering.stripe_product_id,
+        currency: (selectedPlan?.currency || offering.currency || 'usd').toLowerCase(),
+        unit_amount: selectedPlan?.price_cents || offering.price_cents,
+        recurring,
+      },
+      quantity: 1,
+    }
+    : {
+      price_data: {
+        currency: (selectedPlan?.currency || offering.currency || 'usd').toLowerCase(),
+        unit_amount: selectedPlan?.price_cents || offering.price_cents,
+        recurring,
+        product_data: {
+          name: offering.name,
+          description: offering.description || undefined,
+          metadata: { streamio_offering_id: offering.id },
+        },
+      },
+      quantity: 1,
+    };
 
   const sessionParams = {
     customer: customer.id,
     mode: 'subscription',
-    line_items: [{ price: offering.stripe_price_id, quantity: 1 }],
+    line_items: [lineItem],
     success_url: `${process.env.FRONTEND_URL}/dashboard/subscriptions?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${process.env.FRONTEND_URL}/dashboard/marketplace`,
     metadata: {
       streamio_user_id: user.id,
       streamio_offering_id: offering.id,
+      streamio_plan_code: selectedPlan?.code || 'default',
+      streamio_auto_renew: offering.auto_renew === false ? 'false' : 'true',
     },
     subscription_data: {
       metadata: {
         streamio_user_id: user.id,
         streamio_offering_id: offering.id,
+        streamio_plan_code: selectedPlan?.code || 'default',
+        streamio_auto_renew: offering.auto_renew === false ? 'false' : 'true',
       },
     },
   };
 
-  if (offering.trial_days > 0) {
-    sessionParams.subscription_data.trial_period_days = offering.trial_days;
+  if ((selectedPlan?.trial_days || offering.trial_days) > 0) {
+    sessionParams.subscription_data.trial_period_days = selectedPlan?.trial_days || offering.trial_days;
   }
 
   const session = await stripe.checkout.sessions.create(sessionParams);
@@ -128,7 +166,10 @@ async function createProductAndPrice(offering) {
     product: product.id,
     unit_amount: offering.price_cents,
     currency: offering.currency || 'usd',
-    recurring: { interval: offering.billing_period === 'year' ? 'year' : 'month' },
+    recurring: {
+      interval: offering.billing_period === 'year' ? 'year' : offering.billing_period === 'day' ? 'day' : 'month',
+      interval_count: offering.billing_interval_count || 1,
+    },
     metadata: { streamio_offering_id: offering.id },
   });
 
@@ -155,7 +196,8 @@ async function syncOffering(offering, previousOffering = null) {
     !previousOffering ||
     offering.price_cents !== previousOffering.price_cents ||
     offering.currency !== previousOffering.currency ||
-    offering.billing_period !== previousOffering.billing_period;
+    offering.billing_period !== previousOffering.billing_period ||
+    offering.billing_interval_count !== previousOffering.billing_interval_count;
 
   if (!priceChanged) {
     return {
@@ -168,7 +210,10 @@ async function syncOffering(offering, previousOffering = null) {
     product: productId,
     unit_amount: offering.price_cents,
     currency: offering.currency || 'usd',
-    recurring: { interval: offering.billing_period === 'year' ? 'year' : 'month' },
+    recurring: {
+      interval: offering.billing_period === 'year' ? 'year' : offering.billing_period === 'day' ? 'day' : 'month',
+      interval_count: offering.billing_interval_count || 1,
+    },
     metadata: { streamio_offering_id: offering.id },
   });
 

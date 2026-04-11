@@ -124,12 +124,17 @@ async function getPaymentStatus(addressIn) {
  * Calculate subscription period end date.
  * PayGate subscriptions are one-time payments — manual renewal required.
  */
-function calcPeriodEnd(billingPeriod) {
+function calcPeriodEnd(billingPeriod, intervalCount = 1) {
   const now = new Date();
+  const count = Number.isFinite(parseInt(intervalCount, 10)) && parseInt(intervalCount, 10) > 0
+    ? parseInt(intervalCount, 10)
+    : 1;
   if (billingPeriod === 'year') {
-    now.setFullYear(now.getFullYear() + 1);
+    now.setFullYear(now.getFullYear() + count);
+  } else if (billingPeriod === 'day') {
+    now.setDate(now.getDate() + count);
   } else {
-    now.setMonth(now.getMonth() + 1);
+    now.setMonth(now.getMonth() + count);
   }
   return now;
 }
