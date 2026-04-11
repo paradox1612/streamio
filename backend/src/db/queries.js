@@ -15,7 +15,7 @@ const PROVIDER_HOSTS_EXPR = `
     COALESCE(
       NULLIF(
         ARRAY(
-          SELECT h.host_url
+          SELECT h.host_url::TEXT
           FROM   provider_network_hosts h
           WHERE  h.provider_network_id = p.network_id
             AND  h.is_active = true
