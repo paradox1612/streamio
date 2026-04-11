@@ -20,6 +20,8 @@ jest.mock('../../src/db/queries', () => ({
     findByIdAndUser: jest.fn(),
     updateHealth: jest.fn(),
     update: jest.fn().mockResolvedValue({}),
+    findByIdForCrm: jest.fn(),
+    updateCrmSync: jest.fn(),
   },
   vodQueries: {
     upsertBatch: jest.fn().mockResolvedValue(),

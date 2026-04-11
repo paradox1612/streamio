@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import {
   DollarSign, Package, ShoppingCart, TrendingUp,
-  Plus, Pencil, Trash2, ToggleLeft, ToggleRight, X, Check,
+  Plus, Pencil, Trash2, ToggleLeft, ToggleRight, X, Check, Loader2,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { adminAPI } from '@/utils/api'
@@ -50,23 +50,33 @@ const EMPTY_FORM = {
   max_connections: '1',
   features: '',
   is_featured: false,
+  provisioning_mode: 'pooled_account',
   provider_network_id: '',
+  reseller_bouquet_ids: [] as string[],
+  reseller_notes: '',
 }
 
 export default function AdminMarketplacePage() {
   const [offerings, setOfferings] = useState<any[]>([])
+  const [networks, setNetworks] = useState<any[]>([])
   const [analytics, setAnalytics] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState({ ...EMPTY_FORM })
   const [saving, setSaving] = useState(false)
+  const [loadingBouquets, setLoadingBouquets] = useState(false)
+  const [bouquets, setBouquets] = useState<{ id: string; bouquet_name: string }[]>([])
 
   async function load() {
     try {
-      const { data } = await adminAPI.getMarketplace()
+      const [{ data }, networkRes] = await Promise.all([
+        adminAPI.getMarketplace(),
+        adminAPI.listNetworks(),
+      ])
       setOfferings(data.offerings || [])
       setAnalytics(data.analytics || null)
+      setNetworks(Array.isArray(networkRes.data) ? networkRes.data : [])
     } catch {
       toast.error('Failed to load marketplace data')
     } finally {
@@ -79,10 +89,11 @@ export default function AdminMarketplacePage() {
   function openCreate() {
     setEditingId(null)
     setForm({ ...EMPTY_FORM })
+    setBouquets([])
     setShowModal(true)
   }
 
-  function openEdit(o: any) {
+  async function openEdit(o: any) {
     setEditingId(o.id)
     setForm({
       name: o.name || '',
@@ -94,9 +105,37 @@ export default function AdminMarketplacePage() {
       max_connections: String(o.max_connections || 1),
       features: Array.isArray(o.features) ? o.features.join(', ') : '',
       is_featured: o.is_featured || false,
+      provisioning_mode: o.provisioning_mode || 'pooled_account',
       provider_network_id: o.provider_network_id || '',
+      reseller_bouquet_ids: Array.isArray(o.reseller_bouquet_ids) ? o.reseller_bouquet_ids : [],
+      reseller_notes: o.reseller_notes || '',
     })
+    if (o.provisioning_mode === 'reseller_line' && o.provider_network_id) {
+      await loadBouquets(o.provider_network_id, true)
+    } else {
+      setBouquets([])
+    }
     setShowModal(true)
+  }
+
+  async function loadBouquets(networkId: string, force = false) {
+    if (!networkId) {
+      setBouquets([])
+      return
+    }
+    if (!force && networkId === form.provider_network_id && bouquets.length > 0) {
+      return
+    }
+    setLoadingBouquets(true)
+    try {
+      const { data } = await adminAPI.getNetworkBouquets(networkId)
+      setBouquets(Array.isArray(data) ? data : [])
+    } catch (err: any) {
+      setBouquets([])
+      toast.error(err.response?.data?.error || 'Failed to load bouquets')
+    } finally {
+      setLoadingBouquets(false)
+    }
   }
 
   async function handleSave() {
@@ -116,7 +155,10 @@ export default function AdminMarketplacePage() {
         max_connections: parseInt(form.max_connections) || 1,
         features: form.features ? form.features.split(',').map((f) => f.trim()).filter(Boolean) : [],
         is_featured: form.is_featured,
+        provisioning_mode: form.provisioning_mode,
         provider_network_id: form.provider_network_id || null,
+        reseller_bouquet_ids: form.reseller_bouquet_ids,
+        reseller_notes: form.reseller_notes || null,
       }
       if (editingId) {
         await adminAPI.updateOffering(editingId, payload)
@@ -158,6 +200,7 @@ export default function AdminMarketplacePage() {
   const mrrDisplay = analytics?.mrr_cents
     ? formatCents(Number(analytics.mrr_cents))
     : '$0.00'
+  const selectedNetwork = networks.find((network) => network.id === form.provider_network_id)
 
   return (
     <div className="space-y-8 p-6">
@@ -221,6 +264,7 @@ export default function AdminMarketplacePage() {
                     <th className="px-5 py-3">Name</th>
                     <th className="px-5 py-3">Price</th>
                     <th className="px-5 py-3">Billing</th>
+                    <th className="px-5 py-3">Provisioning</th>
                     <th className="px-5 py-3">Trial</th>
                     <th className="px-5 py-3">Stripe</th>
                     <th className="px-5 py-3">Status</th>
@@ -241,6 +285,9 @@ export default function AdminMarketplacePage() {
                         {formatCents(o.price_cents, o.currency)}
                       </td>
                       <td className="px-5 py-3 text-slate-300 capitalize">{o.billing_period}</td>
+                      <td className="px-5 py-3 text-slate-300">
+                        {o.provisioning_mode === 'reseller_line' ? 'Reseller line' : 'Pooled account'}
+                      </td>
                       <td className="px-5 py-3 text-slate-300">
                         {o.trial_days > 0 ? `${o.trial_days}d` : '—'}
                       </td>
@@ -333,7 +380,7 @@ export default function AdminMarketplacePage() {
                   onChange={(e) => setForm({ ...form, price_cents: e.target.value })}
                   placeholder="999"
                 />
-                <p className="text-xs text-slate-400">e.g. 999 = $9.99</p>
+                <p className="text-xs text-slate-400">e.g. 999 = $9.99. Stripe pricing is refreshed on save.</p>
               </div>
               <div className="space-y-1">
                 <Label>Currency</Label>
@@ -381,13 +428,97 @@ export default function AdminMarketplacePage() {
                 />
               </div>
               <div className="col-span-2 space-y-1">
-                <Label>Provider Network ID</Label>
-                <Input
-                  value={form.provider_network_id}
-                  onChange={(e) => setForm({ ...form, provider_network_id: e.target.value })}
-                  placeholder="UUID (optional)"
-                />
+                <Label>Provisioning Mode</Label>
+                <select
+                  className="w-full rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+                  value={form.provisioning_mode}
+                  onChange={(e) => setForm({
+                    ...form,
+                    provisioning_mode: e.target.value,
+                    reseller_bouquet_ids: e.target.value === 'reseller_line' ? form.reseller_bouquet_ids : [],
+                  })}
+                >
+                  <option value="pooled_account">Pooled account</option>
+                  <option value="reseller_line">Create reseller line</option>
+                </select>
               </div>
+              <div className="col-span-2 space-y-1">
+                <Label>Provider Network</Label>
+                <select
+                  className="w-full rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+                  value={form.provider_network_id}
+                  onChange={async (e) => {
+                    const provider_network_id = e.target.value
+                    setForm({ ...form, provider_network_id, reseller_bouquet_ids: [] })
+                    setBouquets([])
+                    if (provider_network_id && form.provisioning_mode === 'reseller_line') {
+                      await loadBouquets(provider_network_id, true)
+                    }
+                  }}
+                >
+                  <option value="">No network</option>
+                  {networks.map((network) => (
+                    <option key={network.id} value={network.id}>
+                      {network.name}
+                    </option>
+                  ))}
+                </select>
+                {selectedNetwork ? (
+                  <p className="text-xs text-slate-400">
+                    {selectedNetwork.xtream_ui_scraped ? 'Uses Xtream UI session flow.' : 'Uses reseller API credentials.'}
+                  </p>
+                ) : null}
+              </div>
+              {form.provisioning_mode === 'reseller_line' && (
+                <>
+                  <div className="col-span-2 space-y-2 rounded-lg border border-white/10 bg-slate-950/40 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label>Reseller Bouquets</Label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={!form.provider_network_id || loadingBouquets}
+                        onClick={() => loadBouquets(form.provider_network_id, true)}
+                      >
+                        {loadingBouquets ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Load bouquets'}
+                      </Button>
+                    </div>
+                    {!form.provider_network_id ? (
+                      <p className="text-xs text-slate-400">Choose a provider network first.</p>
+                    ) : bouquets.length === 0 ? (
+                      <p className="text-xs text-slate-400">No bouquets loaded.</p>
+                    ) : (
+                      <div className="grid max-h-44 gap-2 overflow-y-auto">
+                        {bouquets.map((bouquet) => (
+                          <label key={bouquet.id} className="flex items-center gap-2 text-sm text-slate-200">
+                            <input
+                              type="checkbox"
+                              checked={form.reseller_bouquet_ids.includes(bouquet.id)}
+                              onChange={(e) => setForm({
+                                ...form,
+                                reseller_bouquet_ids: e.target.checked
+                                  ? [...form.reseller_bouquet_ids, bouquet.id]
+                                  : form.reseller_bouquet_ids.filter((id) => id !== bouquet.id),
+                              })}
+                              className="h-4 w-4 rounded"
+                            />
+                            <span>{bouquet.bouquet_name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <Label>Provisioning Notes</Label>
+                    <Input
+                      value={form.reseller_notes}
+                      onChange={(e) => setForm({ ...form, reseller_notes: e.target.value })}
+                      placeholder="Optional notes attached during reseller line creation"
+                    />
+                  </div>
+                </>
+              )}
               <div className="col-span-2 flex items-center gap-2">
                 <input
                   id="is_featured"

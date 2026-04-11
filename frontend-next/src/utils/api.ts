@@ -90,8 +90,8 @@ export const marketplaceAPI = {
   listOfferings: () => api.get('/api/marketplace/offerings'),
   getOffering: (id: string) => api.get(`/api/marketplace/offerings/${id}`),
   getPaymentProviders: () => api.get('/api/marketplace/payment-providers'),
-  createCheckout: (offeringId: string, paymentProvider: 'stripe' | 'paygate' | 'credits' = 'stripe') =>
-    api.post('/api/marketplace/checkout', { offering_id: offeringId, payment_provider: paymentProvider }),
+  createCheckout: (offeringId: string, paymentProvider: 'stripe' | 'paygate' | 'credits' = 'stripe', confirmDuplicate = false) =>
+    api.post('/api/marketplace/checkout', { offering_id: offeringId, payment_provider: paymentProvider, confirm_duplicate: confirmDuplicate }),
   getPaygateStatus: (addressIn: string) => api.get(`/api/marketplace/paygate/status/${addressIn}`),
   getSubscriptions: () => api.get('/api/subscriptions'),
   getPortalUrl: () => api.get('/api/subscriptions/portal'),
@@ -167,6 +167,8 @@ export const adminAPI = {
   deleteUser: (id: string) => api.delete(`/api/admin/users/${id}`),
   suspendUser: (id: string, suspend: boolean) => api.patch(`/api/admin/users/${id}/suspend`, { suspend }),
   impersonateUser: (id: string) => api.post(`/api/admin/users/${id}/impersonate`),
+  adjustUserCredits: (id: string, data: { direction: 'add' | 'deduct'; amount_cents: number; note?: string }) =>
+    api.post(`/api/admin/users/${id}/credits-adjust`, data),
   listProviders: (params?: Record<string, unknown>) => api.get('/api/admin/providers', { params }),
   getProvider: (id: string) => api.get(`/api/admin/providers/${id}`),
   deleteProvider: (id: string) => api.delete(`/api/admin/providers/${id}`),

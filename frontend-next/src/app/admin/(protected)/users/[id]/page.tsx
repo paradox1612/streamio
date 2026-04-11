@@ -3,19 +3,29 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Gift, LogIn, Shield, UserRoundX } from 'lucide-react'
+import { ArrowLeft, Coins, Gift, LogIn, Shield, UserRoundX } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { adminAPI } from '@/utils/api'
 import { persistUserToken } from '@/lib/auth-cookies'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 function formatDate(value: string | null | undefined) {
   if (!value) return 'Never'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return 'Unknown'
   return date.toLocaleString()
+}
+
+function formatCurrencyFromCents(value: number | null | undefined) {
+  const amount = Number(value || 0) / 100
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(amount)
 }
 
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -33,6 +43,9 @@ export default function AdminUserDetailPage() {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [acting, setActing] = useState('')
+  const [creditDirection, setCreditDirection] = useState<'add' | 'deduct'>('add')
+  const [creditAmount, setCreditAmount] = useState('')
+  const [creditNote, setCreditNote] = useState('')
 
   const load = () =>
     adminAPI
@@ -91,6 +104,33 @@ export default function AdminUserDetailPage() {
       window.location.href = '/dashboard'
     } catch {
       toast.error('Impersonation failed')
+    } finally {
+      setActing('')
+    }
+  }
+
+  const handleAdjustCredits = async () => {
+    if (!user) return
+
+    const amountCents = Math.round(Number(creditAmount) * 100)
+    if (!Number.isFinite(amountCents) || amountCents <= 0) {
+      toast.error('Enter a valid credit amount in dollars')
+      return
+    }
+
+    setActing('credits')
+    try {
+      await adminAPI.adjustUserCredits(user.id, {
+        direction: creditDirection,
+        amount_cents: amountCents,
+        note: creditNote.trim() || undefined,
+      })
+      await load()
+      setCreditAmount('')
+      setCreditNote('')
+      toast.success(creditDirection === 'add' ? 'Credits added' : 'Credits deducted')
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Credit update failed')
     } finally {
       setActing('')
     }
@@ -172,6 +212,7 @@ export default function AdminUserDetailPage() {
             <DetailRow label="Email" value={user.email} />
             <DetailRow label="Created" value={formatDate(user.created_at)} />
             <DetailRow label="Last seen" value={formatDate(user.last_seen)} />
+            <DetailRow label="Credit balance" value={formatCurrencyFromCents(user.credit_balance_cents)} />
             <DetailRow
               label="Account status"
               value={
@@ -242,6 +283,74 @@ export default function AdminUserDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b border-white/[0.08] pb-4">
+          <CardTitle>Credit adjustment</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5 p-5">
+          <div className="grid gap-4 md:grid-cols-[180px,180px,1fr,auto] md:items-end">
+            <div className="space-y-2">
+              <Label>Action</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={creditDirection === 'add' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => setCreditDirection('add')}
+                >
+                  Add
+                </Button>
+                <Button
+                  type="button"
+                  variant={creditDirection === 'deduct' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => setCreditDirection('deduct')}
+                >
+                  Deduct
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="credit-amount">Amount (USD)</Label>
+              <Input
+                id="credit-amount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={creditAmount}
+                onChange={(e) => setCreditAmount(e.target.value)}
+                placeholder="25.00"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="credit-note">Note</Label>
+              <Input
+                id="credit-note"
+                value={creditNote}
+                onChange={(e) => setCreditNote(e.target.value)}
+                placeholder="Manual adjustment by admin"
+              />
+            </div>
+
+            <Button
+              type="button"
+              className="gap-2"
+              disabled={acting === 'credits'}
+              onClick={handleAdjustCredits}
+            >
+              <Coins className="h-4 w-4" />
+              {acting === 'credits' ? 'Saving…' : creditDirection === 'add' ? 'Add credits' : 'Deduct credits'}
+            </Button>
+          </div>
+
+          <p className="text-xs text-slate-400">
+            This writes an audit entry to credit transactions and updates the user balance immediately.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   )
 }

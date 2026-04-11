@@ -24,6 +24,7 @@ const tmdbService = require('../services/tmdbService');
 const providerService = require('../services/providerService');
 const hostHealthService = require('../services/hostHealthService');
 const freeAccessService = require('../services/freeAccessService');
+const creditService = require('../services/creditService');
 const { jobs } = require('../jobs/scheduler');
 const logger = require('../utils/logger');
 const { getRuntimeInfo } = require('../utils/runtimeInfo');
@@ -175,6 +176,46 @@ router.post('/users/:id/impersonate', requireAdmin, async (req, res) => {
   );
   logger.info(`Admin impersonating user: ${user.email}`);
   res.json({ token, user: { id: user.id, email: user.email } });
+});
+
+// POST /admin/users/:id/credits-adjust
+router.post('/users/:id/credits-adjust', requireAdmin, async (req, res) => {
+  try {
+    const user = await userQueries.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const amountCents = parseInt(req.body.amount_cents, 10);
+    const direction = req.body.direction === 'deduct' ? 'deduct' : 'add';
+    const note = typeof req.body.note === 'string' ? req.body.note.trim() : '';
+
+    if (!Number.isFinite(amountCents) || amountCents <= 0) {
+      return res.status(400).json({ error: 'amount_cents must be a positive integer' });
+    }
+
+    const description = note || `Admin ${direction} for ${user.email}`;
+    let balance;
+
+    if (direction === 'deduct') {
+      balance = await creditService.spendCredits(user.id, amountCents, {
+        description,
+      });
+    } else {
+      balance = await creditService.addCredits(user.id, amountCents, {
+        type: 'admin_grant',
+        description,
+      });
+    }
+
+    res.json({
+      success: true,
+      user_id: user.id,
+      direction,
+      amount_cents: amountCents,
+      balance_cents: balance,
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'Failed to adjust credits' });
+  }
 });
 
 // ─── Providers ───────────────────────────────────────────────────────────────
@@ -489,16 +530,36 @@ router.get('/marketplace', requireAdmin, async (req, res) => {
 // POST /api/admin/marketplace — create offering + Stripe Product/Price
 router.post('/marketplace', requireAdmin, async (req, res) => {
   try {
-    const { name, description, price_cents, currency, billing_period, trial_days, max_connections, features, provider_network_id, is_featured } = req.body;
+    const {
+      name,
+      description,
+      price_cents,
+      currency,
+      billing_period,
+      trial_days,
+      max_connections,
+      features,
+      provider_network_id,
+      is_featured,
+      provisioning_mode,
+      reseller_bouquet_ids,
+      reseller_notes,
+    } = req.body;
 
     if (!name || !price_cents) {
       return res.status(400).json({ error: 'name and price_cents are required' });
+    }
+    if (provisioning_mode === 'reseller_line' && !provider_network_id) {
+      return res.status(400).json({ error: 'provider_network_id is required for reseller line provisioning' });
     }
 
     // Create in DB first (without Stripe IDs)
     let offering = await offeringQueries.create({
       name, description, price_cents, currency, billing_period, trial_days,
       max_connections, features, provider_network_id, is_featured,
+      provisioning_mode,
+      reseller_bouquet_ids,
+      reseller_notes,
     });
 
     // Sync to Stripe if key is configured
@@ -521,8 +582,26 @@ router.post('/marketplace', requireAdmin, async (req, res) => {
 // PATCH /api/admin/marketplace/:id — update offering fields
 router.patch('/marketplace/:id', requireAdmin, async (req, res) => {
   try {
-    const updated = await offeringQueries.update(req.params.id, req.body);
+    const existing = await offeringQueries.findById(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Offering not found' });
+    const nextProvisioningMode = req.body.provisioning_mode ?? existing.provisioning_mode;
+    const nextProviderNetworkId = req.body.provider_network_id ?? existing.provider_network_id;
+    if (nextProvisioningMode === 'reseller_line' && !nextProviderNetworkId) {
+      return res.status(400).json({ error: 'provider_network_id is required for reseller line provisioning' });
+    }
+
+    let updated = await offeringQueries.update(req.params.id, req.body);
     if (!updated) return res.status(404).json({ error: 'Offering not found' });
+
+    if (process.env.STRIPE_SECRET_KEY) {
+      const stripeService = require('../services/stripeService');
+      const stripeSync = await stripeService.syncOffering(updated, existing);
+      updated = await offeringQueries.update(req.params.id, {
+        stripe_product_id: stripeSync.productId,
+        stripe_price_id: stripeSync.priceId,
+      });
+    }
+
     res.json(updated);
   } catch (err) {
     logger.error('PATCH /admin/marketplace/:id:', err.message);

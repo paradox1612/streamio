@@ -135,6 +135,46 @@ async function createProductAndPrice(offering) {
   return { productId: product.id, priceId: price.id };
 }
 
+async function syncOffering(offering, previousOffering = null) {
+  const stripe = getStripe();
+  let productId = offering.stripe_product_id || previousOffering?.stripe_product_id || null;
+
+  if (!productId) {
+    const created = await createProductAndPrice(offering);
+    return created;
+  }
+
+  await stripe.products.update(productId, {
+    name: offering.name,
+    description: offering.description || undefined,
+    metadata: { streamio_offering_id: offering.id },
+  });
+
+  const priceChanged =
+    !offering.stripe_price_id ||
+    !previousOffering ||
+    offering.price_cents !== previousOffering.price_cents ||
+    offering.currency !== previousOffering.currency ||
+    offering.billing_period !== previousOffering.billing_period;
+
+  if (!priceChanged) {
+    return {
+      productId,
+      priceId: offering.stripe_price_id || previousOffering?.stripe_price_id || null,
+    };
+  }
+
+  const price = await stripe.prices.create({
+    product: productId,
+    unit_amount: offering.price_cents,
+    currency: offering.currency || 'usd',
+    recurring: { interval: offering.billing_period === 'year' ? 'year' : 'month' },
+    metadata: { streamio_offering_id: offering.id },
+  });
+
+  return { productId, priceId: price.id };
+}
+
 module.exports = {
   isEnabled: STRIPE_ENABLED,
   createOrGetCustomer,
@@ -143,4 +183,5 @@ module.exports = {
   cancelSubscription,
   constructWebhookEvent,
   createProductAndPrice,
+  syncOffering,
 };

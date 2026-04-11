@@ -51,12 +51,23 @@ router.get('/marketplace/payment-providers', requireAuth, async (req, res) => {
 // Body: { offering_id, payment_provider: 'stripe' | 'paygate' | 'credits' }
 router.post('/marketplace/checkout', requireAuth, async (req, res) => {
   try {
-    const { offering_id, payment_provider = 'stripe' } = req.body;
+    const { offering_id, payment_provider = 'stripe', confirm_duplicate = false } = req.body;
     if (!offering_id) return res.status(400).json({ error: 'offering_id is required' });
 
     const offering = await offeringQueries.findById(offering_id);
     if (!offering || !offering.is_active) {
       return res.status(404).json({ error: 'Offering not found or inactive' });
+    }
+
+    // Check for existing active subscription
+    const existingSubs = await subscriptionQueries.findByUserId(req.user.id);
+    const hasActive = existingSubs.some(s => s.offering_id === offering.id && s.status === 'active');
+    
+    if (hasActive && !confirm_duplicate) {
+      return res.status(409).json({
+        warning: 'already_subscribed',
+        message: 'You already have an active subscription for this plan. Buying another will create a second line. Continue?'
+      });
     }
 
     const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
@@ -150,7 +161,10 @@ router.post('/marketplace/checkout', requireAuth, async (req, res) => {
       // Provision credentials
       if (offering.provider_network_id) {
         try {
-          const userProvider = await subscriptionService.provisionCredentialsPublic(user.id, offering);
+          const userProvider = await subscriptionService.provisionCredentialsPublic(user.id, offering, {
+            user,
+            expiresAt: sub.current_period_end,
+          });
           if (userProvider) {
             await subscriptionQueries.update(sub.id, { user_provider_id: userProvider.id });
           }

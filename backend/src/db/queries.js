@@ -24,6 +24,7 @@ const USER_PUBLIC_SELECT = `
     u.preferred_languages,
     u.excluded_languages,
     u.is_active,
+    u.credit_balance_cents,
     u.created_at,
     u.last_seen,
     EXISTS(
@@ -2456,19 +2457,35 @@ const offeringQueries = {
     return rows[0] || null;
   },
 
-  async create({ name, description, price_cents, currency, billing_period, trial_days, max_connections, features, stripe_price_id, stripe_product_id, provider_network_id, is_featured }) {
+  async create({ name, description, price_cents, currency, billing_period, trial_days, max_connections, features, provisioning_mode, reseller_bouquet_ids, reseller_notes, stripe_price_id, stripe_product_id, provider_network_id, is_featured }) {
     const { rows } = await pool.query(
       `INSERT INTO provider_offerings
-         (name, description, price_cents, currency, billing_period, trial_days, max_connections, features, stripe_price_id, stripe_product_id, provider_network_id, is_featured)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         (name, description, price_cents, currency, billing_period, trial_days, max_connections, features, provisioning_mode, reseller_bouquet_ids, reseller_notes, stripe_price_id, stripe_product_id, provider_network_id, is_featured)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING *`,
-      [name, description || null, price_cents, currency || 'usd', billing_period || 'month', trial_days || 0, max_connections || 1, JSON.stringify(features || []), stripe_price_id || null, stripe_product_id || null, provider_network_id || null, is_featured || false]
+      [
+        name,
+        description || null,
+        price_cents,
+        currency || 'usd',
+        billing_period || 'month',
+        trial_days || 0,
+        max_connections || 1,
+        JSON.stringify(features || []),
+        provisioning_mode || 'pooled_account',
+        reseller_bouquet_ids || [],
+        reseller_notes || null,
+        stripe_price_id || null,
+        stripe_product_id || null,
+        provider_network_id || null,
+        is_featured || false,
+      ]
     );
     return rows[0];
   },
 
   async update(id, fields) {
-    const allowed = ['name', 'description', 'price_cents', 'currency', 'billing_period', 'trial_days', 'max_connections', 'features', 'stripe_price_id', 'stripe_product_id', 'provider_network_id', 'is_featured', 'is_active'];
+    const allowed = ['name', 'description', 'price_cents', 'currency', 'billing_period', 'trial_days', 'max_connections', 'features', 'provisioning_mode', 'reseller_bouquet_ids', 'reseller_notes', 'stripe_price_id', 'stripe_product_id', 'provider_network_id', 'is_featured', 'is_active'];
     const sets = [];
     const values = [];
     let idx = 1;

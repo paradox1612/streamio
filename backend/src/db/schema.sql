@@ -716,6 +716,9 @@ CREATE TABLE IF NOT EXISTS provider_offerings (
   trial_days          INTEGER NOT NULL DEFAULT 0,
   max_connections     INTEGER NOT NULL DEFAULT 1,
   features            JSONB DEFAULT '[]',
+  provisioning_mode   TEXT NOT NULL DEFAULT 'pooled_account',
+  reseller_bouquet_ids TEXT[] DEFAULT ARRAY[]::TEXT[],
+  reseller_notes      TEXT,
   stripe_price_id     TEXT UNIQUE,
   stripe_product_id   TEXT,
   provider_network_id UUID REFERENCES provider_networks(id) ON DELETE SET NULL,
@@ -727,6 +730,13 @@ CREATE TABLE IF NOT EXISTS provider_offerings (
 
 CREATE INDEX IF NOT EXISTS idx_provider_offerings_active  ON provider_offerings(is_active);
 CREATE INDEX IF NOT EXISTS idx_provider_offerings_network ON provider_offerings(provider_network_id);
+
+ALTER TABLE provider_offerings
+  ADD COLUMN IF NOT EXISTS provisioning_mode TEXT NOT NULL DEFAULT 'pooled_account';
+ALTER TABLE provider_offerings
+  ADD COLUMN IF NOT EXISTS reseller_bouquet_ids TEXT[] DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE provider_offerings
+  ADD COLUMN IF NOT EXISTS reseller_notes TEXT;
 
 -- ─────────────────────────────────────────
 -- Provider Subscriptions (User Purchases)

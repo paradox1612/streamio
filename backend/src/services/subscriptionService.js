@@ -1,6 +1,56 @@
+const crypto = require('crypto');
 const { pool, offeringQueries, subscriptionQueries, paymentQueries, providerNetworkQueries, providerQueries, freeAccessQueries } = require('../db/queries');
 const logger = require('../utils/logger');
 const eventBus = require('../utils/eventBus');
+const providerService = require('./providerService');
+const xtreamUiScraper = require('../utils/xtreamUiScraper');
+
+function sanitizeTokenPart(value, fallback = 'user') {
+  const cleaned = String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+  return cleaned || fallback;
+}
+
+function buildMarketplaceLineUsername(user, offering) {
+  const emailPart = sanitizeTokenPart(String(user.email || '').split('@')[0], 'user').slice(0, 8);
+  const offeringPart = sanitizeTokenPart(offering.name, 'line').slice(0, 6);
+  const suffix = crypto.randomBytes(3).toString('hex');
+  return `${offeringPart}${emailPart}${suffix}`.slice(0, 24);
+}
+
+function buildMarketplaceLinePassword() {
+  return crypto.randomBytes(8).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
+}
+
+async function ensureManagedNetworkSession(network, panelHost) {
+  if (!network.xtream_ui_scraped) return null;
+  if (!panelHost) throw new Error('No reseller portal URL or customer hosts configured');
+
+  const tryRefresh = async () => {
+    if (!network.reseller_username || !network.reseller_password) {
+      throw new Error('Reseller username and password required for auto-login');
+    }
+    const session = await xtreamUiScraper.autoLogin(
+      panelHost,
+      network.reseller_username,
+      network.reseller_password
+    );
+    await providerNetworkQueries.update(network.id, { reseller_session_cookie: session });
+    network.reseller_session_cookie = session;
+    return session;
+  };
+
+  if (!network.reseller_session_cookie) {
+    return tryRefresh();
+  }
+
+  const isValid = await xtreamUiScraper.isSessionValid(panelHost, network.reseller_session_cookie);
+  if (isValid) return network.reseller_session_cookie;
+
+  logger.info(`[SubscriptionService] Refreshing stale reseller session for network ${network.id}`);
+  return tryRefresh();
+}
 
 /**
  * Called when checkout.session.completed fires.
@@ -54,7 +104,11 @@ async function handlePurchase({ stripeSession, stripeSubscription }) {
   let userProvider = null;
   if (offering.provider_network_id) {
     try {
-      userProvider = await provisionCredentials(userId, offering);
+      userProvider = await provisionCredentials(userId, offering, {
+        user,
+        expiresAt: sub.current_period_end,
+        subscriptionId: sub.id,
+      });
       if (userProvider) {
         await subscriptionQueries.update(sub.id, { user_provider_id: userProvider.id });
         sub.user_provider_id = userProvider.id;
@@ -75,7 +129,13 @@ async function handlePurchase({ stripeSession, stripeSubscription }) {
  * Provision IPTV provider credentials from free_access_provider_accounts
  * or the provider_network_hosts pool.
  */
-async function provisionCredentials(userId, offering) {
+async function provisionCredentials(userId, offering, { user = null, expiresAt = null } = {}) {
+  const provisioningMode = offering.provisioning_mode || 'pooled_account';
+
+  if (provisioningMode === 'reseller_line') {
+    return provisionManagedResellerLine(userId, offering, { user, expiresAt });
+  }
+
   // Find an available account in the free_access pool linked to this network
   const { rows: accountRows } = await pool.query(
     `SELECT a.*
@@ -120,6 +180,78 @@ async function provisionCredentials(userId, offering) {
   );
 
   return userProvider;
+}
+
+async function provisionManagedResellerLine(userId, offering, { user = null, expiresAt = null } = {}) {
+  const purchaser = user || (await pool.query('SELECT id, email FROM users WHERE id = $1', [userId])).rows[0];
+  if (!purchaser) {
+    throw new Error(`User ${userId} not found for marketplace provisioning`);
+  }
+
+  const network = await providerNetworkQueries.findById(offering.provider_network_id);
+  if (!network) {
+    throw new Error(`Provider network ${offering.provider_network_id} not found`);
+  }
+
+  const hosts = await providerNetworkQueries.listHosts(offering.provider_network_id);
+  const hostUrls = hosts.map((host) => host.host_url).filter(Boolean);
+  const panelHost = network.reseller_portal_url || hostUrls[0] || null;
+  if (!panelHost || hostUrls.length === 0) {
+    throw new Error('No provider hosts configured for marketplace provisioning');
+  }
+
+  const lineUsername = buildMarketplaceLineUsername(purchaser, offering);
+  const linePassword = buildMarketplaceLinePassword();
+  const unixExpiry = expiresAt ? Math.floor(new Date(expiresAt).getTime() / 1000) : null;
+  const bouquetIds = Array.isArray(offering.reseller_bouquet_ids) ? offering.reseller_bouquet_ids : [];
+  const notes = offering.reseller_notes || `Marketplace provisioned for ${purchaser.email}`;
+
+  if (network.xtream_ui_scraped) {
+    const session = await ensureManagedNetworkSession(network, panelHost);
+    const result = await xtreamUiScraper.createLine(panelHost, session, {
+      username: lineUsername,
+      password: linePassword,
+      maxConnections: offering.max_connections || 1,
+      expDate: unixExpiry,
+      bouquetIds,
+      trial: false,
+      notes,
+    });
+    if (!result?.success) {
+      throw new Error(result?.message || 'Failed to create reseller line');
+    }
+  } else {
+    if (!network.reseller_username || !network.reseller_password) {
+      throw new Error('Reseller credentials not configured for this network');
+    }
+
+    const result = await providerService.createResellerUser(
+      panelHost,
+      network.reseller_username,
+      network.reseller_password,
+      {
+        username: lineUsername,
+        password: linePassword,
+        maxConnections: offering.max_connections || 1,
+        expDate: unixExpiry,
+        bouquetIds,
+      }
+    );
+
+    const resultText = JSON.stringify(result || {}).toLowerCase();
+    if (result?.success === false || resultText.includes('error')) {
+      throw new Error(result?.message || 'Failed to create reseller line');
+    }
+  }
+
+  return providerQueries.create({
+    userId,
+    name: offering.name,
+    hosts: hostUrls,
+    username: lineUsername,
+    password: linePassword,
+    networkId: offering.provider_network_id,
+  });
 }
 
 /**

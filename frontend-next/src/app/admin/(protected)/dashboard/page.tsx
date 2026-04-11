@@ -4,7 +4,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Activity, ArrowRight, Database, FileText, Server, Shield, Users } from 'lucide-react'
+import { Activity, ArrowRight, Database, FileText, Server, Shield, Users, DollarSign, CreditCard } from 'lucide-react'
 import { adminAPI } from '@/utils/api'
 import toast from 'react-hot-toast'
 import { Badge } from '@/components/ui/badge'
@@ -84,10 +84,14 @@ export default function AdminDashboardPage() {
       data?.matchStats?.total > 0
         ? Math.round((data.matchStats.matched / data.matchStats.total) * 100)
         : 0
+    
+    const mrrCents = data?.marketplace?.analytics?.mrr_cents || 0
+    const activeSubs = data?.marketplace?.analytics?.active_count || 0
+
     return [
+      { label: 'Active Subs', value: activeSubs, sub: `Generating ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(mrrCents / 100)} MRR`, icon: DollarSign, tone: 'border-green-400/20 bg-green-500/10 text-green-200' },
       { label: 'Users', value: data?.userCount || 0, sub: 'Accounts in the workspace', icon: Users, tone: 'border-brand-400/20 bg-brand-500/10 text-brand-200' },
       { label: 'Providers', value: data?.providerCount || 0, sub: 'Sources attached across users', icon: Server, tone: 'border-cyan-400/20 bg-cyan-400/10 text-cyan-200' },
-      { label: 'Total Titles', value: Number(data?.vodCount || 0), sub: 'Indexed movies and series', icon: Database, tone: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200' },
       { label: 'Match Rate', value: matchRate, sub: `${parseInt(data?.matchStats?.matched || 0, 10).toLocaleString()} matched titles`, icon: Shield, tone: 'border-amber-400/20 bg-amber-400/10 text-amber-200' },
     ]
   }, [data])

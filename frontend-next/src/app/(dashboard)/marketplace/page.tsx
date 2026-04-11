@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import {
   Check,
   ChevronRight,
@@ -102,10 +103,10 @@ function PaymentMethodModal({
   const [loading, setLoading] = useState<string | null>(null)
   const hasEnoughCredits = creditBalance >= offering.price_cents
 
-  const handlePay = async (method: 'stripe' | 'paygate' | 'credits') => {
+  const handlePay = async (method: 'stripe' | 'paygate' | 'credits', confirmDuplicate = false) => {
     setLoading(method)
     try {
-      const { data } = await marketplaceAPI.createCheckout(offering.id, method)
+      const { data } = await marketplaceAPI.createCheckout(offering.id, method, confirmDuplicate)
 
       if (method === 'stripe' && data.checkout_url) {
         window.location.href = data.checkout_url
@@ -126,7 +127,14 @@ function PaymentMethodModal({
         onClose()
       }
     } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Checkout failed')
+      if (err.response?.status === 409 && err.response?.data?.warning === 'already_subscribed') {
+        if (window.confirm(err.response.data.message)) {
+          handlePay(method, true)
+          return
+        }
+      } else {
+        toast.error(err.response?.data?.error || 'Checkout failed')
+      }
     } finally {
       setLoading(null)
     }
@@ -467,24 +475,26 @@ function MarketplaceCard({
         </ul>
       </CardContent>
       <CardFooter className="pt-2">
-        <Button
-          className="w-full gap-2 rounded-xl py-6 text-base font-semibold"
-          variant={isSubscribed ? 'outline' : 'default'}
-          disabled={isSubscribed}
-          onClick={() => !isSubscribed && onCheckout(offering)}
-        >
-          {isSubscribed ? (
-            <>
+        {isSubscribed ? (
+          <Button
+            asChild
+            className="w-full gap-2 rounded-xl py-6 text-base font-semibold"
+            variant="outline"
+          >
+            <Link href="/subscriptions">
               <ShieldCheck className="h-5 w-5 text-emerald-400" />
-              Active Subscription
-            </>
-          ) : (
-            <>
-              <ShoppingCart className="h-5 w-5" />
-              Subscribe Now
-            </>
-          )}
-        </Button>
+              Manage Subscription
+            </Link>
+          </Button>
+        ) : (
+          <Button
+            className="w-full gap-2 rounded-xl py-6 text-base font-semibold"
+            onClick={() => onCheckout(offering)}
+          >
+            <ShoppingCart className="h-5 w-5" />
+            Subscribe Now
+          </Button>
+        )}
       </CardFooter>
     </Card>
   )

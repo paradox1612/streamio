@@ -4,10 +4,12 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { providerAPI } from '@/utils/api'
-import { ArrowLeft, RefreshCw, PenSquare, Signal } from 'lucide-react'
+import { ArrowLeft, RefreshCw, PenSquare, Signal, Copy, Check, ExternalLink, AlertCircle } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge'
 import ProgressBar from '@/components/ProgressBar'
 import toast from 'react-hot-toast'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 function formatDuration(ms: number) {
   if (!Number.isFinite(ms) || ms <= 0) return '0s'
@@ -42,6 +44,7 @@ export default function ProviderDetailPage() {
   const [rechecking, setRechecking] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [copying, setCopying] = useState<string | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [refreshJob, setRefreshJob] = useState<any>(null)
   const [refreshNow, setRefreshNow] = useState(Date.now())
@@ -116,6 +119,17 @@ export default function ProviderDetailPage() {
     }
     lastRefreshStatusRef.current = currentStatus
   }, [refreshJob]) // eslint-disable-line
+
+  const handleCopy = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopying(label)
+      toast.success(`${label} copied`)
+      setTimeout(() => setCopying(null), 2000)
+    } catch {
+      toast.error('Failed to copy')
+    }
+  }
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -216,6 +230,9 @@ export default function ProviderDetailPage() {
     ? estimateRemainingMs(refreshProgress, refreshElapsedMs)
     : null
 
+  const activeHost = provider.active_host || (provider.hosts && provider.hosts[0]) || ''
+  const m3uUrl = activeHost ? `${activeHost}/get.php?username=${encodeURIComponent(provider.username)}&password=${encodeURIComponent(provider.password || '')}&type=m3u_plus&output=ts` : ''
+
   return (
     <div className="mx-auto max-w-7xl space-y-8">
       <Link
@@ -248,9 +265,91 @@ export default function ProviderDetailPage() {
               {rechecking ? 'Checking...' : 'Recheck Health'}
             </button>
             <button onClick={handleRefresh} disabled={refreshing} className="btn-primary w-full sm:w-auto">
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
               {refreshing ? 'Refreshing...' : 'Refresh Catalog'}
             </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Connection Details Section */}
+      <section className="grid gap-6 lg:grid-cols-2">
+        <div className="panel-soft p-5 sm:p-8">
+          <div className="flex items-center gap-2 text-brand-400 mb-2">
+            <Signal className="h-4 w-4" />
+            <p className="eyebrow !mb-0">IPTV Player Login</p>
+          </div>
+          <h2 className="section-title">Xtream API Details</h2>
+          <p className="mt-2 text-sm text-slate-400">Use these in apps like Tivimate, Sparkle, or VLC.</p>
+          
+          <div className="mt-6 space-y-4">
+            <div className="rounded-2xl border border-white/[0.08] bg-surface-950/40 p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Host URL</p>
+                  <p className="truncate font-mono text-sm text-slate-200">{activeHost || 'No host available'}</p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => handleCopy(activeHost, 'Host')} disabled={!activeHost}>
+                  {copying === 'Host' ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="rounded-2xl border border-white/[0.08] bg-surface-950/40 p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Username</p>
+                    <p className="truncate font-mono text-sm text-slate-200">{provider.username}</p>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => handleCopy(provider.username, 'Username')}>
+                    {copying === 'Username' ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-white/[0.08] bg-surface-950/40 p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Password</p>
+                    <p className="truncate font-mono text-sm text-slate-200">••••••••</p>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => handleCopy(provider.password || '', 'Password')} disabled={!provider.password}>
+                    {copying === 'Password' ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="panel-soft p-5 sm:p-8">
+          <div className="flex items-center gap-2 text-cyan-400 mb-2">
+            <ExternalLink className="h-4 w-4" />
+            <p className="eyebrow !mb-0">Playlist Link</p>
+          </div>
+          <h2 className="section-title">M3U Plus URL</h2>
+          <p className="mt-2 text-sm text-slate-400">Direct playlist URL for players that don&apos;t support Xtream API.</p>
+          
+          <div className="mt-6">
+            <div className="rounded-2xl border border-white/[0.08] bg-surface-950/40 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1">M3U URL</p>
+                  <p className="break-all font-mono text-xs text-slate-300/80 leading-relaxed">
+                    {m3uUrl || 'No host available to generate URL'}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => handleCopy(m3uUrl, 'M3U URL')} disabled={!m3uUrl}>
+                    {copying === 'M3U URL' ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <p className="mt-4 text-xs text-slate-500 leading-relaxed">
+              <AlertCircle className="h-3 w-3 inline mr-1" />
+              This URL contains your credentials. Keep it private. Use &quot;M3U Plus&quot; format for better organization.
+            </p>
           </div>
         </div>
       </section>

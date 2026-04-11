@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '@/store/auth'
 import { authAPI, userAPI } from '@/utils/api'
-import { LayoutDashboard, Server, Film, Tv2, Settings, User, Menu, X, LogOut, ShoppingCart } from 'lucide-react'
+import { LayoutDashboard, Server, Film, Tv2, Settings, User, Menu, X, LogOut, ShoppingCart, CreditCard } from 'lucide-react'
 import toast from 'react-hot-toast'
 import BrandMark from './BrandMark'
 import { Button } from './ui/button'
@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils'
 const baseNavItems = [
   { path: '/dashboard',   label: 'Home',        mobileLabel: 'Home',    icon: LayoutDashboard },
   { path: '/marketplace', label: 'Marketplace', mobileLabel: 'Shop',    icon: ShoppingCart },
+  { path: '/subscriptions', label: 'Billing',   mobileLabel: 'Billing', icon: CreditCard },
   { path: '/providers',   label: 'Providers',    mobileLabel: 'Sources', icon: Server },
   { path: '/vod',         label: 'Browse VOD',   mobileLabel: 'VOD',     icon: Film },
   { path: '/live',        label: 'Live TV',      mobileLabel: 'Live',    icon: Tv2 },

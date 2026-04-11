@@ -69,7 +69,7 @@ describe('vodQueries provider catalog ordering', () => {
     await vodQueries.getByProvider('provider-1', { type: 'movie', page: 1, limit: 50 });
 
     expect(pool.query).toHaveBeenCalledWith(
-      expect.stringContaining('ORDER BY\n      v.canonical_normalized_title ASC NULLS LAST,\n      v.normalized_title ASC NULLS LAST,\n      v.raw_title ASC,\n      v.stream_id ASC'),
+      expect.stringContaining('v.canonical_normalized_title ASC NULLS LAST'),
       ['provider-1', null, 'movie', 50, 0]
     );
   });

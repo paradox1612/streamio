@@ -4,7 +4,7 @@ const { constructWebhookEvent, isEnabled: stripeEnabled } = require('../services
 const paygateService = require('../services/paygateService');
 const creditService = require('../services/creditService');
 const subscriptionService = require('../services/subscriptionService');
-const { subscriptionQueries, providerQueries, paymentQueries, pool } = require('../db/queries');
+const { subscriptionQueries, providerQueries, paymentQueries, offeringQueries, pool } = require('../db/queries');
 const eventBus = require('../utils/eventBus');
 const logger = require('../utils/logger');
 
@@ -215,10 +215,15 @@ router.get('/paygate', async (req, res) => {
       // Provision IPTV credentials if not already done
       if (!sub.user_provider_id && sub.provider_network_id) {
         try {
-          const userProvider = await subscriptionService.provisionCredentialsPublic(sub.user_id, {
-            name: sub.offering_name,
-            provider_network_id: sub.provider_network_id,
-          });
+          const offering = await offeringQueries.findById(sub.offering_id);
+          const userProvider = await subscriptionService.provisionCredentialsPublic(
+            sub.user_id,
+            offering || {
+              name: sub.offering_name,
+              provider_network_id: sub.provider_network_id,
+            },
+            { expiresAt: periodEnd }
+          );
           if (userProvider) {
             await subscriptionQueries.update(subId, { user_provider_id: userProvider.id });
           }

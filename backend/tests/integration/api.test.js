@@ -76,6 +76,8 @@ jest.mock('../../src/db/queries', () => {
     },
     vodQueries: {
       getByProvider: jest.fn().mockResolvedValue([]),
+      countByProvider: jest.fn().mockResolvedValue(0),
+      getCategoriesByProvider: jest.fn().mockResolvedValue([]),
       getStats: jest.fn().mockResolvedValue({ movie_count: 0, series_count: 0, category_count: 0, total: 0 }),
       getMatchStats: jest.fn().mockResolvedValue({ total: 0, matched: 0, unmatched: 0 }),
       getUnmatchedTitles: jest.fn().mockResolvedValue([]),
@@ -330,7 +332,8 @@ describe('POST /api/providers', () => {
 
 describe('GET /api/providers/:id/live', () => {
   it('returns normalized live channels and requests the full live catalog', async () => {
-    const { providerQueries, vodQueries } = require('../../src/db/queries');
+    const { providerQueries, vodQueries, userQueries } = require('../../src/db/queries');
+    userQueries.findById.mockResolvedValue({ id: 'user-123', can_use_live_tv: true, is_active: true });
     providerQueries.findByIdAndUser.mockResolvedValue({
       id: 'prov-1',
       user_id: 'user-123',
@@ -348,6 +351,8 @@ describe('GET /api/providers/:id/live', () => {
       container_extension: 'ts',
       vod_type: 'live',
     }]);
+    vodQueries.countByProvider.mockResolvedValue(1);
+    vodQueries.getCategoriesByProvider.mockResolvedValue(['SPORTS']);
 
     const token = makeUserToken();
     const res = await request(app)
@@ -357,9 +362,9 @@ describe('GET /api/providers/:id/live', () => {
     expect(res.status).toBe(200);
     expect(vodQueries.getByProvider).toHaveBeenCalledWith('prov-1', expect.objectContaining({
       type: 'live',
-      limit: 20000,
+      limit: 60,
     }));
-    expect(res.body).toEqual([expect.objectContaining({
+    expect(res.body.items).toEqual([expect.objectContaining({
       id: 'row-1',
       name: 'ESPN HD',
       logo: 'http://img.example.com/espn.png',
@@ -466,7 +471,7 @@ describe('GET /addon/:token/stream/:type/:id.json', () => {
 describe('POST /admin/auth/login', () => {
   it('returns admin token with valid credentials', async () => {
     const res = await request(app)
-      .post('/admin/auth/login')
+      .post('/api/admin/auth/login')
       .send({ username: 'admin', password: 'testpass' });
 
     expect(res.status).toBe(200);
@@ -475,7 +480,7 @@ describe('POST /admin/auth/login', () => {
 
   it('returns 401 with wrong credentials', async () => {
     const res = await request(app)
-      .post('/admin/auth/login')
+      .post('/api/admin/auth/login')
       .send({ username: 'admin', password: 'wrong' });
 
     expect(res.status).toBe(401);
@@ -486,12 +491,12 @@ describe('GET /admin/users', () => {
   it('returns users list with admin token', async () => {
     // First get an admin token
     const loginRes = await request(app)
-      .post('/admin/auth/login')
+      .post('/api/admin/auth/login')
       .send({ username: 'admin', password: 'testpass' });
     const adminToken = loginRes.body.adminToken;
 
     const res = await request(app)
-      .get('/admin/users')
+      .get('/api/admin/users')
       .set('x-admin-token', adminToken);
 
     expect(res.status).toBe(200);
@@ -499,7 +504,7 @@ describe('GET /admin/users', () => {
   });
 
   it('returns 401 without admin token', async () => {
-    const res = await request(app).get('/admin/users');
+    const res = await request(app).get('/api/admin/users');
     expect(res.status).toBe(401);
   });
 });
@@ -507,11 +512,11 @@ describe('GET /admin/users', () => {
 describe('GET /admin/stats/overview', () => {
   it('returns overview stats with admin token', async () => {
     const loginRes = await request(app)
-      .post('/admin/auth/login')
+      .post('/api/admin/auth/login')
       .send({ username: 'admin', password: 'testpass' });
 
     const res = await request(app)
-      .get('/admin/stats/overview')
+      .get('/api/admin/stats/overview')
       .set('x-admin-token', loginRes.body.adminToken);
 
     expect(res.status).toBe(200);
