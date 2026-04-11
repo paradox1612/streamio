@@ -17,7 +17,7 @@ interface VideoPlayerProps {
 
 export default function VideoPlayer({ src, type, title, onClose, onProgress, onEnd }: VideoPlayerProps) {
   const videoRef = useRef<HTMLDivElement>(null)
-  const playerRef = useRef<videojs.Player | null>(null)
+  const playerRef = useRef<any>(null)
   const lowerSrc = src.toLowerCase()
   const isNativeOnly =
     lowerSrc.endsWith('.mkv') ||
