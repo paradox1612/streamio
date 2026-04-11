@@ -168,7 +168,7 @@ const xtreamUiScraper = {
 
       if (packageIds.length > 0) {
         logger.info(`[Scraper] Found ${packageIds.length} packages, fetching bouquets via API...`);
-        for (const pkgId of packageIds.slice(0, 5)) { // Limit to first few to avoid over-fetching
+        for (const pkgId of packageIds) {
           try {
             const apiRes = await fetch(`${host}/api.php?action=get_package&package_id=${pkgId}`, {
               headers: { ...BROWSER_HEADERS, 'Cookie': `PHPSESSID=${phpsessid}` },
@@ -222,30 +222,35 @@ const xtreamUiScraper = {
     });
     const html = await getRes.text();
     
-    // Attempt to find member_id from the HTML
+    // Attempt to find member_id from the HTML using multiple patterns
     let memberId = userData.memberId;
     if (!memberId) {
-      const memberMatch = html.match(/name="member_id" value="(\d+)"/);
+      const memberMatch =
+        html.match(/name=["']member_id["'][^>]*value=["'](\d+)["']/) ||
+        html.match(/value=["'](\d+)["'][^>]*name=["']member_id["']/) ||
+        html.match(/member_id['":\s]+(\d+)/i);
       memberId = memberMatch ? memberMatch[1] : null;
     }
 
+    // Research finding: when trial=true, package=1 (hidden trial package) makes the
+    // panel set 24h expiry automatically. Any other package ID ignores the trial flag
+    // and defaults to end-of-today.
+    const packageId = userData.trial ? '1' : (userData.packageId || '');
+
+    const bouquetIds = Array.isArray(userData.bouquetIds) ? userData.bouquetIds : [];
+
     const formData = new URLSearchParams();
     formData.append('trial', userData.trial ? '1' : '0');
+    formData.append('bouquets_selected', JSON.stringify(bouquetIds.map(Number)));
     formData.append('username', userData.username || '');
     formData.append('password', userData.password || '');
     formData.append('member_id', memberId || '0');
-    formData.append('package', userData.packageId || '');
+    formData.append('package', packageId);
     formData.append('mac_address_mag', '');
     formData.append('mac_address_e2', '');
     formData.append('reseller_notes', userData.notes || 'StreamBridge Automation');
+    for (const b of bouquetIds) formData.append('bouquet[]', String(b));
     formData.append('submit_user', 'add');
-
-    if (userData.bouquetIds && Array.isArray(userData.bouquetIds)) {
-      formData.append('bouquets_selected', JSON.stringify(userData.bouquetIds));
-      for (const b of userData.bouquetIds) {
-        formData.append('bouquet[]', b);
-      }
-    }
 
     const postRes = await fetch(url, {
       method: 'POST',
