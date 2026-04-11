@@ -143,6 +143,7 @@ jest.mock('../../src/jobs/scheduler', () => ({
 }));
 
 jest.mock('../../src/utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
+jest.mock('../../src/utils/cache', () => ({ get: jest.fn(), set: jest.fn(), del: jest.fn() }));
 
 const app = require('../../src/index');
 
@@ -364,6 +365,56 @@ describe('GET /api/providers/:id/live', () => {
       logo: 'http://img.example.com/espn.png',
       streamUrl: 'http://iptv.example.com/live/user/pass/77.ts',
     })]);
+  });
+});
+
+describe('GET /api/providers/:id/series/:seriesId/episodes', () => {
+  it('returns episode seasons from the Xtream series payload', async () => {
+    const { providerQueries } = require('../../src/db/queries');
+    const providerService = require('../../src/services/providerService');
+
+    providerQueries.findByIdAndUser.mockResolvedValue({
+      id: 'prov-1',
+      user_id: 'user-123',
+      username: 'user',
+      password: 'pass',
+      active_host: 'http://iptv.example.com',
+      hosts: ['http://iptv.example.com'],
+    });
+
+    providerService.getSeriesEpisodes.mockResolvedValue({
+      '1': [
+        {
+          id: 'ep-1',
+          episode_num: 1,
+          title: 'Pilot',
+          container_extension: 'mkv',
+        },
+      ],
+    });
+
+    const token = makeUserToken();
+    const res = await request(app)
+      .get('/api/providers/prov-1/series/series-99/episodes')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(providerService.getSeriesEpisodes).toHaveBeenCalledWith(
+      'http://iptv.example.com',
+      'user',
+      'pass',
+      'series-99'
+    );
+    expect(res.body).toEqual({
+      '1': [
+        {
+          id: 'ep-1',
+          episode_num: 1,
+          title: 'Pilot',
+          container_extension: 'mkv',
+        },
+      ],
+    });
   });
 });
 

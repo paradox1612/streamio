@@ -459,7 +459,7 @@ router.get('/:id/series/:seriesId/episodes', requireAuth, async (req, res) => {
       req.params.seriesId
     );
 
-    const seasonMap = episodesResult.data || {};
+    const seasonMap = episodesResult?.data || episodesResult?.episodes || episodesResult || {};
     
     if (tmdbId) {
       const seasonKeys = Object.keys(seasonMap);

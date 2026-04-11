@@ -177,6 +177,25 @@ export default function WatchModal({
     toast.success('Stream URL copied to clipboard')
   }
 
+  const canShowPrimaryAction = currentVodType === 'series' || Boolean(src)
+
+  const handlePrimaryAction = () => {
+    if (currentVodType === 'series') {
+      const epSection = document.getElementById('episodes-section')
+      if (epSection) epSection.scrollIntoView({ behavior: 'smooth' })
+      else toast.error('Please select an episode below')
+      return
+    }
+
+    if (!src) return
+
+    if (isMobile && isUnfriendly) {
+      toast.success('Select a mobile player below for best experience')
+    } else {
+      setActiveStream({ url: src, title: currentTitle })
+    }
+  }
+
   if (!isOpen) return null
 
   const trailer = tmdbDetails?.videos?.results?.find((v: any) => v.type === 'Trailer' && v.site === 'YouTube')
@@ -261,22 +280,10 @@ export default function WatchModal({
                   )}
                 </div>
                 <div className="flex flex-col gap-3 w-full max-w-[350px]">
-                   {src && (
+                   {canShowPrimaryAction && (
                      <div className="space-y-3">
                         <button 
-                          onClick={() => {
-                            if (currentVodType === 'series') {
-                              const epSection = document.getElementById('episodes-section');
-                              if (epSection) epSection.scrollIntoView({ behavior: 'smooth' });
-                              else toast.error('Please select an episode below');
-                            } else {
-                              if (isMobile && isUnfriendly) {
-                                 toast.success('Select a mobile player below for best experience')
-                              } else {
-                                 setActiveStream({ url: src, title: currentTitle });
-                              }
-                            }
-                          }}
+                          onClick={handlePrimaryAction}
                           className="flex items-center justify-center gap-2 w-full py-4 bg-[#1491ff] text-white font-bold rounded hover:bg-[#0c73db] transition-colors shadow-lg"
                         >
                           <Play className="h-5 w-5 fill-current" /> {currentVodType === 'series' ? 'Select Episode' : 'Play in Browser'}
