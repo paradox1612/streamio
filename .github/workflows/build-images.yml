@@ -284,6 +284,7 @@ jobs:
           TWENTY_LOGIN_TOKEN_SECRET: ${{ secrets.TWENTY_LOGIN_TOKEN_SECRET }}
           TWENTY_REFRESH_TOKEN_SECRET: ${{ secrets.TWENTY_REFRESH_TOKEN_SECRET }}
           TWENTY_FILE_TOKEN_SECRET: ${{ secrets.TWENTY_FILE_TOKEN_SECRET }}
+          TWO_CAPTCHA_API_KEY: ${{ secrets.TWO_CAPTCHA_API_KEY }}
         run: |
           set -euo pipefail
           if [ -n "${KUBECONFIG_PATH:-}" ]; then
@@ -332,6 +333,10 @@ jobs:
           if [ -n "${TWENTY_API_KEY:-}" ]; then
             TWENTY_ARGS="--set-string backend.secrets.twentyApiKey=${TWENTY_API_KEY}"
           fi
+          TWO_CAPTCHA_ARGS=""
+          if [ -n "${TWO_CAPTCHA_API_KEY:-}" ]; then
+            TWO_CAPTCHA_ARGS="--set-string backend.secrets.twoCaptchaApiKey=${TWO_CAPTCHA_API_KEY}"
+          fi
           TWENTY_SECRET_ARGS=""
           if [ -n "${TWENTY_APP_SECRET:-}" ]; then
             TWENTY_SECRET_ARGS=" --set-string twenty.secrets.appSecret=${TWENTY_APP_SECRET}"
@@ -354,6 +359,7 @@ jobs:
             $PIA_ARGS \
             $PAYGATE_ARGS \
             $TWENTY_ARGS \
+            $TWO_CAPTCHA_ARGS \
             $TWENTY_SECRET_ARGS
 
       - name: Wait for rollout
