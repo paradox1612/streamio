@@ -153,7 +153,7 @@ function PaymentMethodModal({
       if (method === 'credits') {
         // Credits are instant — go to provisioning page to show live status
         if (data.subscription_id) {
-          window.location.href = `/subscriptions/provisioning/${data.subscription_id}`
+          window.location.href = `/subscriptions/provisioning?subscription_id=${data.subscription_id}`
         } else {
           toast.success('Subscription activated with credits!')
           onSuccess()
