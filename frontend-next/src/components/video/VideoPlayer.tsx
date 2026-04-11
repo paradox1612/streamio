@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef } from 'react'
 import videojs from 'video.js'
 import 'video.js/dist/video-js.css'
 import { Monitor, AlertCircle, Laptop, Smartphone } from 'lucide-react'
@@ -17,15 +17,13 @@ interface VideoPlayerProps {
 
 export default function VideoPlayer({ src, type, title, onClose, onProgress, onEnd }: VideoPlayerProps) {
   const videoRef = useRef<HTMLDivElement>(null)
-  const playerRef = useRef<any>(null)
-  const [isNativeOnly, setIsNativeOnly] = useState(false)
-
-  useEffect(() => {
-    const isMkv = src.toLowerCase().endsWith('.mkv') || src.toLowerCase().endsWith('.avi')
-    if (isMkv) {
-      setIsNativeOnly(true)
-    }
-  }, [src])
+  const playerRef = useRef<videojs.Player | null>(null)
+  const lowerSrc = src.toLowerCase()
+  const isNativeOnly =
+    lowerSrc.endsWith('.mkv') ||
+    lowerSrc.endsWith('.avi') ||
+    lowerSrc.endsWith('.ts') ||
+    lowerSrc.includes('/live/')
 
   useEffect(() => {
     if (isNativeOnly || !videoRef.current) return
@@ -68,7 +66,7 @@ export default function VideoPlayer({ src, type, title, onClose, onProgress, onE
         playerRef.current = null
       }
     }
-  }, [src, type, isNativeOnly])
+  }, [src, type, isNativeOnly, onEnd, onProgress])
 
   const openInIINA = () => window.open(`iina://weblink?url=${encodeURIComponent(src)}`)
   const openInVLC = () => window.open(`vlc://${src.replace(/^https?:\/\//, '')}`)

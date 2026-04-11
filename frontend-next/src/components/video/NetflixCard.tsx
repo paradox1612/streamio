@@ -22,6 +22,7 @@ const NetflixCard: React.FC<NetflixCardProps> = ({
 }) => {
   const isLowConfidence = item.confidence_score !== undefined && item.confidence_score < 0.8
   const progress = item.watch_progress || (item.is_watched ? 100 : 0)
+  const canPlay = Boolean(onPlay && (item.streamUrl || item.stream_id))
 
   return (
     <motion.div
@@ -49,17 +50,19 @@ const NetflixCard: React.FC<NetflixCardProps> = ({
       )}
 
       {/* Overlay - visible on hover */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onPlay?.(item)
-          }}
-          className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-sm transition-transform hover:scale-110 hover:bg-[#1491ff]"
-        >
-          <Play className="ml-1 h-6 w-6 fill-current" />
-        </button>
-      </div>
+      {canPlay && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onPlay?.(item)
+            }}
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-sm transition-transform hover:scale-110 hover:bg-[#1491ff]"
+          >
+            <Play className="ml-1 h-6 w-6 fill-current" />
+          </button>
+        </div>
+      )}
 
       {/* Bottom info overlay */}
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent p-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100">

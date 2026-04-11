@@ -95,9 +95,8 @@ export default function WatchModal({
     } else {
       // ONLY auto-play if specifically requested AND it's not a series
       if (autoPlay && currentVodType !== 'series' && src && !activeStream) {
-        // On mobile, if unfriendly, we don't autoplay in browser
-        if (isMobile && isUnfriendly) {
-           toast.success('Select a mobile player below for best experience')
+        if (isUnfriendly) {
+           toast.success('Use an external player for this stream format')
         } else {
            setActiveStream({ url: src, title: currentTitle })
         }
@@ -177,10 +176,11 @@ export default function WatchModal({
     toast.success('Stream URL copied to clipboard')
   }
 
-  const canShowPrimaryAction = currentVodType === 'series' || Boolean(src)
+  const hasEpisodeList = currentVodType === 'series' && Boolean(providerId && currentStreamId)
+  const canShowPrimaryAction = hasEpisodeList || Boolean(src)
 
   const handlePrimaryAction = () => {
-    if (currentVodType === 'series') {
+    if (hasEpisodeList) {
       const epSection = document.getElementById('episodes-section')
       if (epSection) epSection.scrollIntoView({ behavior: 'smooth' })
       else toast.error('Please select an episode below')
@@ -189,8 +189,8 @@ export default function WatchModal({
 
     if (!src) return
 
-    if (isMobile && isUnfriendly) {
-      toast.success('Select a mobile player below for best experience')
+    if (isUnfriendly) {
+      toast.success('Use an external player for this stream format')
     } else {
       setActiveStream({ url: src, title: currentTitle })
     }
@@ -219,9 +219,9 @@ export default function WatchModal({
       <DialogContent className="max-w-none w-screen h-screen border-none bg-[#141414] p-0 text-white overflow-y-auto scrollbar-hide m-0 rounded-none">
         {activeStream ? (
            <div className="relative h-screen w-screen bg-black">
-             <button 
+             <button
                onClick={() => setActiveStream(null)}
-               className="absolute top-6 left-6 z-50 p-2 rounded-full bg-black/50 hover:bg-black/80 transition-colors"
+               className="fixed top-6 right-6 z-[120] p-2 rounded-full bg-black/70 hover:bg-black transition-colors border border-white/10"
              >
                <X className="h-6 w-6" />
              </button>
@@ -286,7 +286,7 @@ export default function WatchModal({
                           onClick={handlePrimaryAction}
                           className="flex items-center justify-center gap-2 w-full py-4 bg-[#1491ff] text-white font-bold rounded hover:bg-[#0c73db] transition-colors shadow-lg"
                         >
-                          <Play className="h-5 w-5 fill-current" /> {currentVodType === 'series' ? 'Select Episode' : 'Play in Browser'}
+                          <Play className="h-5 w-5 fill-current" /> {hasEpisodeList ? 'Select Episode' : 'Play in Browser'}
                         </button>
 
                         {(isMobile || isUnfriendly) && currentVodType !== 'series' && (
@@ -372,6 +372,12 @@ export default function WatchModal({
                 <p className="text-xl leading-relaxed text-zinc-200 max-w-3xl">
                   {tmdbDetails?.overview}
                 </p>
+
+                {!canShowPrimaryAction && (
+                  <div className="max-w-2xl rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+                    This title is not currently mapped to a playable Xtream item in your library.
+                  </div>
+                )}
 
                 {/* Cast */}
                 {cast.length > 0 && (
