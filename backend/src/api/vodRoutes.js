@@ -4,6 +4,7 @@ const tmdbService = require('../services/tmdbService');
 const { vodQueries } = require('../db/queries');
 const auth = require('../middleware/auth');
 const logger = require('../utils/logger');
+const cache = require('../utils/cache');
 
 // GET /api/vod/similar?tmdbId=X&type=movie|tv
 router.get('/similar', auth.requireAuth, async (req, res) => {
@@ -74,12 +75,29 @@ router.get('/browse', auth.requireAuth, async (req, res) => {
       return { ...item, streamUrl };
     };
 
+    // Cache the 4 DB section queries — catalog changes only on refresh.
+    // streamUrl is derived from provider credentials (not user-specific) so it's
+    // safe to cache at the provider level. watch_progress comes from DB on each
+    // query so it stays fresh automatically.
+    const cacheKey = providerId;
+    const cached = await cache.get('vodBrowse', cacheKey);
+    if (cached) {
+      return res.json({
+        newest: cached.newest.map(mapItem),
+        movies: cached.movies.map(mapItem),
+        series: cached.series.map(mapItem),
+        rating: cached.rating.map(mapItem),
+      });
+    }
+
     const [newest, movies, series, rating] = await Promise.all([
       vodQueries.getByProvider(providerId, { userId: req.user.id, limit: 20, sort: 'newest' }),
       vodQueries.getByProvider(providerId, { userId: req.user.id, limit: 20, type: 'movie' }),
       vodQueries.getByProvider(providerId, { userId: req.user.id, limit: 20, type: 'series' }),
       vodQueries.getByProvider(providerId, { userId: req.user.id, limit: 20, sort: 'rating' }),
     ]);
+
+    await cache.set('vodBrowse', cacheKey, { newest, movies, series, rating });
 
     res.json({
       newest: newest.map(mapItem),

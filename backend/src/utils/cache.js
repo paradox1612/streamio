@@ -49,6 +49,7 @@ const NAMESPACE_TTLS = {
   freeAccessRuntimeSource: 20, // 20 sec
   freeAccessRuntimeSourceMiss: 10, // 10 sec
   tmdbTrending: 21600, // 6 hours
+  vodBrowse: 300, // 5 min — invalidated on catalog refresh
 };
 
 /**

@@ -355,6 +355,7 @@ const providerService = {
         vodType: 'live',
         containerExtension: ch.container_extension || 'ts',
         epgChannelId: ch.epg_channel_id || null,
+        remoteAddedAt: ch.added ? parseInt(ch.added, 10) : null,
       }));
 
       return liveStreams;
@@ -422,6 +423,7 @@ const providerService = {
         category: normalizeCategory(vodCategoryMap[String(m.category_id)] || m.category_name),
         vodType: 'movie',
         containerExtension: m.container_extension || 'mp4',
+        remoteAddedAt: m.added ? parseInt(m.added, 10) : null,
       }));
       logger.info(`Fetched ${vodMovies.length} movies`);
     }
@@ -439,6 +441,7 @@ const providerService = {
         category: normalizeCategory(seriesCategoryMap[String(s.category_id)] || s.genre?.split(',')[0]),
         vodType: 'series',
         containerExtension: null,
+        remoteAddedAt: s.last_modified ? parseInt(s.last_modified, 10) : null,
       }));
       logger.info(`Fetched ${vodSeries.length} series`);
     }
@@ -452,12 +455,32 @@ const providerService = {
     }
 
     const all = [...vodMovies, ...vodSeries, ...liveStreams];
-    const resolvedEntries = provider.network_id
-      ? await canonicalContentQueries.resolveEntries(all, {
+
+    // Compute the new watermark from this batch before splitting
+    const newWatermark = all.reduce((max, e) => {
+      return e.remoteAddedAt && e.remoteAddedAt > max ? e.remoteAddedAt : max;
+    }, Number(provider.last_sync_watermark) || 0);
+
+    // Incremental mode: only resolve entries newer than the last sync watermark.
+    // Unchanged entries pass through — their canonical_content_id is preserved
+    // in the DB via COALESCE in the upsert.
+    let toResolve = all;
+    let toPassThrough = [];
+    if (provider.incremental_sync && provider.last_sync_watermark) {
+      const watermark = Number(provider.last_sync_watermark);
+      toResolve = all.filter(e => !e.remoteAddedAt || e.remoteAddedAt > watermark);
+      toPassThrough = all.filter(e => e.remoteAddedAt && e.remoteAddedAt <= watermark);
+      logger.info(`Incremental sync: ${toResolve.length} new/changed, ${toPassThrough.length} unchanged (skipping resolveEntries)`);
+    }
+
+    const resolvedNew = provider.network_id
+      ? await canonicalContentQueries.resolveEntries(toResolve, {
         providerNetworkId: provider.network_id,
         providerId,
       })
-      : all;
+      : toResolve;
+
+    const resolvedEntries = [...resolvedNew, ...toPassThrough];
 
     let catalogVariant = Boolean(provider.catalog_variant);
     if (provider.network_id && resolvedEntries.length > 0) {
@@ -480,12 +503,17 @@ const providerService = {
     }
 
     if (all.length > 0) {
-      await vodQueries.upsertBatch(resolvedEntries);
       if (provider.network_id && !catalogVariant) {
+        // Shared network provider — write only to network_vod (one copy for all users).
+        // Remove any legacy per-user rows so they don't consume space or confuse queries.
+        await vodQueries.deleteByProvider(providerId);
         await vodQueries.upsertNetworkBatch(resolvedEntries.map(entry => ({
           ...entry,
           providerNetworkId: provider.network_id,
         })));
+      } else {
+        // Standalone or catalog-variant provider — write to per-user table.
+        await vodQueries.upsertBatch(resolvedEntries);
       }
     } else {
       await vodQueries.deleteByProvider(providerId);
@@ -494,9 +522,17 @@ const providerService = {
 
     if (provider.network_id && !catalogVariant) await providerNetworkQueries.touchCatalogRefresh(provider.network_id);
 
+    // Advance the watermark so the next incremental sync only processes newer entries
+    if (provider.incremental_sync && newWatermark > 0) {
+      await providerQueries.updateSyncWatermark(providerId, userId, newWatermark);
+    }
+
+    // Invalidate browse cache so the next page load reflects the fresh catalog
+    await cache.del('vodBrowse', providerId);
+
     logger.info(`Catalog refreshed: ${vodMovies.length} movies, ${vodSeries.length} series, ${liveStreams.length} live channels`);
     await progress({ stage: 'completed', progressPct: 100, message: 'Catalog refresh complete' });
-    
+
     return {
       movies: vodMovies.length,
       series: vodSeries.length,
@@ -504,6 +540,7 @@ const providerService = {
       total: all.length,
       providerNetworkId: provider.network_id || null,
       catalogVariant,
+      incremental: provider.incremental_sync ? { resolved: toResolve.length, skipped: toPassThrough.length, watermark: newWatermark } : null,
     };
   },
 

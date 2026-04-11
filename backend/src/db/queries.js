@@ -634,7 +634,7 @@ const providerQueries = {
   },
 
   async update(id, userId, fields) {
-    const allowed = ['name', 'hosts', 'username', 'password', 'catalog_variant'];
+    const allowed = ['name', 'hosts', 'username', 'password', 'catalog_variant', 'incremental_sync'];
     const updates = [];
     const values = [];
     let idx = 1;
@@ -654,6 +654,13 @@ const providerQueries = {
       values
     );
     return rows[0];
+  },
+
+  async updateSyncWatermark(id, userId, watermark) {
+    await pool.query(
+      `UPDATE user_providers SET last_sync_watermark = $1 WHERE id = $2 AND user_id = $3`,
+      [watermark, id, userId]
+    );
   },
 
   async attachNetwork(id, userId, { networkId, catalogVariant = false }) {
@@ -838,7 +845,7 @@ const vodQueries = {
             category = EXCLUDED.category,
             container_extension = EXCLUDED.container_extension,
             epg_channel_id = EXCLUDED.epg_channel_id,
-            canonical_content_id = EXCLUDED.canonical_content_id
+            canonical_content_id = COALESCE(EXCLUDED.canonical_content_id, user_provider_vod.canonical_content_id)
         WHERE ${buildIsDistinctClause('user_provider_vod', 'EXCLUDED', changedColumns)}
       `);
       await client.query(`
@@ -951,7 +958,7 @@ const vodQueries = {
             category = EXCLUDED.category,
             container_extension = EXCLUDED.container_extension,
             epg_channel_id = EXCLUDED.epg_channel_id,
-            canonical_content_id = EXCLUDED.canonical_content_id
+            canonical_content_id = COALESCE(EXCLUDED.canonical_content_id, network_vod.canonical_content_id)
         WHERE ${buildIsDistinctClause('network_vod', 'EXCLUDED', changedColumns)}
       `);
       await client.query(`
@@ -1423,32 +1430,113 @@ const canonicalContentQueries = {
 
   async resolveEntries(entries, { providerNetworkId, providerId }) {
     if (!Array.isArray(entries) || entries.length === 0) return [];
-    const resolved = [];
-    for (const entry of entries) {
-      if (!entry?.vodType || !entry?.rawTitle) continue;
-      const canonical = await this.findOrCreate({
-        vodType: entry.vodType,
-        canonicalTitle: entry.canonicalTitle || entry.rawTitle,
-        canonicalNormalizedTitle: entry.canonicalNormalizedTitle || entry.normalizedTitle,
-        titleYear: entry.titleYear || null,
-      });
-      await this.upsertAlias({
-        providerNetworkId,
-        providerId,
-        rawTitle: entry.rawTitle,
-        normalizedTitle: entry.normalizedTitle || null,
-        canonicalTitle: entry.canonicalTitle || entry.rawTitle,
-        canonicalNormalizedTitle: entry.canonicalNormalizedTitle || entry.normalizedTitle,
-        titleYear: entry.titleYear || null,
-        vodType: entry.vodType,
-        canonicalContentId: canonical?.id || null,
-      });
-      resolved.push({
-        ...entry,
-        canonicalContentId: canonical?.id || null,
-      });
+    const valid = entries.filter(e => e?.vodType && e?.rawTitle);
+    if (!valid.length) return [];
+
+    // Process in chunks to stay well under the 65535 pg parameter limit.
+    // Each canonical row uses 4 params; each alias row uses 9 params.
+    // 500 rows × 9 params = 4500 — safe headroom.
+    const CHUNK = 500;
+    const globalIdMap = new Map(); // canonical key → canonical_content.id
+
+    for (let i = 0; i < valid.length; i += CHUNK) {
+      const chunk = valid.slice(i, i + CHUNK);
+
+      // ── Step 1: bulk-upsert canonical_content ──────────────────────────────
+      // Deduplicate by the unique key so a single VALUES list never has two
+      // rows that would conflict with each other (Postgres would reject it).
+      const canonicalByKey = new Map();
+      for (const e of chunk) {
+        const key = `${e.vodType}::${e.canonicalNormalizedTitle || e.normalizedTitle || ''}::${e.titleYear ?? ''}`;
+        if (!canonicalByKey.has(key)) {
+          canonicalByKey.set(key, {
+            vodType: e.vodType,
+            canonicalTitle: e.canonicalTitle || e.rawTitle,
+            canonicalNormalizedTitle: e.canonicalNormalizedTitle || e.normalizedTitle || '',
+            titleYear: e.titleYear || null,
+          });
+        }
+      }
+
+      const uniqCanonicals = [...canonicalByKey.values()];
+      const cVals = [];
+      const cParams = [];
+      let ci = 1;
+      for (const c of uniqCanonicals) {
+        cVals.push(`($${ci++},$${ci++},$${ci++},$${ci++})`);
+        cParams.push(c.vodType, c.canonicalTitle, c.canonicalNormalizedTitle, c.titleYear);
+      }
+
+      const { rows: canonicalRows } = await pool.query(
+        `INSERT INTO canonical_content (vod_type, canonical_title, canonical_normalized_title, title_year, updated_at)
+         VALUES ${cVals.join(',')}
+         ON CONFLICT (vod_type, canonical_normalized_title, title_year) DO UPDATE SET
+           canonical_title = EXCLUDED.canonical_title,
+           updated_at = NOW()
+         RETURNING id, vod_type, canonical_normalized_title, title_year`,
+        cParams
+      );
+
+      for (const row of canonicalRows) {
+        const key = `${row.vod_type}::${row.canonical_normalized_title}::${row.title_year ?? ''}`;
+        globalIdMap.set(key, row.id);
+      }
+
+      // ── Step 2: bulk-upsert content_aliases ───────────────────────────────
+      if (providerNetworkId) {
+        const aliasByKey = new Map();
+        for (const e of chunk) {
+          const aliasKey = `${e.vodType}::${e.rawTitle}`;
+          if (!aliasByKey.has(aliasKey)) {
+            const canonicalKey = `${e.vodType}::${e.canonicalNormalizedTitle || e.normalizedTitle || ''}::${e.titleYear ?? ''}`;
+            aliasByKey.set(aliasKey, {
+              rawTitle: e.rawTitle,
+              normalizedTitle: e.normalizedTitle || null,
+              canonicalTitle: e.canonicalTitle || e.rawTitle,
+              canonicalNormalizedTitle: e.canonicalNormalizedTitle || e.normalizedTitle || null,
+              titleYear: e.titleYear || null,
+              vodType: e.vodType,
+              canonicalContentId: globalIdMap.get(canonicalKey) || null,
+            });
+          }
+        }
+
+        const uniqAliases = [...aliasByKey.values()];
+        const aVals = [];
+        const aParams = [];
+        let ai = 1;
+        for (const a of uniqAliases) {
+          aVals.push(`($${ai++},$${ai++},$${ai++},$${ai++},$${ai++},$${ai++},$${ai++},$${ai++},$${ai++})`);
+          aParams.push(
+            providerNetworkId, providerId,
+            a.rawTitle, a.normalizedTitle, a.canonicalTitle,
+            a.canonicalNormalizedTitle, a.titleYear, a.vodType, a.canonicalContentId
+          );
+        }
+
+        await pool.query(
+          `INSERT INTO content_aliases
+             (provider_network_id, provider_id, raw_title, normalized_title, canonical_title,
+              canonical_normalized_title, title_year, vod_type, canonical_content_id, updated_at)
+           VALUES ${aVals.join(',')}
+           ON CONFLICT (provider_network_id, raw_title, vod_type) DO UPDATE SET
+             provider_id                = EXCLUDED.provider_id,
+             normalized_title           = EXCLUDED.normalized_title,
+             canonical_title            = EXCLUDED.canonical_title,
+             canonical_normalized_title = EXCLUDED.canonical_normalized_title,
+             title_year                 = EXCLUDED.title_year,
+             canonical_content_id       = COALESCE(EXCLUDED.canonical_content_id, content_aliases.canonical_content_id),
+             updated_at                 = NOW()`,
+          aParams
+        );
+      }
     }
-    return resolved;
+
+    // Attach canonical IDs to the original entry objects
+    return valid.map(e => {
+      const key = `${e.vodType}::${e.canonicalNormalizedTitle || e.normalizedTitle || ''}::${e.titleYear ?? ''}`;
+      return { ...e, canonicalContentId: globalIdMap.get(key) || null };
+    });
   },
 
   async getCoverage() {

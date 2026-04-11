@@ -20,6 +20,7 @@ jest.mock('../../src/db/queries', () => ({
     findByIdAndUser: jest.fn(),
     updateHealth: jest.fn(),
     update: jest.fn().mockResolvedValue({}),
+    updateSyncWatermark: jest.fn().mockResolvedValue(),
     findByIdForCrm: jest.fn(),
     updateCrmSync: jest.fn(),
   },
@@ -306,25 +307,33 @@ describe('providerService', () => {
   });
 
   describe('refreshCatalog', () => {
-    it('deletes stale provider rows when a refresh returns no titles', async () => {
-      providerQueries.findByIdAndUser.mockResolvedValue({
-        id: 'provider-1',
-        user_id: 'user-1',
-        name: 'Provider One',
-        hosts: ['http://host.com'],
-        active_host: 'http://host.com',
-        username: 'user',
-        password: 'pass',
-        network_id: null,
-        catalog_variant: false,
-      });
+    // Reusable provider stubs
+    const baseProvider = {
+      id: 'provider-1',
+      user_id: 'user-1',
+      name: 'Provider One',
+      hosts: ['http://host.com'],
+      active_host: 'http://host.com',
+      username: 'user',
+      password: 'pass',
+      network_id: null,
+      catalog_variant: false,
+      incremental_sync: false,
+      last_sync_watermark: null,
+    };
 
+    // Mock fetch for a category call + vod/series streams, then spy live streams
+    function mockFetchForCatalog({ movies = [], series = [] } = {}) {
       fetch
-        .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
-        .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
-        .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
-        .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }));
+        .mockResolvedValueOnce(new Response(JSON.stringify([{ id: '1', name: 'Action' }]), { status: 200 })) // vod categories
+        .mockResolvedValueOnce(new Response(JSON.stringify([{ id: '1', name: 'Drama' }]), { status: 200 }))  // series categories
+        .mockResolvedValueOnce(new Response(JSON.stringify(movies), { status: 200 }))                        // get_vod_streams
+        .mockResolvedValueOnce(new Response(JSON.stringify(series), { status: 200 }));                       // get_series
+    }
 
+    it('deletes stale provider rows when a refresh returns no titles', async () => {
+      providerQueries.findByIdAndUser.mockResolvedValue(baseProvider);
+      mockFetchForCatalog();
       jest.spyOn(providerService, 'getLiveStreams').mockResolvedValueOnce([]);
 
       const result = await providerService.refreshCatalog('provider-1', 'user-1');
@@ -333,6 +342,210 @@ describe('providerService', () => {
       expect(vodQueries.deleteByNetwork).not.toHaveBeenCalled();
       expect(vodQueries.upsertBatch).not.toHaveBeenCalled();
       expect(result).toMatchObject({ movies: 0, series: 0, live: 0, total: 0 });
+    });
+
+    describe('incremental sync', () => {
+      it('captures remoteAddedAt from the added field on movies', async () => {
+        providerQueries.findByIdAndUser.mockResolvedValue(baseProvider);
+        mockFetchForCatalog({
+          movies: [
+            { stream_id: 1, name: 'Movie A', added: '1000000', category_id: '1', container_extension: 'mp4' },
+          ],
+        });
+        jest.spyOn(providerService, 'getLiveStreams').mockResolvedValueOnce([]);
+
+        await providerService.refreshCatalog('provider-1', 'user-1');
+
+        const upsertArgs = vodQueries.upsertBatch.mock.calls[0][0];
+        expect(upsertArgs[0]).toMatchObject({ streamId: '1', remoteAddedAt: 1000000 });
+      });
+
+      it('captures remoteAddedAt from last_modified on series', async () => {
+        providerQueries.findByIdAndUser.mockResolvedValue(baseProvider);
+        mockFetchForCatalog({
+          series: [
+            { series_id: 10, name: 'Series A', last_modified: '2000000', category_id: '1' },
+          ],
+        });
+        jest.spyOn(providerService, 'getLiveStreams').mockResolvedValueOnce([]);
+
+        await providerService.refreshCatalog('provider-1', 'user-1');
+
+        const upsertArgs = vodQueries.upsertBatch.mock.calls[0][0];
+        const series = upsertArgs.find(e => e.vodType === 'series');
+        expect(series).toMatchObject({ streamId: '10', remoteAddedAt: 2000000 });
+      });
+
+      it('captures remoteAddedAt from added field on live channels', async () => {
+        providerQueries.findByIdAndUser.mockResolvedValue(baseProvider);
+        mockFetchForCatalog();
+        jest.spyOn(providerService, 'getLiveStreams').mockResolvedValueOnce([
+          { streamId: '99', rawTitle: 'Channel A', vodType: 'live', providerId: 'provider-1', userId: 'user-1', remoteAddedAt: 5000000 },
+        ]);
+
+        await providerService.refreshCatalog('provider-1', 'user-1');
+
+        const upsertArgs = vodQueries.upsertBatch.mock.calls[0][0];
+        const live = upsertArgs.find(e => e.vodType === 'live');
+        expect(live).toMatchObject({ streamId: '99', remoteAddedAt: 5000000 });
+      });
+
+      it('does NOT update watermark when incremental_sync is false (default)', async () => {
+        providerQueries.findByIdAndUser.mockResolvedValue({ ...baseProvider, incremental_sync: false });
+        mockFetchForCatalog({
+          movies: [{ stream_id: 1, name: 'Movie A', added: '9999999', category_id: '1', container_extension: 'mp4' }],
+        });
+        jest.spyOn(providerService, 'getLiveStreams').mockResolvedValueOnce([]);
+
+        const result = await providerService.refreshCatalog('provider-1', 'user-1');
+
+        expect(providerQueries.updateSyncWatermark).not.toHaveBeenCalled();
+        expect(result.incremental).toBeNull();
+      });
+
+      it('resolves ALL entries on first incremental sync (no watermark yet)', async () => {
+        providerQueries.findByIdAndUser.mockResolvedValue({
+          ...baseProvider,
+          network_id: 'network-1', // resolveEntries only runs when network_id is set
+          incremental_sync: true,
+          last_sync_watermark: null, // first run
+        });
+        mockFetchForCatalog({
+          movies: [
+            { stream_id: 1, name: 'Movie A', added: '1000', category_id: '1', container_extension: 'mp4' },
+            { stream_id: 2, name: 'Movie B', added: '2000', category_id: '1', container_extension: 'mp4' },
+          ],
+        });
+        jest.spyOn(providerService, 'getLiveStreams').mockResolvedValueOnce([]);
+
+        const result = await providerService.refreshCatalog('provider-1', 'user-1');
+
+        // All entries should go through resolveEntries
+        expect(canonicalContentQueries.resolveEntries).toHaveBeenCalledWith(
+          expect.arrayContaining([
+            expect.objectContaining({ streamId: '1' }),
+            expect.objectContaining({ streamId: '2' }),
+          ]),
+          expect.anything()
+        );
+        // Watermark set to max added timestamp
+        expect(providerQueries.updateSyncWatermark).toHaveBeenCalledWith('provider-1', 'user-1', 2000);
+        expect(result.incremental).toMatchObject({ resolved: 2, skipped: 0, watermark: 2000 });
+      });
+
+      it('only resolves entries newer than the watermark on subsequent syncs', async () => {
+        providerQueries.findByIdAndUser.mockResolvedValue({
+          ...baseProvider,
+          network_id: 'network-1',
+          incremental_sync: true,
+          last_sync_watermark: 5000, // already synced up to t=5000
+        });
+        mockFetchForCatalog({
+          movies: [
+            { stream_id: 1, name: 'Old Movie',  added: '1000', category_id: '1', container_extension: 'mp4' }, // <= watermark
+            { stream_id: 2, name: 'Old Movie 2', added: '5000', category_id: '1', container_extension: 'mp4' }, // == watermark, NOT new
+            { stream_id: 3, name: 'New Movie',  added: '6000', category_id: '1', container_extension: 'mp4' }, // > watermark, NEW
+          ],
+        });
+        jest.spyOn(providerService, 'getLiveStreams').mockResolvedValueOnce([]);
+
+        const result = await providerService.refreshCatalog('provider-1', 'user-1');
+
+        // resolveEntries should only receive the new entry
+        const resolveCall = canonicalContentQueries.resolveEntries.mock.calls[0][0];
+        expect(resolveCall).toHaveLength(1);
+        expect(resolveCall[0]).toMatchObject({ streamId: '3' });
+
+        // All 3 entries still go to upsertNetworkBatch (network provider — for deletion detection too)
+        const upsertArgs = vodQueries.upsertNetworkBatch.mock.calls[0][0];
+        expect(upsertArgs).toHaveLength(3);
+
+        // Watermark advances to the new max
+        expect(providerQueries.updateSyncWatermark).toHaveBeenCalledWith('provider-1', 'user-1', 6000);
+        expect(result.incremental).toMatchObject({ resolved: 1, skipped: 2, watermark: 6000 });
+      });
+
+      it('skips resolveEntries entirely when all entries are unchanged', async () => {
+        providerQueries.findByIdAndUser.mockResolvedValue({
+          ...baseProvider,
+          network_id: 'network-1',
+          incremental_sync: true,
+          last_sync_watermark: 9999,
+        });
+        mockFetchForCatalog({
+          movies: [
+            { stream_id: 1, name: 'Old Movie', added: '1000', category_id: '1', container_extension: 'mp4' },
+            { stream_id: 2, name: 'Old Movie 2', added: '2000', category_id: '1', container_extension: 'mp4' },
+          ],
+        });
+        jest.spyOn(providerService, 'getLiveStreams').mockResolvedValueOnce([]);
+
+        const result = await providerService.refreshCatalog('provider-1', 'user-1');
+
+        expect(canonicalContentQueries.resolveEntries).toHaveBeenCalledWith([], expect.anything());
+        expect(result.incremental).toMatchObject({ resolved: 0, skipped: 2 });
+      });
+
+      it('treats entries with no remoteAddedAt as always needing resolution', async () => {
+        providerQueries.findByIdAndUser.mockResolvedValue({
+          ...baseProvider,
+          network_id: 'network-1',
+          incremental_sync: true,
+          last_sync_watermark: 9999,
+        });
+        mockFetchForCatalog({
+          movies: [
+            { stream_id: 1, name: 'No Timestamp Movie', added: undefined, category_id: '1', container_extension: 'mp4' },
+          ],
+        });
+        jest.spyOn(providerService, 'getLiveStreams').mockResolvedValueOnce([]);
+
+        await providerService.refreshCatalog('provider-1', 'user-1');
+
+        // Entry without remoteAddedAt should always go to resolve
+        const resolveCall = canonicalContentQueries.resolveEntries.mock.calls[0][0];
+        expect(resolveCall).toHaveLength(1);
+        expect(resolveCall[0]).toMatchObject({ streamId: '1', remoteAddedAt: null });
+      });
+
+      it('watermark does not advance if all entries lack remoteAddedAt', async () => {
+        providerQueries.findByIdAndUser.mockResolvedValue({
+          ...baseProvider,
+          incremental_sync: true,
+          last_sync_watermark: 5000,
+        });
+        mockFetchForCatalog({
+          movies: [
+            { stream_id: 1, name: 'Timestampless Movie', category_id: '1', container_extension: 'mp4' },
+          ],
+        });
+        jest.spyOn(providerService, 'getLiveStreams').mockResolvedValueOnce([]);
+
+        await providerService.refreshCatalog('provider-1', 'user-1');
+
+        // Watermark stays at previous value since no new timestamps were seen
+        expect(providerQueries.updateSyncWatermark).toHaveBeenCalledWith('provider-1', 'user-1', 5000);
+      });
+
+      it('watermark advances to the highest remoteAddedAt across all stream types', async () => {
+        providerQueries.findByIdAndUser.mockResolvedValue({
+          ...baseProvider,
+          incremental_sync: true,
+          last_sync_watermark: 0,
+        });
+        mockFetchForCatalog({
+          movies:  [{ stream_id: 1, name: 'Movie',  added: '3000', category_id: '1', container_extension: 'mp4' }],
+          series:  [{ series_id: 2, name: 'Series', last_modified: '7000', category_id: '1' }],
+        });
+        jest.spyOn(providerService, 'getLiveStreams').mockResolvedValueOnce([
+          { streamId: '3', rawTitle: 'Channel', vodType: 'live', providerId: 'provider-1', userId: 'user-1', remoteAddedAt: 5000 },
+        ]);
+
+        await providerService.refreshCatalog('provider-1', 'user-1');
+
+        // 7000 is the max across movie(3000), live(5000), series(7000)
+        expect(providerQueries.updateSyncWatermark).toHaveBeenCalledWith('provider-1', 'user-1', 7000);
+      });
     });
   });
 });
