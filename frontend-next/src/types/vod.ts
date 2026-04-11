@@ -19,4 +19,5 @@ export interface VodItem {
   year?: string
   runtime?: string
   genres?: string[]
+  content_languages?: string[]
 }

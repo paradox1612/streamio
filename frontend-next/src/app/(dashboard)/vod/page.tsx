@@ -94,7 +94,48 @@ export default function VodPage() {
     overview: item.overview,
     rating: item.vote_average || item.rating || (item.confidence_score ? (item.confidence_score * 10) : undefined),
     year: (item.release_date || item.first_air_date || item.title_year || item.year || '').toString().slice(0, 4),
+    content_languages: item.content_languages || [],
   }), [])
+
+  // ─── Language Filtering ───────────────────────────────────────────────────
+  
+  const filterByLanguage = useCallback((items: VodItem[]) => {
+    if (!user) return items
+    
+    const preferred = (user as any).preferred_languages || []
+    const excluded = (user as any).excluded_languages || []
+    
+    if (preferred.length === 0 && excluded.length === 0) return items
+
+    return items.filter(item => {
+      const langs = item.content_languages || []
+      
+      // If we have preferred languages, the item MUST have at least one of them
+      if (preferred.length > 0) {
+        if (!langs.some(l => preferred.includes(l.toLowerCase()))) return false
+      }
+      
+      // If we have excluded languages, the item MUST NOT have any of them
+      if (excluded.length > 0) {
+        if (langs.some(l => excluded.includes(l.toLowerCase()))) return false
+      }
+      
+      return true
+    })
+  }, [user])
+
+  const filteredSections = {
+    continueWatching: filterByLanguage(sections.continueWatching),
+    newToStreamio: filterByLanguage(sections.newToStreamio),
+    trendingMovies: filterByLanguage(sections.trendingMovies),
+    trendingSeries: filterByLanguage(sections.trendingSeries),
+    movies: filterByLanguage(sections.movies),
+    series: filterByLanguage(sections.series),
+    topRated: filterByLanguage(sections.topRated),
+    featured: filterByLanguage(sections.featured),
+  }
+
+  const filteredBrowseItems = filterByLanguage(browseItems)
 
   const handleOpenModal = (item: VodItem, play = false) => {
     setWatchItem(item)
@@ -250,9 +291,9 @@ export default function VodPage() {
   return (
     <div className="min-h-screen bg-[#141414] text-white pb-24 overflow-x-hidden">
       {/* Hero Banner */}
-      {sections.featured.length > 0 ? (
+      {filteredSections.featured.length > 0 ? (
         <HeroBanner 
-          items={sections.featured} 
+          items={filteredSections.featured} 
           onPlay={(item) => handleOpenModal(item, true)}
           onInfo={(item) => handleOpenModal(item, false)}
         />
@@ -364,48 +405,48 @@ export default function VodPage() {
       {/* Content Rows */}
       {!searchQuery && !activeType && !activeSort ? (
         <div className="mt-8 space-y-16">
-          {sections.continueWatching.length > 0 && (
+          {filteredSections.continueWatching.length > 0 && (
             <ContentRow 
               title="Continue Watching" 
-              items={sections.continueWatching} 
+              items={filteredSections.continueWatching} 
               onPlay={(item) => handleOpenModal(item, true)}
               onInfo={(item) => handleOpenModal(item, false)}
             />
           )}
           <ContentRow 
             title="New to Streamio" 
-            items={sections.newToStreamio} 
+            items={filteredSections.newToStreamio} 
             onPlay={(item) => handleOpenModal(item, true)}
             onInfo={(item) => handleOpenModal(item, false)}
           />
           <ContentRow 
             title="Trending Movies" 
-            items={sections.trendingMovies} 
+            items={filteredSections.trendingMovies} 
             onPlay={(item) => handleOpenModal(item, true)}
             onInfo={(item) => handleOpenModal(item, false)}
           />
           <ContentRow 
             title="Trending Series" 
-            items={sections.trendingSeries} 
+            items={filteredSections.trendingSeries} 
             onPlay={(item) => handleOpenModal(item, true)}
             onInfo={(item) => handleOpenModal(item, false)}
           />
           <ContentRow 
             title="Top Rated" 
-            items={sections.topRated} 
+            items={filteredSections.topRated} 
             onPlay={(item) => handleOpenModal(item, true)}
             onInfo={(item) => handleOpenModal(item, false)}
           />
           <ContentRow 
             title="Movies" 
-            items={sections.movies} 
+            items={filteredSections.movies} 
             onPlay={(item) => handleOpenModal(item, true)}
             onInfo={(item) => handleOpenModal(item, false)}
             onSeeAll={() => setActiveType('movie')}
           />
           <ContentRow 
             title="Series" 
-            items={sections.series} 
+            items={filteredSections.series} 
             onPlay={(item) => handleOpenModal(item, true)}
             onInfo={(item) => handleOpenModal(item, false)}
             onSeeAll={() => setActiveType('series')}
@@ -418,10 +459,10 @@ export default function VodPage() {
             <h2 className="text-3xl font-black tracking-tight">
               {searchQuery ? `Results for "${searchQuery}"` : activeType === 'movie' ? 'Movies' : activeType === 'series' ? 'Series' : 'All Titles'}
             </h2>
-            <span className="text-zinc-500 text-sm font-bold">{browseItems.length} items</span>
+            <span className="text-zinc-500 text-sm font-bold">{filteredBrowseItems.length} items</span>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-x-4 gap-y-12">
-             {browseItems.map((item) => (
+             {filteredBrowseItems.map((item) => (
                 <div key={item.id} className="flex justify-center">
                   <NetflixCard 
                     item={item} 
