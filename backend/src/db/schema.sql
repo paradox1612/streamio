@@ -729,6 +729,10 @@ CREATE TABLE IF NOT EXISTS provider_offerings (
   provider_network_id UUID REFERENCES provider_networks(id) ON DELETE SET NULL,
   is_featured         BOOLEAN NOT NULL DEFAULT false,
   is_active           BOOLEAN NOT NULL DEFAULT true,
+  group_id            TEXT,
+  is_trial            BOOLEAN NOT NULL DEFAULT false,
+  countries           TEXT[] DEFAULT ARRAY[]::TEXT[],
+  tags                TEXT[] DEFAULT ARRAY[]::TEXT[],
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

@@ -572,6 +572,8 @@ router.post('/marketplace', requireAdmin, async (req, res) => {
       provisioning_mode,
       reseller_bouquet_ids,
       reseller_notes,
+      group_id,
+      is_trial,
     } = req.body;
 
     const normalizedPlans = normalizePlanOptions({
@@ -613,6 +615,8 @@ router.post('/marketplace', requireAdmin, async (req, res) => {
       provisioning_mode,
       reseller_bouquet_ids,
       reseller_notes,
+      group_id,
+      is_trial,
     });
 
     // Sync to Stripe if key is configured

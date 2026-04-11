@@ -382,7 +382,10 @@ export default function AdminMarketplacePage() {
                       <tr key={offering.id} className="hover:bg-white/[0.02]">
                         <td className="px-5 py-3">
                           <div className="font-medium text-white">{offering.name}</div>
-                          {offering.network_name && <div className="text-xs text-slate-400">{offering.network_name}</div>}
+                          <div className="flex flex-col gap-0.5 mt-0.5">
+                            {offering.network_name && <div className="text-xs text-slate-400">{offering.network_name}</div>}
+                            {offering.group_id && <div className="text-[10px] font-mono text-slate-500 uppercase tracking-tight">{offering.group_id}</div>}
+                          </div>
                         </td>
                         <td className="px-5 py-3 text-slate-300">
                           <div className="font-medium text-white">{plans.length} configured</div>
@@ -462,6 +465,10 @@ export default function AdminMarketplacePage() {
               <div className="col-span-2 space-y-1">
                 <Label>Description</Label>
                 <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Premium IPTV with multi-country coverage" />
+              </div>
+              <div className="space-y-1">
+                <Label>Group ID</Label>
+                <Input value={form.group_id} onChange={(e) => setForm({ ...form, group_id: e.target.value })} placeholder="e.g. starshare-premium" />
               </div>
               <div className="space-y-1">
                 <Label>Currency</Label>

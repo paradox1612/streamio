@@ -2634,7 +2634,7 @@ const offeringQueries = {
   },
 
   async update(id, fields) {
-    const allowed = ['name', 'description', 'price_cents', 'currency', 'billing_period', 'billing_interval_count', 'trial_days', 'max_connections', 'features', 'plan_options', 'catalog_tags', 'country_codes', 'provider_stats', 'provisioning_mode', 'reseller_bouquet_ids', 'reseller_notes', 'stripe_price_id', 'stripe_product_id', 'provider_network_id', 'is_featured', 'is_active', 'group_id', 'is_trial'];
+    const allowed = ['name', 'description', 'price_cents', 'currency', 'billing_period', 'billing_interval_count', 'trial_days', 'max_connections', 'features', 'plan_options', 'catalog_tags', 'country_codes', 'provider_stats', 'provisioning_mode', 'reseller_bouquet_ids', 'reseller_notes', 'stripe_price_id', 'stripe_product_id', 'provider_network_id', 'is_featured', 'is_active', 'group_id', 'is_trial', 'countries', 'tags'];
     const sets = [];
     const values = [];
     let idx = 1;

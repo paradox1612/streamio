@@ -11,6 +11,9 @@ const RECAPTCHA_SITE_KEY = '6LcXSrcZAAAAABPziK8siiyZ2H3JKXSDe7Z750ah'; // Starsh
 const CAPTCHA_POLL_INTERVAL_MS = Number(process.env.TWO_CAPTCHA_POLL_INTERVAL_MS || 5000);
 const CAPTCHA_POLL_ATTEMPTS = Number(process.env.TWO_CAPTCHA_POLL_ATTEMPTS || 24);
 
+// Map to track ongoing login attempts to prevent redundant CAPTCHA solves
+const loginPromises = new Map();
+
 /**
  * Xtream UI Reseller Panel Scraper (Session-based)
  * Designed for panels that don't expose a standard REST API and require session cookies.
@@ -18,72 +21,91 @@ const CAPTCHA_POLL_ATTEMPTS = Number(process.env.TWO_CAPTCHA_POLL_ATTEMPTS || 24
 const xtreamUiScraper = {
   /**
    * Automate login via 2Captcha and form submission.
+   * Uses pooling to ensure only one CAPTCHA is solved for concurrent requests to the same target.
    */
   async autoLogin(host, username, password) {
-    const captchaKey = process.env.TWO_CAPTCHA_API_KEY;
-    if (!captchaKey) throw new Error('TWO_CAPTCHA_API_KEY is not configured');
-
-    logger.info(`[Scraper] Requesting CAPTCHA solve for ${host}...`);
+    const targetKey = `${host}|${username}`;
     
-    // 1. Request captcha solve
-    const solveReq = await fetch(`https://2captcha.com/in.php?key=${captchaKey}&method=userrecaptcha&googlekey=${RECAPTCHA_SITE_KEY}&pageurl=${encodeURIComponent(host + '/login.php')}&json=1`);
-    const solveJson = await solveReq.json();
-    if (solveJson.status !== 1) throw new Error(`2Captcha Request Error: ${solveJson.request}`);
-    
-    const requestId = solveJson.request;
-    let token = null;
-    logger.info(`[Scraper] 2Captcha request accepted: ${String(requestId).slice(0, 8)}...`);
-
-    // 2. Poll for result (default up to 120s, configurable by env)
-    for (let i = 0; i < CAPTCHA_POLL_ATTEMPTS; i++) {
-      await new Promise(r => setTimeout(r, CAPTCHA_POLL_INTERVAL_MS));
-      const pollReq = await fetch(`https://2captcha.com/res.php?key=${captchaKey}&action=get&id=${requestId}&json=1`);
-      const pollJson = await pollReq.json();
-      if (pollJson.status === 1) {
-        token = pollJson.request;
-        break;
-      }
-      logger.info(`[Scraper] 2Captcha poll ${i + 1}/${CAPTCHA_POLL_ATTEMPTS}: ${pollJson.request}`);
-      if (pollJson.request !== 'CAPCHA_NOT_READY') {
-        throw new Error(`2Captcha Poll Error: ${pollJson.request}`);
-      }
+    // If a login is already in progress for this target, join it
+    if (loginPromises.has(targetKey)) {
+      logger.info(`[Scraper] Joining existing login attempt for ${host} (${username})`);
+      return loginPromises.get(targetKey);
     }
 
-    if (!token) {
-      const totalWaitSeconds = Math.round((CAPTCHA_POLL_ATTEMPTS * CAPTCHA_POLL_INTERVAL_MS) / 1000);
-      throw new Error(`CAPTCHA solve timed out after ${totalWaitSeconds}s`);
-    }
-    logger.info('[Scraper] CAPTCHA solved successfully');
+    const loginPromise = (async () => {
+      try {
+        const captchaKey = process.env.TWO_CAPTCHA_API_KEY;
+        if (!captchaKey) throw new Error('TWO_CAPTCHA_API_KEY is not configured');
 
-    // 3. Perform POST login
-    const loginUrl = `${host}/login.php`;
-    const formData = new URLSearchParams();
-    formData.append('username', username);
-    formData.append('password', password);
-    formData.append('g-recaptcha-response', token);
-    formData.append('login_button', '');
+        logger.info(`[Scraper] Requesting CAPTCHA solve for ${host}...`);
+        
+        // 1. Request captcha solve
+        const solveReq = await fetch(`https://2captcha.com/in.php?key=${captchaKey}&method=userrecaptcha&googlekey=${RECAPTCHA_SITE_KEY}&pageurl=${encodeURIComponent(host + '/login.php')}&json=1`);
+        const solveJson = await solveReq.json();
+        if (solveJson.status !== 1) throw new Error(`2Captcha Request Error: ${solveJson.request}`);
+        
+        const requestId = solveJson.request;
+        let token = null;
+        logger.info(`[Scraper] 2Captcha request accepted: ${String(requestId).slice(0, 8)}...`);
 
-    const loginRes = await fetch(loginUrl, {
-      method: 'POST',
-      headers: {
-        ...BROWSER_HEADERS,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Referer': loginUrl,
-      },
-      body: formData.toString(),
-      redirect: 'manual',
-    });
+        // 2. Poll for result (default up to 120s, configurable by env)
+        for (let i = 0; i < CAPTCHA_POLL_ATTEMPTS; i++) {
+          await new Promise(r => setTimeout(r, CAPTCHA_POLL_INTERVAL_MS));
+          const pollReq = await fetch(`https://2captcha.com/res.php?key=${captchaKey}&action=get&id=${requestId}&json=1`);
+          const pollJson = await pollReq.json();
+          if (pollJson.status === 1) {
+            token = pollJson.request;
+            break;
+          }
+          logger.info(`[Scraper] 2Captcha poll ${i + 1}/${CAPTCHA_POLL_ATTEMPTS}: ${pollJson.request}`);
+          if (pollJson.request !== 'CAPCHA_NOT_READY') {
+            throw new Error(`2Captcha Poll Error: ${pollJson.request}`);
+          }
+        }
 
-    // 4. Extract PHPSESSID from cookies
-    const cookieHeader = loginRes.headers.get('set-cookie');
-    if (!cookieHeader) throw new Error('No cookies returned from login');
-    
-    const sessMatch = cookieHeader.match(/PHPSESSID=([^;]+)/);
-    if (!sessMatch) throw new Error('PHPSESSID not found in cookies');
+        if (!token) {
+          const totalWaitSeconds = Math.round((CAPTCHA_POLL_ATTEMPTS * CAPTCHA_POLL_INTERVAL_MS) / 1000);
+          throw new Error(`CAPTCHA solve timed out after ${totalWaitSeconds}s`);
+        }
+        logger.info('[Scraper] CAPTCHA solved successfully');
 
-    const phpsessid = sessMatch[1];
-    logger.info(`[Scraper] Login successful, session acquired: ${phpsessid.substring(0, 8)}...`);
-    return phpsessid;
+        // 3. Perform POST login
+        const loginUrl = `${host}/login.php`;
+        const formData = new URLSearchParams();
+        formData.append('username', username);
+        formData.append('password', password);
+        formData.append('g-recaptcha-response', token);
+        formData.append('login_button', '');
+
+        const loginRes = await fetch(loginUrl, {
+          method: 'POST',
+          headers: {
+            ...BROWSER_HEADERS,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Referer': loginUrl,
+          },
+          body: formData.toString(),
+          redirect: 'manual',
+        });
+
+        // 4. Extract PHPSESSID from cookies
+        const cookieHeader = loginRes.headers.get('set-cookie');
+        if (!cookieHeader) throw new Error('No cookies returned from login');
+        
+        const sessMatch = cookieHeader.match(/PHPSESSID=([^;]+)/);
+        if (!sessMatch) throw new Error('PHPSESSID not found in cookies');
+
+        const phpsessid = sessMatch[1];
+        logger.info(`[Scraper] Login successful, session acquired: ${phpsessid.substring(0, 8)}...`);
+        return phpsessid;
+      } finally {
+        // Always remove the promise from the map when finished
+        loginPromises.delete(targetKey);
+      }
+    })();
+
+    loginPromises.set(targetKey, loginPromise);
+    return loginPromise;
   },
 
   /**
