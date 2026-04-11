@@ -8,6 +8,8 @@ const BROWSER_HEADERS = {
 };
 
 const RECAPTCHA_SITE_KEY = '6LcXSrcZAAAAABPziK8siiyZ2H3JKXSDe7Z750ah'; // Starshare site key
+const CAPTCHA_POLL_INTERVAL_MS = Number(process.env.TWO_CAPTCHA_POLL_INTERVAL_MS || 5000);
+const CAPTCHA_POLL_ATTEMPTS = Number(process.env.TWO_CAPTCHA_POLL_ATTEMPTS || 24);
 
 /**
  * Xtream UI Reseller Panel Scraper (Session-based)
@@ -30,22 +32,27 @@ const xtreamUiScraper = {
     
     const requestId = solveJson.request;
     let token = null;
+    logger.info(`[Scraper] 2Captcha request accepted: ${String(requestId).slice(0, 8)}...`);
 
-    // 2. Poll for result (up to 60s)
-    for (let i = 0; i < 12; i++) {
-      await new Promise(r => setTimeout(r, 5000));
+    // 2. Poll for result (default up to 120s, configurable by env)
+    for (let i = 0; i < CAPTCHA_POLL_ATTEMPTS; i++) {
+      await new Promise(r => setTimeout(r, CAPTCHA_POLL_INTERVAL_MS));
       const pollReq = await fetch(`https://2captcha.com/res.php?key=${captchaKey}&action=get&id=${requestId}&json=1`);
       const pollJson = await pollReq.json();
       if (pollJson.status === 1) {
         token = pollJson.request;
         break;
       }
+      logger.info(`[Scraper] 2Captcha poll ${i + 1}/${CAPTCHA_POLL_ATTEMPTS}: ${pollJson.request}`);
       if (pollJson.request !== 'CAPCHA_NOT_READY') {
         throw new Error(`2Captcha Poll Error: ${pollJson.request}`);
       }
     }
 
-    if (!token) throw new Error('CAPTCHA solve timed out');
+    if (!token) {
+      const totalWaitSeconds = Math.round((CAPTCHA_POLL_ATTEMPTS * CAPTCHA_POLL_INTERVAL_MS) / 1000);
+      throw new Error(`CAPTCHA solve timed out after ${totalWaitSeconds}s`);
+    }
     logger.info('[Scraper] CAPTCHA solved successfully');
 
     // 3. Perform POST login
