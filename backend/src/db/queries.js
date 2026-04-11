@@ -285,6 +285,7 @@ const providerNetworkQueries = {
       'name',
       'identity_key',
       'legacy_provider_id',
+      'reseller_portal_url',
       'catalog_last_refreshed_at',
       'twenty_company_id',
       'reseller_username',
@@ -343,6 +344,16 @@ const providerNetworkQueries = {
       [providerNetworkId]
     );
     return rows;
+  },
+
+  async replaceHosts(providerNetworkId, hosts) {
+    await pool.query(
+      'DELETE FROM provider_network_hosts WHERE provider_network_id = $1',
+      [providerNetworkId]
+    );
+
+    if (!Array.isArray(hosts) || hosts.length === 0) return;
+    await this.addHosts(providerNetworkId, hosts);
   },
 
   async listAllHosts() {

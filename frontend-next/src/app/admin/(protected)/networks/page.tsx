@@ -30,6 +30,7 @@ interface Network {
   id: string
   name: string
   identity_key: string | null
+  reseller_portal_url: string | null
   reseller_username: string | null
   reseller_password?: string | null
   xtream_ui_scraped: boolean
@@ -41,6 +42,12 @@ interface Network {
 interface Bouquet {
   id: string
   bouquet_name: string
+}
+
+interface NetworkHost {
+  id: string
+  host_url: string
+  is_active: boolean
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -56,10 +63,12 @@ export default function NetworksPage() {
   
   // Reseller Form
   const [resellerForm, setResellerForm] = useState({ 
+    portalUrl: '',
     username: '', 
     password: '', 
     isScraped: false,
-    sessionCookie: ''
+    sessionCookie: '',
+    customerHosts: ''
   })
   const [savingReseller, setSavingReseller] = useState(false)
   const [testingSession, setTestingSession] = useState<string | null>(null)
@@ -80,15 +89,33 @@ export default function NetworksPage() {
     }
   }
 
-  const openResellerConfig = (network: Network) => {
+  const openResellerConfig = async (network: Network) => {
     setSelectedNetwork(network)
     setResellerForm({
+      portalUrl: network.reseller_portal_url || '',
       username: network.reseller_username || '',
-      password: '', // Don't show password
+      password: '',
       isScraped: network.xtream_ui_scraped || false,
-      sessionCookie: network.reseller_session_cookie || ''
+      sessionCookie: network.reseller_session_cookie || '',
+      customerHosts: ''
     })
     setShowResellerModal(true)
+
+    try {
+      const { data } = await adminAPI.getNetwork(network.id)
+      const detail = data?.network as Network | undefined
+      const hosts = Array.isArray(data?.hosts) ? data.hosts as NetworkHost[] : []
+      setResellerForm({
+        portalUrl: detail?.reseller_portal_url || network.reseller_portal_url || '',
+        username: detail?.reseller_username || network.reseller_username || '',
+        password: '',
+        isScraped: detail?.xtream_ui_scraped ?? network.xtream_ui_scraped ?? false,
+        sessionCookie: detail?.reseller_session_cookie || network.reseller_session_cookie || '',
+        customerHosts: hosts.map((host) => host.host_url).join('\n')
+      })
+    } catch {
+      toast.error('Failed to load network configuration')
+    }
   }
 
   const saveResellerConfig = async () => {
@@ -96,10 +123,15 @@ export default function NetworksPage() {
     setSavingReseller(true)
     try {
       await adminAPI.updateNetwork(selectedNetwork.id, {
+        reseller_portal_url: resellerForm.portalUrl || undefined,
         reseller_username: resellerForm.username,
         reseller_password: resellerForm.password || undefined,
         xtream_ui_scraped: resellerForm.isScraped,
-        reseller_session_cookie: resellerForm.sessionCookie
+        reseller_session_cookie: resellerForm.sessionCookie,
+        hosts: resellerForm.customerHosts
+          .split('\n')
+          .map(host => host.trim())
+          .filter(Boolean)
       })
       toast.success('Network configuration updated')
       setShowResellerModal(false)
@@ -363,6 +395,17 @@ export default function NetworksPage() {
             ) : (
               <div className="space-y-4">
                 <div className="space-y-2">
+                  <Label>Reseller Portal URL</Label>
+                  <Input 
+                    value={resellerForm.portalUrl}
+                    onChange={e => setResellerForm({...resellerForm, portalUrl: e.target.value})}
+                    placeholder="https://starshare.fans:2096/"
+                  />
+                  <p className="text-xs text-slate-500">
+                    Admin/login panel used for session checks, auto-login, bouquets, and line creation.
+                  </p>
+                </div>
+                <div className="space-y-2">
                   <Label>PHPSESSID Cookie (Optional)</Label>
                   <Input 
                     value={resellerForm.sessionCookie}
@@ -403,6 +446,19 @@ export default function NetworksPage() {
                 </div>
               </div>
             )}
+
+            <div className="space-y-2">
+              <Label>Customer Host URLs</Label>
+              <textarea
+                className="min-h-[120px] w-full rounded-lg border border-white/10 bg-slate-900 p-3 text-sm text-white outline-none"
+                value={resellerForm.customerHosts}
+                onChange={e => setResellerForm({...resellerForm, customerHosts: e.target.value})}
+                placeholder={'http://starshare.net:80\nhttp://starshare.one:8080'}
+              />
+              <p className="text-xs text-slate-500">
+                One host per line. These are the customer-facing stream hosts associated with the network.
+              </p>
+            </div>
           </div>
 
           <DialogFooter>

@@ -37,6 +37,21 @@ function slugify(value = '') {
     .replace(/-+/g, '-');
 }
 
+async function resolveManagedNetworkHosts(network) {
+  const networkHosts = await providerNetworkQueries.listHosts(network.id);
+  const activeCustomerHost = networkHosts.find((host) => host.is_active)?.host_url || networkHosts[0]?.host_url || null;
+  const legacyProvider = network.legacy_provider_id
+    ? await providerQueries.findById(network.legacy_provider_id)
+    : null;
+  const legacyCustomerHost = legacyProvider?.active_host || legacyProvider?.hosts?.[0] || null;
+
+  return {
+    customerHost: activeCustomerHost || legacyCustomerHost || null,
+    panelHost: network.reseller_portal_url || activeCustomerHost || legacyCustomerHost || null,
+    networkHosts,
+  };
+}
+
 // ─── Admin Auth ───────────────────────────────────────────────────────────────
 
 // POST /admin/auth/login
@@ -554,8 +569,17 @@ router.get('/networks/:id', requireAdmin, async (req, res) => {
 // PATCH /admin/networks/:id — update network (including reseller creds)
 router.patch('/networks/:id', requireAdmin, async (req, res) => {
   try {
+    const normalizedHosts = Array.isArray(req.body.hosts)
+      ? req.body.hosts
+        .map((host) => String(host || '').trim())
+        .filter(Boolean)
+      : null;
+
     const updated = await providerNetworkQueries.update(req.params.id, req.body);
     if (!updated) return res.status(404).json({ error: 'Network not found' });
+    if (normalizedHosts) {
+      await providerNetworkQueries.replaceHosts(req.params.id, normalizedHosts);
+    }
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -568,16 +592,17 @@ router.get('/networks/:id/bouquets', requireAdmin, async (req, res) => {
     const network = await providerNetworkQueries.findById(req.params.id);
     if (!network) return res.status(404).json({ error: 'Network not found' });
 
-    const hosts = await providerNetworkQueries.listHosts(req.params.id);
-    const activeHost = hosts.find(h => h.is_active)?.host_url;
-    if (!activeHost) return res.status(400).json({ error: 'No active hosts for this network' });
+    const { panelHost } = await resolveManagedNetworkHosts(network);
+    if (!panelHost) {
+      return res.status(400).json({ error: 'No reseller portal URL or customer hosts configured for this network' });
+    }
 
     if (network.xtream_ui_scraped) {
       if (!network.reseller_session_cookie) {
         return res.status(400).json({ error: 'PHPSESSID not configured for this managed network' });
       }
       const xtreamUiScraper = require('../utils/xtreamUiScraper');
-      const bouquets = await xtreamUiScraper.getBouquets(activeHost, network.reseller_session_cookie);
+      const bouquets = await xtreamUiScraper.getBouquets(panelHost, network.reseller_session_cookie);
       return res.json(bouquets);
     }
 
@@ -585,7 +610,7 @@ router.get('/networks/:id/bouquets', requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Reseller credentials not configured for this network' });
     }
 
-    const bouquets = await providerService.getBouquets(activeHost, network.reseller_username, network.reseller_password);
+    const bouquets = await providerService.getBouquets(panelHost, network.reseller_username, network.reseller_password);
     res.json(bouquets);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -599,17 +624,17 @@ router.post('/networks/:id/create-line', requireAdmin, async (req, res) => {
     if (!network) return res.status(404).json({ error: 'Network not found' });
 
     const { username, password, maxConnections, expDate, bouquetIds, trial, notes } = req.body;
-    
-    const hosts = await providerNetworkQueries.listHosts(req.params.id);
-    const activeHost = hosts.find(h => h.is_active)?.host_url;
-    if (!activeHost) return res.status(400).json({ error: 'No active hosts for this network' });
+    const { panelHost } = await resolveManagedNetworkHosts(network);
+    if (!panelHost) {
+      return res.status(400).json({ error: 'No reseller portal URL or customer hosts configured for this network' });
+    }
 
     if (network.xtream_ui_scraped) {
       if (!network.reseller_session_cookie) {
         return res.status(400).json({ error: 'PHPSESSID not configured for this managed network' });
       }
       const xtreamUiScraper = require('../utils/xtreamUiScraper');
-      const result = await xtreamUiScraper.createLine(activeHost, network.reseller_session_cookie, {
+      const result = await xtreamUiScraper.createLine(panelHost, network.reseller_session_cookie, {
         username, password, maxConnections, expDate, bouquetIds, trial, notes
       });
       return res.json(result);
@@ -620,7 +645,7 @@ router.post('/networks/:id/create-line', requireAdmin, async (req, res) => {
     }
 
     const result = await providerService.createResellerUser(
-      activeHost, 
+      panelHost, 
       network.reseller_username, 
       network.reseller_password, 
       { username, password, maxConnections, expDate, bouquetIds }
@@ -638,12 +663,11 @@ router.post('/networks/:id/test-session', requireAdmin, async (req, res) => {
     if (!network) return res.status(404).json({ error: 'Network not found' });
     if (!network.reseller_session_cookie) return res.status(400).json({ error: 'No session cookie' });
 
-    const hosts = await providerNetworkQueries.listHosts(req.params.id);
-    const activeHost = hosts.find(h => h.is_active)?.host_url;
-    if (!activeHost) return res.status(400).json({ error: 'No active hosts' });
+    const { panelHost } = await resolveManagedNetworkHosts(network);
+    if (!panelHost) return res.status(400).json({ error: 'No reseller portal URL or customer hosts configured' });
 
     const xtreamUiScraper = require('../utils/xtreamUiScraper');
-    const isValid = await xtreamUiScraper.isSessionValid(activeHost, network.reseller_session_cookie);
+    const isValid = await xtreamUiScraper.isSessionValid(panelHost, network.reseller_session_cookie);
     res.json({ valid: isValid });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -660,13 +684,12 @@ router.post('/networks/:id/refresh-session', requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Reseller username and password required for auto-login' });
     }
 
-    const hosts = await providerNetworkQueries.listHosts(req.params.id);
-    const activeHost = hosts.find(h => h.is_active)?.host_url;
-    if (!activeHost) return res.status(400).json({ error: 'No active hosts' });
+    const { panelHost } = await resolveManagedNetworkHosts(network);
+    if (!panelHost) return res.status(400).json({ error: 'No reseller portal URL or customer hosts configured' });
 
     const xtreamUiScraper = require('../utils/xtreamUiScraper');
     const newSession = await xtreamUiScraper.autoLogin(
-      activeHost,
+      panelHost,
       network.reseller_username,
       network.reseller_password
     );

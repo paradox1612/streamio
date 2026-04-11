@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS provider_networks (
   name VARCHAR NOT NULL,
   identity_key VARCHAR UNIQUE,
   legacy_provider_id UUID UNIQUE,
+  reseller_portal_url TEXT,
   reseller_username TEXT,
   reseller_password TEXT,
   catalog_last_refreshed_at TIMESTAMP,
@@ -384,6 +385,9 @@ ALTER TABLE tmdb_series
   ADD COLUMN IF NOT EXISTS imdb_id VARCHAR;
 ALTER TABLE free_access_provider_groups
   ADD COLUMN IF NOT EXISTS catalog_last_refreshed_at TIMESTAMP;
+ALTER TABLE provider_networks
+  ADD COLUMN IF NOT EXISTS reseller_portal_url TEXT;
+
 ALTER TABLE provider_networks
   ADD COLUMN IF NOT EXISTS reseller_username TEXT;
 ALTER TABLE provider_networks
