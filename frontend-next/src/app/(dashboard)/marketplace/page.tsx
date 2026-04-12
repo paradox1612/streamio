@@ -864,8 +864,18 @@ export default function MarketplacePage() {
                 <div key={tx.id} className="rounded-3xl border border-white/[0.08] bg-surface-900/40 p-5 md:p-6 flex flex-col justify-between transition-all hover:bg-surface-900/60">
                   <div>
                     <div className="flex items-center justify-between mb-4">
-                      <div className={cn("h-9 w-9 md:h-10 md:w-10 flex items-center justify-center rounded-xl", tx.amount_cents > 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-brand-500/10 text-brand-400")}>
-                        {tx.amount_cents > 0 ? <Plus className="h-4 w-4 md:h-5 md:w-5" /> : <Zap className="h-4 w-4 md:h-5 md:w-5" />}
+                      <div className={cn(
+                        "h-9 w-9 md:h-10 md:w-10 flex items-center justify-center rounded-xl", 
+                        tx.status === 'completed' 
+                          ? (tx.amount_cents > 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-brand-500/10 text-brand-400")
+                          : tx.status === 'pending'
+                          ? "bg-amber-500/10 text-amber-400"
+                          : "bg-red-500/10 text-red-400"
+                      )}>
+                        {tx.status === 'completed' && tx.amount_cents > 0 ? <Plus className="h-4 w-4 md:h-5 md:w-5" /> : 
+                         tx.status === 'pending' ? <Clock className="h-4 w-4 md:h-5 md:w-5" /> :
+                         tx.status === 'failed' ? <AlertCircle className="h-4 w-4 md:h-5 md:w-5" /> :
+                         <Zap className="h-4 w-4 md:h-5 md:w-5" />}
                       </div>
                       <Badge 
                         variant={
@@ -885,7 +895,14 @@ export default function MarketplacePage() {
                     <p className="mt-1 text-[10px] md:text-xs text-slate-500 font-mono">{formatDate(tx.created_at)}</p>
                   </div>
                   <div className="mt-5 md:mt-6 flex items-baseline gap-2">
-                    <span className={cn("text-xl md:text-2xl font-bold", tx.amount_cents > 0 ? "text-emerald-400" : "text-slate-200")}>
+                    <span className={cn(
+                      "text-xl md:text-2xl font-bold", 
+                      tx.status === 'completed' 
+                        ? (tx.amount_cents > 0 ? "text-emerald-400" : "text-slate-200")
+                        : tx.status === 'pending' 
+                        ? "text-amber-400" 
+                        : "text-red-400"
+                    )}>
                       {tx.amount_cents > 0 ? '+' : '-'}{formatPrice(Math.abs(tx.amount_cents))}
                     </span>
                     <span className="text-[9px] md:text-[10px] font-bold text-slate-600 uppercase tracking-widest">Credits</span>

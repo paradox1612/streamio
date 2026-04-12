@@ -66,18 +66,23 @@ const hostHealthService = {
       ? networkHosts.map(row => row.host_url)
       : provider.hosts;
 
-    for (const host of hostsToCheck) {
-      const result = await pingHost(host, provider.username, provider.password);
-      await hostHealthQueries.upsert({
-        providerId: provider.id,
-        hostUrl: host,
-        status: result.status,
-        responseTimeMs: result.responseTimeMs,
-      });
+    const results = await Promise.all(
+      hostsToCheck.map(async (host) => {
+        const result = await pingHost(host, provider.username, provider.password);
+        await hostHealthQueries.upsert({
+          providerId: provider.id,
+          hostUrl: host,
+          status: result.status,
+          responseTimeMs: result.responseTimeMs,
+        });
+        return { host, ...result };
+      })
+    );
 
+    for (const result of results) {
       if (result.status === 'online' && result.responseTimeMs < bestTime) {
         bestTime = result.responseTimeMs;
-        bestHost = host;
+        bestHost = result.host;
       }
     }
 
