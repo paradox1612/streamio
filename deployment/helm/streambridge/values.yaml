@@ -60,6 +60,7 @@ backend:
     twentyWebhookSecret: ""
     twoCaptchaApiKey: ""
     paygateWalletAddress: ""
+    googleClientId: ""
   resources: {}
   nodeSelector: {}
   tolerations: []

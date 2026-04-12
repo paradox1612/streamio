@@ -204,6 +204,30 @@ const userQueries = {
     return rows[0];
   },
 
+  async findByOAuthId(provider, oauthId) {
+    const { rows } = await pool.query(
+      'SELECT * FROM users WHERE oauth_provider = $1 AND oauth_id = $2',
+      [provider, oauthId]
+    );
+    return rows[0];
+  },
+
+  async createOAuth({ email, oauthId, provider, addonToken }) {
+    const { rows } = await pool.query(
+      `INSERT INTO users (email, addon_token, oauth_provider, oauth_id)
+       VALUES ($1, $2, $3, $4) RETURNING id`,
+      [email, addonToken, provider, oauthId]
+    );
+    return this.findById(rows[0].id);
+  },
+
+  async linkOAuth(userId, provider, oauthId) {
+    await pool.query(
+      'UPDATE users SET oauth_provider = $1, oauth_id = $2 WHERE id = $3',
+      [provider, oauthId, userId]
+    );
+  },
+
   async setActive(id, isActive) {
     await pool.query('UPDATE users SET is_active = $1 WHERE id = $2', [isActive, id]);
   },

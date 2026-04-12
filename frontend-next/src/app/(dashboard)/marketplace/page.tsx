@@ -20,6 +20,8 @@ import {
   X,
   Zap,
   Info,
+  Clock,
+  AlertCircle,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { creditsAPI, marketplaceAPI } from '@/utils/api'
@@ -673,32 +675,32 @@ export default function MarketplacePage() {
         </div>
       )}
 
-      <div className="relative overflow-hidden rounded-[40px] border border-white/[0.08] bg-surface-900/40 p-8 md:p-14">
-        <div className="relative z-10 flex flex-wrap items-center justify-between gap-10">
+      <div className="relative overflow-hidden rounded-[24px] md:rounded-[40px] border border-white/[0.08] bg-surface-900/40 p-5 md:p-14">
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-6 md:gap-10">
           <div className="max-w-3xl">
-            <div className="flex items-center gap-2 mb-6">
-              <span className="h-px w-8 bg-brand-500/50" />
-              <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-brand-400">Premium Marketplace</p>
+            <div className="flex items-center gap-2 mb-3 md:mb-6">
+              <span className="h-px w-6 md:w-8 bg-brand-500/50" />
+              <p className="text-[8px] md:text-[10px] font-bold uppercase tracking-[0.3em] text-brand-400">Premium Marketplace</p>
             </div>
-            <h1 className="text-4xl font-bold tracking-tight text-white md:text-6xl lg:text-7xl">IPTV Simplified.</h1>
-            <p className="mt-6 text-lg text-slate-400 leading-relaxed max-w-xl">
+            <h1 className="text-2xl md:text-6xl lg:text-7xl font-bold tracking-tight text-white leading-[1.2]">IPTV Simplified.</h1>
+            <p className="mt-3 md:mt-6 text-sm md:text-lg text-slate-400 leading-relaxed max-w-xl">
               High-performance global streaming networks. 
               Activate instantly using card, crypto, or account credits.
             </p>
           </div>
           
-          <div className="group cursor-pointer rounded-3xl border border-amber-500/20 bg-amber-500/5 p-6 backdrop-blur-md transition-all hover:border-amber-500/40 hover:bg-amber-500/10" onClick={() => setActiveTab('credits')}>
-            <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-400">
-                <Zap className="h-8 w-8" />
+          <div className="group w-full md:w-auto cursor-pointer rounded-2xl md:rounded-3xl border border-amber-500/20 bg-amber-500/5 p-4 md:p-6 backdrop-blur-md transition-all hover:border-amber-500/40 hover:bg-amber-500/10" onClick={() => setActiveTab('credits')}>
+            <div className="flex items-center gap-3 md:gap-4">
+              <div className="flex h-10 w-10 md:h-14 md:w-14 items-center justify-center rounded-xl md:rounded-2xl bg-amber-500/20 text-amber-400">
+                <Zap className="h-5 w-5 md:h-8 md:w-8" />
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500/70">Wallet Balance</p>
-                <p className="text-3xl font-bold text-amber-300">{formatPrice(creditBalance)}</p>
+                <p className="text-[8px] md:text-[10px] font-bold uppercase tracking-widest text-amber-500/70">Wallet Balance</p>
+                <p className="text-xl md:text-3xl font-bold text-amber-300">{formatPrice(creditBalance)}</p>
               </div>
             </div>
-            <Button onClick={(e) => { e.stopPropagation(); setShowTopup(true) }} className="mt-5 w-full gap-2 rounded-xl bg-amber-500/20 text-amber-400 hover:bg-amber-500/30">
-              <Plus className="h-4 w-4" />
+            <Button onClick={(e) => { e.stopPropagation(); setShowTopup(true) }} className="mt-3 md:mt-5 h-8 md:h-11 w-full gap-2 rounded-xl bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 text-[10px] md:text-sm font-bold">
+              <Plus className="h-3 w-3 md:h-4 md:w-4" />
               Top Up
             </Button>
           </div>
@@ -706,25 +708,31 @@ export default function MarketplacePage() {
         <div className="absolute -right-24 -top-24 h-96 w-96 rounded-full bg-brand-500/5 blur-[120px]" />
       </div>
 
-      <div className="flex flex-wrap items-center gap-1 border-b border-white/5 pb-1">
-        {([
-          { key: 'browse', icon: LayoutGrid, label: 'Store' },
-          { key: 'subscriptions', icon: Receipt, label: 'My Plans' },
-          { key: 'history', icon: History, label: 'Transactions' },
-          { key: 'credits', icon: Zap, label: 'Wallet' },
-        ] as const).map(({ key, icon: Icon, label }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={cn(
-              "flex items-center gap-2 px-6 py-4 text-xs font-bold uppercase tracking-widest transition-all",
-              activeTab === key ? "border-b-2 border-brand-500 text-white" : "text-slate-500 hover:text-slate-200"
-            )}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </button>
-        ))}
+      <div className="relative">
+        <div className="flex items-center gap-1 overflow-x-auto pb-4 no-scrollbar scroll-smooth">
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-white/[0.04] border border-white/[0.06] shadow-xl backdrop-blur-sm">
+            {([
+              { key: 'browse', icon: LayoutGrid, label: 'Store' },
+              { key: 'subscriptions', icon: Receipt, label: 'My Plans' },
+              { key: 'history', icon: History, label: 'Transactions' },
+              { key: 'credits', icon: Zap, label: 'Wallet' },
+            ] as const).map(({ key, icon: Icon, label }) => (
+              <button
+                key={key}
+                onClick={() => setActiveTab(key)}
+                className={cn(
+                  "flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 md:px-5 md:py-2.5 text-[10px] md:text-xs font-bold uppercase tracking-widest transition-all rounded-lg",
+                  activeTab === key 
+                    ? "bg-brand-500 text-white shadow-[0_4px_12px_rgba(var(--brand-500-rgb),0.3)]" 
+                    : "text-slate-500 hover:text-slate-300 hover:bg-white/[0.02]"
+                )}
+              >
+                <Icon className="h-3 w-3 md:h-3.5 md:h-3.5 md:w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="min-h-[500px]">
@@ -733,7 +741,7 @@ export default function MarketplacePage() {
             {[1, 2, 3].map((i) => <SkeletonCard key={i} />)}
           </div>
         ) : activeTab === 'browse' ? (
-          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 md:gap-8 md:grid-cols-2 lg:grid-cols-3">
             {groupedOfferings.map((group) => (
               <MarketplaceCard
                 key={group[0].group_id || group[0].id}
@@ -746,41 +754,41 @@ export default function MarketplacePage() {
         ) : activeTab === 'subscriptions' ? (
           <div className="grid gap-4">
             {subscriptions.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 p-20 text-center">
-                <Receipt className="h-12 w-12 text-slate-700 mb-4" />
-                <h3 className="text-xl font-bold text-slate-300">No active plans found</h3>
-                <p className="mt-2 text-slate-500">Subscribe to an offering in the store to get started.</p>
-                <Button onClick={() => setActiveTab('browse')} className="mt-6 gap-2 rounded-xl">
+              <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 p-12 md:p-20 text-center">
+                <Receipt className="h-10 w-10 md:h-12 md:w-12 text-slate-700 mb-4" />
+                <h3 className="text-lg md:text-xl font-bold text-slate-300">No active plans found</h3>
+                <p className="mt-2 text-sm text-slate-500">Subscribe to an offering in the store to get started.</p>
+                <Button onClick={() => setActiveTab('browse')} className="mt-6 gap-2 rounded-xl h-11">
                   Browse Store
                 </Button>
               </div>
             ) : subscriptions.map((sub) => (
-              <div key={sub.id} className="flex flex-wrap items-center justify-between gap-6 rounded-3xl border border-white/[0.08] bg-surface-900/40 p-8 transition-colors hover:bg-surface-900/60">
-                <div className="flex items-center gap-6">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500/10 text-brand-400">
-                    <Zap className="h-7 w-7" />
+              <div key={sub.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 md:gap-6 rounded-3xl border border-white/[0.08] bg-surface-900/40 p-6 md:p-8 transition-colors hover:bg-surface-900/60">
+                <div className="flex items-center gap-4 md:gap-6">
+                  <div className="flex h-12 w-12 md:h-14 md:w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-brand-500/10 text-brand-400">
+                    <Zap className="h-6 w-6 md:h-7 md:w-7" />
                   </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-white">{sub.offering_name || 'Active Subscription'}</h3>
-                    <div className="flex items-center gap-3 mt-1 text-sm text-slate-400">
+                  <div className="min-w-0">
+                    <h3 className="text-base md:text-lg font-bold text-white truncate">{sub.offering_name || 'Active Subscription'}</h3>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs md:text-sm text-slate-400">
                       <span>Ends {formatDate(sub.current_period_end)}</span>
-                      <span className="h-1 w-1 rounded-full bg-slate-700" />
+                      <span className="hidden xs:block h-1 w-1 rounded-full bg-slate-700" />
                       <span className="capitalize">via {providerLabel(sub.payment_provider)}</span>
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <Badge variant={sub.status === 'active' ? 'success' : 'outline'} className="rounded-lg py-1 px-3">{sub.status.toUpperCase()}</Badge>
+                <div className="flex items-center gap-3 md:gap-4 ml-16 sm:ml-0">
+                  <Badge variant={sub.status === 'active' ? 'success' : 'outline'} className="rounded-lg py-1 px-3 text-[10px]">{sub.status.toUpperCase()}</Badge>
                   {sub.payment_provider === 'stripe' ? (
-                    <Button variant="outline" size="sm" onClick={handlePortal} className="gap-2 rounded-xl h-10 px-4">
-                      <ExternalLink className="h-4 w-4" />
+                    <Button variant="outline" size="sm" onClick={handlePortal} className="gap-2 rounded-xl h-9 md:h-10 px-4 text-xs">
+                      <ExternalLink className="h-3.5 w-3.5" />
                       Manage
                     </Button>
                   ) : sub.status !== 'cancelled' && (
                     <Button
                       variant="outline"
                       size="sm"
-                      className="gap-2 rounded-xl h-10 px-4 text-red-400 border-red-500/20 hover:bg-red-500/10 hover:border-red-500/40"
+                      className="gap-2 rounded-xl h-9 md:h-10 px-4 text-xs text-red-400 border-red-500/20 hover:bg-red-500/10 hover:border-red-500/40"
                       onClick={async () => {
                         if (confirm('Cancel this subscription?')) {
                           try {
@@ -800,35 +808,48 @@ export default function MarketplacePage() {
             ))}
           </div>
         ) : activeTab === 'history' ? (
-          <div className="overflow-hidden rounded-3xl border border-white/[0.08] bg-surface-900/40">
-            <table className="w-full text-left text-sm">
+          <div className="overflow-x-auto rounded-3xl border border-white/[0.08] bg-surface-900/40 no-scrollbar">
+            <table className="w-full text-left text-xs md:text-sm min-w-[600px]">
               <thead>
                 <tr className="border-b border-white/5 bg-white/[0.02]">
-                  <th className="px-8 py-5 font-bold uppercase tracking-widest text-[10px] text-slate-500">Transaction</th>
-                  <th className="px-8 py-5 font-bold uppercase tracking-widest text-[10px] text-slate-500">Date</th>
-                  <th className="px-8 py-5 font-bold uppercase tracking-widest text-[10px] text-slate-500">Amount</th>
-                  <th className="px-8 py-5 font-bold uppercase tracking-widest text-[10px] text-slate-500">Provider</th>
-                  <th className="px-8 py-5 font-bold uppercase tracking-widest text-[10px] text-slate-500">Status</th>
+                  <th className="px-6 md:px-8 py-4 md:py-5 font-bold uppercase tracking-widest text-[10px] text-slate-500">Transaction</th>
+                  <th className="px-6 md:px-8 py-4 md:py-5 font-bold uppercase tracking-widest text-[10px] text-slate-500">Date</th>
+                  <th className="px-6 md:px-8 py-4 md:py-5 font-bold uppercase tracking-widest text-[10px] text-slate-500">Amount</th>
+                  <th className="px-6 md:px-8 py-4 md:py-5 font-bold uppercase tracking-widest text-[10px] text-slate-500">Provider</th>
+                  <th className="px-6 md:px-8 py-4 md:py-5 font-bold uppercase tracking-widest text-[10px] text-slate-500">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
                 {payments.map((tx) => (
                   <tr key={tx.id} className="transition-colors hover:bg-white/[0.01]">
-                    <td className="px-8 py-5">
-                      <div className="flex items-center gap-4 text-slate-200">
-                        <Receipt className="h-4 w-4 text-slate-600" />
+                    <td className="px-6 md:px-8 py-4 md:py-5">
+                      <div className="flex items-center gap-3 md:gap-4 text-slate-200">
+                        <Receipt className="h-3.5 w-3.5 md:h-4 md:w-4 text-slate-600" />
                         <span className="font-semibold">{tx.payment_provider === 'stripe' ? 'Subscription' : 'Purchase'}</span>
                       </div>
                     </td>
-                    <td className="px-8 py-5 text-slate-400 font-mono text-xs">{formatDate(tx.created_at)}</td>
-                    <td className="px-8 py-5 font-bold text-white">{formatPrice(tx.amount_cents)}</td>
-                    <td className="px-8 py-5">
-                      <Badge variant="outline" className="text-[10px] border-white/10 uppercase tracking-tighter">{providerLabel(tx.payment_provider)}</Badge>
+                    <td className="px-6 md:px-8 py-4 md:py-5 text-slate-400 font-mono text-[10px] md:text-xs">{formatDate(tx.created_at)}</td>
+                    <td className="px-6 md:px-8 py-4 md:py-5 font-bold text-white">{formatPrice(tx.amount_cents)}</td>
+                    <td className="px-6 md:px-8 py-4 md:py-5">
+                      <Badge variant="outline" className="text-[9px] md:text-[10px] border-white/10 uppercase tracking-tighter">{providerLabel(tx.payment_provider)}</Badge>
                     </td>
-                    <td className="px-8 py-5">
+                    <td className="px-6 md:px-8 py-4 md:py-5">
                       <div className="flex items-center gap-2">
-                        <div className={cn("h-1.5 w-1.5 rounded-full", tx.status === 'succeeded' ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-slate-500")} />
-                        <span className="text-xs font-bold text-slate-300 capitalize">{tx.status}</span>
+                        {tx.status === 'succeeded' || tx.status === 'completed' ? (
+                          <Check className="h-3 w-3 text-emerald-500" />
+                        ) : tx.status === 'pending' || tx.status === 'processing' ? (
+                          <Clock className="h-3 w-3 text-amber-500" />
+                        ) : (
+                          <AlertCircle className="h-3 w-3 text-red-500" />
+                        )}
+                        <span className={cn(
+                          "text-[10px] md:text-xs font-bold capitalize",
+                          tx.status === 'succeeded' || tx.status === 'completed' 
+                            ? "text-emerald-400" 
+                            : tx.status === 'pending' || tx.status === 'processing'
+                            ? "text-amber-400"
+                            : "text-red-400"
+                        )}>{tx.status}</span>
                       </div>
                     </td>
                   </tr>
@@ -838,24 +859,36 @@ export default function MarketplacePage() {
           </div>
         ) : (
           <div className="space-y-8">
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 md:gap-6 md:grid-cols-2 lg:grid-cols-3">
               {creditTxs.map((tx) => (
-                <div key={tx.id} className="rounded-3xl border border-white/[0.08] bg-surface-900/40 p-6 flex flex-col justify-between">
+                <div key={tx.id} className="rounded-3xl border border-white/[0.08] bg-surface-900/40 p-5 md:p-6 flex flex-col justify-between transition-all hover:bg-surface-900/60">
                   <div>
                     <div className="flex items-center justify-between mb-4">
-                      <div className={cn("h-10 w-10 flex items-center justify-center rounded-xl", tx.amount_cents > 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-brand-500/10 text-brand-400")}>
-                        {tx.amount_cents > 0 ? <Plus className="h-5 w-5" /> : <Zap className="h-5 w-5" />}
+                      <div className={cn("h-9 w-9 md:h-10 md:w-10 flex items-center justify-center rounded-xl", tx.amount_cents > 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-brand-500/10 text-brand-400")}>
+                        {tx.amount_cents > 0 ? <Plus className="h-4 w-4 md:h-5 md:w-5" /> : <Zap className="h-4 w-4 md:h-5 md:w-5" />}
                       </div>
-                      <Badge variant={tx.status === 'completed' ? 'success' : 'outline'} className="text-[10px]">{tx.status.toUpperCase()}</Badge>
+                      <Badge 
+                        variant={
+                          tx.status === 'completed' ? 'success' : 
+                          tx.status === 'pending' ? 'warning' : 
+                          tx.status === 'failed' ? 'danger' : 'outline'
+                        } 
+                        className="text-[9px] md:text-[10px] gap-1"
+                      >
+                        {tx.status === 'completed' && <Check className="h-2.5 w-2.5" />}
+                        {tx.status === 'pending' && <Clock className="h-2.5 w-2.5" />}
+                        {tx.status === 'failed' && <AlertCircle className="h-2.5 w-2.5" />}
+                        {tx.status.toUpperCase()}
+                      </Badge>
                     </div>
-                    <p className="text-sm font-bold text-white leading-relaxed">{tx.description || tx.type.replace(/_/g, ' ')}</p>
-                    <p className="mt-1 text-xs text-slate-500 font-mono">{formatDate(tx.created_at)}</p>
+                    <p className="text-sm font-bold text-white leading-relaxed line-clamp-2">{tx.description || tx.type.replace(/_/g, ' ')}</p>
+                    <p className="mt-1 text-[10px] md:text-xs text-slate-500 font-mono">{formatDate(tx.created_at)}</p>
                   </div>
-                  <div className="mt-6 flex items-baseline gap-2">
-                    <span className={cn("text-2xl font-bold", tx.amount_cents > 0 ? "text-emerald-400" : "text-slate-200")}>
+                  <div className="mt-5 md:mt-6 flex items-baseline gap-2">
+                    <span className={cn("text-xl md:text-2xl font-bold", tx.amount_cents > 0 ? "text-emerald-400" : "text-slate-200")}>
                       {tx.amount_cents > 0 ? '+' : '-'}{formatPrice(Math.abs(tx.amount_cents))}
                     </span>
-                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Credits</span>
+                    <span className="text-[9px] md:text-[10px] font-bold text-slate-600 uppercase tracking-widest">Credits</span>
                   </div>
                 </div>
               ))}

@@ -63,6 +63,7 @@ interface ModernStunningSignInProps {
   error?: string
   footer?: React.ReactNode
   badge?: string
+  socialButtons?: React.ReactNode
 }
 
 const IDENTIFIER_MODES = {
@@ -75,6 +76,7 @@ export function ModernStunningSignIn({
   identifierMode = 'email', identifierValue, passwordValue,
   onIdentifierChange, onPasswordChange, onSubmit,
   submitLabel = 'Sign In', loadingLabel = 'Signing in...', loading = false, error = '', footer, badge = 'Sign in',
+  socialButtons,
 }: ModernStunningSignInProps) {
   const identifierConfig = IDENTIFIER_MODES[identifierMode]
 
@@ -96,6 +98,16 @@ export function ModernStunningSignIn({
             <h1 className="text-3xl font-bold tracking-[-0.04em] text-white">{title}</h1>
             {subtitle && <p className="mt-2 text-sm leading-6 text-slate-300/65">{subtitle}</p>}
           </div>
+          {socialButtons && (
+            <div className="mb-5 space-y-3">
+              {socialButtons}
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-white/[0.08]" />
+                <span className="text-xs text-slate-400/70">or continue with email</span>
+                <div className="h-px flex-1 bg-white/[0.08]" />
+              </div>
+            </div>
+          )}
           <form onSubmit={onSubmit} className="space-y-5">
             <Field label={identifierConfig.label} type={identifierConfig.type} value={identifierValue} onChange={onIdentifierChange} placeholder={identifierConfig.placeholder} autoComplete={identifierConfig.autoComplete} icon={identifierConfig.icon} error={error} />
             <Field label="Password" type="password" value={passwordValue} onChange={onPasswordChange} placeholder="Enter your password" autoComplete="current-password" icon={Lock} error={error} />

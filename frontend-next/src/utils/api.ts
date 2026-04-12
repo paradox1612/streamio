@@ -60,6 +60,7 @@ export const authAPI = {
   resetPassword: (token: string, password: string) => api.post('/api/auth/reset-password', { token, password }),
   changePassword: (currentPassword: string, newPassword: string) =>
     api.patch('/api/auth/change-password', { currentPassword, newPassword }),
+  googleAuth: (accessToken: string) => api.post('/api/auth/google', { accessToken }),
 }
 
 // ─── User ─────────────────────────────────────────────────────────────────────

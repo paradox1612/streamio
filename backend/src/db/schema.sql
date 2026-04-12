@@ -14,19 +14,31 @@ CREATE EXTENSION IF NOT EXISTS unaccent;
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email VARCHAR UNIQUE NOT NULL,
-  password_hash VARCHAR NOT NULL,
+  password_hash VARCHAR,
   addon_token VARCHAR UNIQUE NOT NULL,
   preferred_languages TEXT[] DEFAULT ARRAY[]::TEXT[],
   excluded_languages TEXT[] DEFAULT ARRAY[]::TEXT[],
   is_active BOOLEAN DEFAULT true,
   reset_token VARCHAR,
   reset_token_expires TIMESTAMP,
+  oauth_provider VARCHAR,
+  oauth_id VARCHAR,
   created_at TIMESTAMP DEFAULT NOW(),
   last_seen TIMESTAMP
 );
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_languages TEXT[] DEFAULT ARRAY[]::TEXT[];
 ALTER TABLE users ADD COLUMN IF NOT EXISTS excluded_languages TEXT[] DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_provider VARCHAR;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_id VARCHAR;
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'users_oauth_unique'
+  ) THEN
+    ALTER TABLE users ADD CONSTRAINT users_oauth_unique UNIQUE (oauth_provider, oauth_id);
+  END IF;
+END $$;
 
 -- ─────────────────────────────────────────
 -- Admin Users

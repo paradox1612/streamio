@@ -49,6 +49,7 @@ interface AuthComponentProps {
   sideLabel?: string
   showFullName?: boolean
   termsLabel?: string
+  socialButtons?: React.ReactNode
 }
 
 export function AuthComponent({
@@ -56,6 +57,7 @@ export function AuthComponent({
   acceptTerms = false, onFullNameChange, onEmailChange, onPasswordChange, onConfirmPasswordChange,
   onAcceptTermsChange, onSubmit, loading = false, error = '', title = 'Create account', subtitle = '',
   footer, sideLabel = 'Sign up', showFullName = false, termsLabel = 'I agree to the terms.',
+  socialButtons,
 }: AuthComponentProps) {
   const [showPassword, setShowPassword] = React.useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = React.useState(false)
@@ -78,6 +80,16 @@ export function AuthComponent({
             <h1 className="text-3xl font-bold tracking-[-0.04em] text-white sm:text-4xl">{title}</h1>
             {subtitle && <p className="mt-2 text-sm leading-6 text-slate-300/65">{subtitle}</p>}
           </div>
+          {socialButtons && (
+            <div className="mt-6 space-y-3">
+              {socialButtons}
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-white/[0.08]" />
+                <span className="text-xs text-slate-400/70">or continue with email</span>
+                <div className="h-px flex-1 bg-white/[0.08]" />
+              </div>
+            </div>
+          )}
           <form onSubmit={onSubmit} className="mt-8 space-y-4">
             {showFullName && <BaseInput label="Full name" icon={User2} type="text" value={fullName} onChange={onFullNameChange} placeholder="Optional" autoComplete="name" />}
             <BaseInput label="Email" icon={Mail} type="email" value={email} onChange={onEmailChange} placeholder="name@example.com" autoComplete="email" />

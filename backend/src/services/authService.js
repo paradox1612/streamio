@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { userQueries } = require('../db/queries');
 const logger = require('../utils/logger');
+const eventBus = require('../utils/eventBus');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'changeme';
 const JWT_EXPIRES = '7d';
@@ -116,6 +117,57 @@ const authService = {
     }
     const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
     await userQueries.updatePassword(userId, passwordHash);
+  },
+
+  async googleLogin(accessToken) {
+    // Verify the access token with Google and retrieve user info
+    const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok) {
+      const err = new Error('Invalid Google token');
+      err.status = 401;
+      throw err;
+    }
+    const { sub: oauthId, email } = await response.json();
+    if (!email || !oauthId) {
+      const err = new Error('Google did not return required user info');
+      err.status = 401;
+      throw err;
+    }
+
+    // 1. Find by oauth_id (returning user who signed up with Google)
+    let user = await userQueries.findByOAuthId('google', oauthId);
+
+    if (!user) {
+      // 2. Find by email (existing email/password account — link it)
+      const existing = await userQueries.findByEmail(email.toLowerCase());
+      if (existing) {
+        await userQueries.linkOAuth(existing.id, 'google', oauthId);
+        user = await userQueries.findById(existing.id);
+      } else {
+        // 3. New user — create OAuth account
+        const addonToken = generateAddonToken();
+        user = await userQueries.createOAuth({
+          email: email.toLowerCase(),
+          oauthId,
+          provider: 'google',
+          addonToken,
+        });
+        eventBus.emit('user.created', user);
+      }
+    }
+
+    if (!user.is_active) {
+      const err = new Error('Account suspended');
+      err.status = 403;
+      throw err;
+    }
+
+    await userQueries.updateLastSeen(user.id);
+    const jwtToken = signJwt({ userId: user.id, email: user.email });
+    logger.info(`Google login: ${user.email}`);
+    return { user, token: jwtToken };
   },
 
   async regenerateAddonToken(userId) {

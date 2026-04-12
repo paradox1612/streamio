@@ -7,9 +7,19 @@ interface EmptyStateProps {
   description: string
   action?: () => void
   actionLabel?: string
+  secondaryAction?: () => void
+  secondaryActionLabel?: string
 }
 
-export default function EmptyState({ icon: Icon, heading, description, action, actionLabel = 'Get Started' }: EmptyStateProps) {
+export default function EmptyState({ 
+  icon: Icon, 
+  heading, 
+  description, 
+  action, 
+  actionLabel = 'Get Started',
+  secondaryAction,
+  secondaryActionLabel
+}: EmptyStateProps) {
   const iconClassName = 'mb-6 h-14 w-14 text-slate-400/60'
   let iconNode: React.ReactNode = null
 
@@ -29,11 +39,18 @@ export default function EmptyState({ icon: Icon, heading, description, action, a
       </div>
       <h3 className="mt-6 text-xl font-bold text-white sm:mt-8 sm:text-2xl">{heading}</h3>
       <p className="mt-3 max-w-md text-sm leading-6 text-slate-300/[0.72]">{description}</p>
-      {action && (
-        <button onClick={action} className="btn-primary mt-7 w-full sm:mt-8 sm:w-auto">
-          {actionLabel}
-        </button>
-      )}
+      <div className="mt-7 flex flex-col gap-3 w-full sm:mt-8 sm:w-auto sm:flex-row sm:items-center">
+        {action && (
+          <button onClick={action} className="btn-primary w-full sm:w-auto">
+            {actionLabel}
+          </button>
+        )}
+        {secondaryAction && (
+          <button onClick={secondaryAction} className="btn-secondary w-full sm:w-auto">
+            {secondaryActionLabel}
+          </button>
+        )}
+      </div>
     </div>
   )
 }

@@ -68,6 +68,20 @@ router.post('/logout', requireAuth, (req, res) => {
   res.json({ message: 'Logged out' });
 });
 
+// POST /api/auth/google
+router.post('/google',
+  body('accessToken').notEmpty(),
+  validate,
+  async (req, res) => {
+    try {
+      const result = await authService.googleLogin(req.body.accessToken);
+      res.json(result);
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message });
+    }
+  }
+);
+
 // POST /api/auth/forgot-password
 router.post('/forgot-password',
   body('email').isEmail().normalizeEmail(),

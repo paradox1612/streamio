@@ -132,6 +132,7 @@ jobs:
           labels: ${{ steps.frontend-meta.outputs.labels }}
           build-args: |
             NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL || env.DEFAULT_API_URL }}
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
           cache-from: |
             type=gha,scope=frontend-next-image
             type=local,src=${{ runner.temp }}/.buildx-cache-frontend-next
@@ -285,6 +286,7 @@ jobs:
           TWENTY_REFRESH_TOKEN_SECRET: ${{ secrets.TWENTY_REFRESH_TOKEN_SECRET }}
           TWENTY_FILE_TOKEN_SECRET: ${{ secrets.TWENTY_FILE_TOKEN_SECRET }}
           TWO_CAPTCHA_API_KEY: ${{ secrets.TWO_CAPTCHA_API_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
         run: |
           set -euo pipefail
           if [ -n "${KUBECONFIG_PATH:-}" ]; then
@@ -337,6 +339,11 @@ jobs:
           if [ -n "${TWO_CAPTCHA_API_KEY:-}" ]; then
             TWO_CAPTCHA_ARGS="--set-string backend.secrets.twoCaptchaApiKey=${TWO_CAPTCHA_API_KEY}"
           fi
+
+          GOOGLE_ARGS=""
+          if [ -n "${GOOGLE_CLIENT_ID:-}" ]; then
+            GOOGLE_ARGS="--set-string backend.secrets.googleClientId=${GOOGLE_CLIENT_ID}"
+          fi
           TWENTY_SECRET_ARGS=""
           if [ -n "${TWENTY_APP_SECRET:-}" ]; then
             TWENTY_SECRET_ARGS=" --set-string twenty.secrets.appSecret=${TWENTY_APP_SECRET}"
@@ -360,7 +367,8 @@ jobs:
             $PAYGATE_ARGS \
             $TWENTY_ARGS \
             $TWO_CAPTCHA_ARGS \
-            $TWENTY_SECRET_ARGS
+            $TWENTY_SECRET_ARGS \
+            $GOOGLE_ARGS
 
       - name: Wait for rollout
         shell: bash

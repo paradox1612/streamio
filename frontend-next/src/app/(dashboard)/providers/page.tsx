@@ -3,9 +3,9 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { providerAPI } from '@/utils/api'
-import { Plus, Check, RefreshCw, Signal, Trash2, ArrowRight, Sparkles } from 'lucide-react'
+import { Plus, Check, RefreshCw, Signal, Trash2, ArrowRight, Sparkles, ShoppingCart } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge'
 import EmptyState from '@/components/EmptyState'
 import ConfirmDialog from '@/components/ConfirmDialog'
@@ -220,6 +220,7 @@ function ProviderRow({ provider, onRefresh, onDelete }: { provider: Provider; on
 }
 
 function ProvidersContent() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const newProviderId = searchParams.get('new')
 
@@ -296,38 +297,64 @@ function ProvidersContent() {
 
       {providers.length === 0 ? (
         <EmptyState
-          icon={Plus}
-          heading="No IPTV providers added yet"
-          description="Add your IPTV provider to start watching live channels, movies, and on-demand content in Stremio."
-          action={() => setShowAdd(true)}
-          actionLabel="Add Your First IPTV Provider"
+          icon={ShoppingCart}
+          heading="Ready to start watching?"
+          description="Browse our premium marketplace to get instant access to global IPTV networks, or manually add your own provider if you already have one."
+          action={() => router.push('/marketplace')}
+          actionLabel="Browse Marketplace"
+          secondaryAction={() => setShowAdd(true)}
+          secondaryActionLabel="Add Provider Manually"
         />
       ) : (
-        <section className="space-y-4">
-          {providers.map(p => {
-            const isNew = p.id === highlightId
-            return (
-              <div
-                key={p.id}
-                ref={isNew ? highlightRef : null}
-                className={[
-                  'rounded-2xl transition-all duration-700',
-                  isNew
-                    ? 'ring-2 ring-blue-500/60 shadow-[0_0_24px_rgba(59,130,246,0.25)]'
-                    : '',
-                ].join(' ')}
-              >
-                {isNew && (
-                  <div className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-blue-400">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    Just provisioned — your new subscription
+        <>
+          <section className="space-y-4">
+            {providers.map(p => {
+              const isNew = p.id === highlightId
+              return (
+                <div
+                  key={p.id}
+                  ref={isNew ? highlightRef : null}
+                  className={[
+                    'rounded-2xl transition-all duration-700',
+                    isNew
+                      ? 'ring-2 ring-blue-500/60 shadow-[0_0_24px_rgba(59,130,246,0.25)]'
+                      : '',
+                  ].join(' ')}
+                >
+                  {isNew && (
+                    <div className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-blue-400">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Just provisioned — your new subscription
+                    </div>
+                  )}
+                  <ProviderRow provider={p} onRefresh={load} onDelete={setDeleteTarget} />
+                </div>
+              )
+            })}
+          </section>
+
+          <section>
+            <Card className="overflow-hidden border-brand-500/20 bg-brand-500/5 p-6 md:p-8">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                <div className="flex items-center gap-5">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-500/20 text-brand-400">
+                    <ShoppingCart className="h-6 w-6" />
                   </div>
-                )}
-                <ProviderRow provider={p} onRefresh={load} onDelete={setDeleteTarget} />
+                  <div>
+                    <h3 className="text-lg font-bold text-white">Get More Content</h3>
+                    <p className="text-sm text-slate-400 mt-1">Explore high-performance global networks in our marketplace.</p>
+                  </div>
+                </div>
+                <Button asChild className="gap-2 h-11 px-6 rounded-xl shadow-lg shadow-brand-500/20">
+                  <Link href="/marketplace">
+                    Visit Shop
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
               </div>
-            )
-          })}
-        </section>
+            </Card>
+          </section>
+        </>
       )}
 
       <AddProviderModal
@@ -364,4 +391,3 @@ export default function ProvidersPage() {
     </Suspense>
   )
 }
-
