@@ -7,8 +7,15 @@ const PING_TIMEOUT = 10000; // 10s
 const PROVIDER_HEALTH_BATCH_SIZE = Math.max(1, parseInt(process.env.HEALTH_CHECK_BATCH_SIZE || '2', 10));
 const PROVIDER_HEALTH_MIN_INTERVAL_MS = Math.max(0, parseInt(process.env.HEALTH_CHECK_PROVIDER_MIN_INTERVAL_MS || '3600000', 10));
 
+function isAuthenticatedXtreamResponse(data) {
+  if (!data || typeof data !== 'object') return false;
+  const auth = data?.user_info?.auth;
+  if (auth === 0 || auth === '0' || auth === false) return false;
+  return Boolean(data.user_info);
+}
+
 async function pingHost(host, username, password) {
-  const url = `${host}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&action=get_vod_categories`;
+  const url = `${host}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
   const start = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PING_TIMEOUT);
@@ -16,7 +23,18 @@ async function pingHost(host, username, password) {
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timer);
     const responseTime = Date.now() - start;
-    if (res.ok) {
+    if (!res.ok) {
+      return { status: 'offline', responseTimeMs: responseTime };
+    }
+
+    let data = null;
+    try {
+      data = await res.json();
+    } catch (err) {
+      return { status: 'offline', responseTimeMs: responseTime };
+    }
+
+    if (isAuthenticatedXtreamResponse(data)) {
       return { status: 'online', responseTimeMs: responseTime };
     }
     return { status: 'offline', responseTimeMs: responseTime };
@@ -62,8 +80,11 @@ const hostHealthService = {
     const networkHosts = provider.network_id
       ? await providerNetworkQueries.listHosts(provider.network_id)
       : [];
-    const hostsToCheck = networkHosts.length
-      ? networkHosts.map(row => row.host_url)
+    const activeNetworkHosts = networkHosts.filter((row) => row.is_active !== false);
+    const hostsToCheck = activeNetworkHosts.length
+      ? activeNetworkHosts.map((row) => row.host_url)
+      : networkHosts.length
+        ? networkHosts.map((row) => row.host_url)
       : provider.hosts;
 
     const pingResults = await Promise.all(

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { providerAPI } from '@/utils/api'
-import { ArrowLeft, RefreshCw, PenSquare, Signal, Copy, Check, ExternalLink, AlertCircle } from 'lucide-react'
+import { ArrowLeft, RefreshCw, PenSquare, Signal, Copy, Check, ExternalLink, AlertCircle, ChevronDown } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge'
 import ProgressBar from '@/components/ProgressBar'
 import toast from 'react-hot-toast'
@@ -24,6 +24,15 @@ function estimateRemainingMs(progressPct: number, elapsedMs: number) {
   const totalEstimate = elapsedMs / (progressPct / 100)
   const remaining = totalEstimate - elapsedMs
   return Number.isFinite(remaining) && remaining > 0 ? remaining : null
+}
+
+function splitHosts(hosts: string[] = [], activeHost?: string) {
+  const uniqueHosts = Array.from(new Set(hosts.filter(Boolean)))
+  const primaryHost = activeHost || uniqueHosts[0] || ''
+  return {
+    activeHost: primaryHost,
+    standbyHosts: uniqueHosts.filter((host) => host !== primaryHost),
+  }
 }
 
 export default function ProviderDetailPage() {
@@ -231,7 +240,10 @@ export default function ProviderDetailPage() {
     : null
 
   const activeHost = provider.active_host || (provider.hosts && provider.hosts[0]) || ''
+  const { standbyHosts } = splitHosts(provider.hosts || [], activeHost)
   const m3uUrl = activeHost ? `${activeHost}/get.php?username=${encodeURIComponent(provider.username)}&password=${encodeURIComponent(provider.password || '')}&type=m3u_plus&output=ts` : ''
+  const activeHealth = health.find((entry) => entry.host_url === activeHost) || null
+  const standbyHealth = health.filter((entry) => entry.host_url !== activeHost)
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -252,6 +264,21 @@ export default function ProviderDetailPage() {
               <StatusBadge status={provider.status} pulse={provider.status === 'online'} />
             </div>
             <p className="hero-copy mt-3 break-all">{provider.active_host || 'No active host selected yet'}</p>
+            {standbyHosts.length > 0 && (
+              <details className="group mt-4 max-w-2xl rounded-2xl border border-white/[0.08] bg-white/[0.03]">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm text-slate-200">
+                  <span>Show {standbyHosts.length} standby host{standbyHosts.length === 1 ? '' : 's'}</span>
+                  <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="space-y-2 border-t border-white/[0.07] px-4 py-3">
+                  {standbyHosts.map((host) => (
+                    <p key={host} className="break-all font-mono text-xs text-slate-300/75">
+                      {host}
+                    </p>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
           <div className="grid gap-3 sm:flex sm:flex-wrap">
             {!editing && (
@@ -477,29 +504,60 @@ export default function ProviderDetailPage() {
         <div className="panel-soft p-5 sm:p-8">
           <p className="eyebrow mb-2">Hosts</p>
           <h2 className="section-title">Health status</h2>
-          <div className="mt-5 space-y-3">
+          <div className="mt-5 space-y-4">
             {health.length === 0 ? (
               <p className="text-sm text-slate-300/[0.68]">
                 No health data yet. Run a recheck to populate response times and status.
               </p>
             ) : (
-              health.map((h) => (
-                <div key={h.id} className="rounded-[22px] border border-white/[0.08] bg-white/[0.03] p-4">
+              <>
+                <div className="rounded-[22px] border border-emerald-400/20 bg-emerald-500/10 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="break-all text-sm font-semibold text-white">{h.host_url}</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-200/80">
+                        Active host
+                      </p>
+                      <p className="mt-2 break-all text-sm font-semibold text-white">{activeHost || 'No active host selected'}</p>
                       <p className="mt-1 text-xs text-slate-300/55">
-                        {h.last_checked ? new Date(h.last_checked).toLocaleString() : 'Not checked yet'}
+                        {activeHealth?.last_checked ? new Date(activeHealth.last_checked).toLocaleString() : 'Not checked yet'}
                       </p>
                     </div>
-                    <StatusBadge status={h.status} />
+                    <StatusBadge status={activeHealth?.status || provider.status || 'unknown'} />
                   </div>
                   <div className="mt-3 flex flex-col gap-2 text-sm text-slate-300/[0.68] sm:flex-row sm:items-center sm:justify-between">
-                    <span>{h.response_time_ms ? `${h.response_time_ms}ms response` : 'No response time'}</span>
-                    <span>{h.host_url === provider.active_host ? 'Active host' : 'Standby host'}</span>
+                    <span>{activeHealth?.response_time_ms ? `${activeHealth.response_time_ms}ms response` : 'No response time'}</span>
+                    <span>Current routing target</span>
                   </div>
                 </div>
-              ))
+
+                {standbyHealth.length > 0 && (
+                  <details className="group rounded-[22px] border border-white/[0.08] bg-white/[0.03]">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm text-slate-200">
+                      <span>Show {standbyHealth.length} standby host{standbyHealth.length === 1 ? '' : 's'}</span>
+                      <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+                    </summary>
+                    <div className="space-y-3 border-t border-white/[0.07] px-4 py-3">
+                      {standbyHealth.map((h) => (
+                        <div key={h.id} className="rounded-[18px] border border-white/[0.08] bg-surface-950/30 p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="break-all text-sm font-semibold text-white">{h.host_url}</p>
+                              <p className="mt-1 text-xs text-slate-300/55">
+                                {h.last_checked ? new Date(h.last_checked).toLocaleString() : 'Not checked yet'}
+                              </p>
+                            </div>
+                            <StatusBadge status={h.status} />
+                          </div>
+                          <div className="mt-3 flex flex-col gap-2 text-sm text-slate-300/[0.68] sm:flex-row sm:items-center sm:justify-between">
+                            <span>{h.response_time_ms ? `${h.response_time_ms}ms response` : 'No response time'}</span>
+                            <span>Standby host</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </>
             )}
           </div>
         </div>

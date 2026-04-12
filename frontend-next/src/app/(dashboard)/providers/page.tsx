@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { providerAPI } from '@/utils/api'
-import { Plus, Check, RefreshCw, Signal, Trash2, ArrowRight, Sparkles, ShoppingCart } from 'lucide-react'
+import { Plus, Check, RefreshCw, Signal, Trash2, ArrowRight, Sparkles, ShoppingCart, ChevronDown } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge'
 import EmptyState from '@/components/EmptyState'
 import ConfirmDialog from '@/components/ConfirmDialog'
@@ -28,6 +28,15 @@ interface Provider {
   vod_count?: number | string
   matched_count?: number | string
   last_checked?: string
+}
+
+function splitHosts(hosts: string[] = [], activeHost?: string) {
+  const uniqueHosts = Array.from(new Set(hosts.filter(Boolean)))
+  const primaryHost = activeHost || uniqueHosts[0] || ''
+  return {
+    activeHost: primaryHost,
+    standbyHosts: uniqueHosts.filter((host) => host !== primaryHost),
+  }
 }
 
 function AddProviderModal({ open, onClose, onAdded }: { open: boolean; onClose: () => void; onAdded: (p: Provider) => void }) {
@@ -121,6 +130,7 @@ function ProviderRow({ provider, onRefresh, onDelete }: { provider: Provider; on
   const matchRate = provider.vod_count && provider.matched_count
     ? Math.round((parseInt(String(provider.matched_count), 10) / parseInt(String(provider.vod_count), 10)) * 100)
     : 0
+  const { activeHost, standbyHosts } = splitHosts(provider.hosts || [], provider.active_host)
 
   const handleTest = async () => {
     setLoading('test')
@@ -201,18 +211,35 @@ function ProviderRow({ provider, onRefresh, onDelete }: { provider: Provider; on
 
         <div className="mt-6 border-t border-white/[0.07] pt-5">
           <p className="metric-label mb-3">Servers</p>
-          <div className="flex flex-wrap gap-2">
-            {(provider.hosts || []).map(host => (
-              <Badge
-                key={host}
-                variant={host === provider.active_host ? 'success' : 'default'}
-                className="font-mono text-[11px]"
-              >
-                {host === provider.active_host && <Check className="h-3 w-3" />}
-                <span className="break-all">{host.replace(/^https?:\/\//, '')}</span>
-              </Badge>
-            ))}
-          </div>
+          {activeHost ? (
+            <div className="space-y-3">
+              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3">
+                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-200/80">
+                  <Check className="h-3.5 w-3.5" />
+                  Active Host
+                </div>
+                <p className="mt-2 break-all font-mono text-sm text-white">{activeHost.replace(/^https?:\/\//, '')}</p>
+              </div>
+
+              {standbyHosts.length > 0 && (
+                <details className="group rounded-2xl border border-white/[0.08] bg-white/[0.03]">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm text-slate-200">
+                    <span>{standbyHosts.length} standby host{standbyHosts.length === 1 ? '' : 's'}</span>
+                    <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="flex flex-wrap gap-2 border-t border-white/[0.07] px-4 py-3">
+                    {standbyHosts.map((host) => (
+                      <Badge key={host} variant="default" className="font-mono text-[11px]">
+                        <span className="break-all">{host.replace(/^https?:\/\//, '')}</span>
+                      </Badge>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-300/60">No hosts configured yet.</p>
+          )}
         </div>
       </Card>
     </motion.div>
