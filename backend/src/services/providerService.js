@@ -234,6 +234,8 @@ async function fetchCategoryMap(host, username, password, action) {
 }
 
 const providerService = {
+  getProviderAccountInfo,
+
   async create(userId, { name, hosts, username, password }) {
     const cleanHosts = normalizeHostList(hosts);
     let network = null;

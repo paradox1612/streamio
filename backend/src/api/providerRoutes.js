@@ -33,6 +33,17 @@ function validateHostLimit(res, hosts) {
   return true;
 }
 
+function disablePollingCache(req, res) {
+  req.headers['if-none-match'] = undefined;
+  req.headers['if-modified-since'] = undefined;
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    Pragma: 'no-cache',
+    Expires: '0',
+    'Surrogate-Control': 'no-store',
+  });
+}
+
 // POST /api/providers
 router.post('/',
   requireAuth,
@@ -220,6 +231,7 @@ router.post('/:id/refresh', requireAuth, async (req, res) => {
 // GET /api/providers/:id/refresh-status
 router.get('/:id/refresh-status', requireAuth, async (req, res) => {
   try {
+    disablePollingCache(req, res);
     const provider = await providerQueries.findByIdAndUser(req.params.id, req.user.id);
     if (!provider) return res.status(404).json({ error: 'Provider not found' });
 
@@ -252,6 +264,7 @@ router.get('/:id/refresh-status', requireAuth, async (req, res) => {
 // GET /api/providers/refresh-status
 router.get('/refresh-status/all', requireAuth, async (req, res) => {
   try {
+    disablePollingCache(req, res);
     const jobs = await jobQueries.listActiveProviderRefreshes(req.user.id);
     res.json(jobs.map((job) => ({
       id: job.id,
