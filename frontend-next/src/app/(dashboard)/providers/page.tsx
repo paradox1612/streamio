@@ -30,6 +30,8 @@ interface Provider {
   last_checked?: string
 }
 
+const MAX_PROVIDER_HOSTS = 30
+
 function splitHosts(hosts: string[] = [], activeHost?: string) {
   const uniqueHosts = Array.from(new Set(hosts.filter(Boolean)))
   const primaryHost = activeHost || uniqueHosts[0] || ''
@@ -47,6 +49,7 @@ function AddProviderModal({ open, onClose, onAdded }: { open: boolean; onClose: 
     e.preventDefault()
     const hosts = form.hostsInput.split('\n').map(h => h.trim()).filter(Boolean)
     if (!hosts.length) return toast.error('Enter at least one host URL')
+    if (hosts.length > MAX_PROVIDER_HOSTS) return toast.error(`You can add up to ${MAX_PROVIDER_HOSTS} hosts per provider`)
     setLoading(true)
     try {
       const res = await providerAPI.create({ name: form.name, hosts, username: form.username, password: form.password })
@@ -94,7 +97,7 @@ function AddProviderModal({ open, onClose, onAdded }: { open: boolean; onClose: 
               value={form.hostsInput}
               onChange={e => setForm(f => ({ ...f, hostsInput: e.target.value }))}
             />
-            <p className="text-xs text-slate-300/50">Paste one address per line. StreamBridge picks the best one automatically.</p>
+            <p className="text-xs text-slate-300/50">Paste one address per line, up to 30 total. StreamBridge picks the best one automatically.</p>
           </div>
 
           <div className="space-y-2">

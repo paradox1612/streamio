@@ -120,6 +120,11 @@ jest.mock('../../src/services/providerService', () => ({
   getStats: jest.fn().mockResolvedValue({}),
 }));
 
+jest.mock('../../src/services/hostHealthService', () => ({
+  getProviderHealth: jest.fn().mockResolvedValue([]),
+  checkSingleProvider: jest.fn().mockResolvedValue([]),
+}));
+
 jest.mock('../../src/services/freeAccessService', () => ({
   getStatusForUser: jest.fn().mockResolvedValue({ status: 'inactive', canStart: true, canExtend: false }),
   startOrExtend: jest.fn().mockResolvedValue({ id: 'assignment-1', status: 'active' }),
@@ -327,6 +332,40 @@ describe('POST /api/providers', () => {
       .send({ name: 'My Provider', username: 'user', password: 'pass' });
 
     expect(res.status).toBe(400);
+  });
+
+  it('returns 400 if more than 30 hosts are submitted', async () => {
+    const token = makeUserToken();
+    const hosts = Array.from({ length: 31 }, (_, index) => `http://host${index}.com`);
+    const res = await request(app)
+      .post('/api/providers')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'My Provider', hosts, username: 'user', password: 'pass' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('at most 30 hosts');
+  });
+});
+
+describe('POST /api/providers/:id/health/recheck', () => {
+  it('starts a background recheck and returns 202 immediately', async () => {
+    const { providerQueries } = require('../../src/db/queries');
+    providerQueries.findByIdAndUser.mockResolvedValue({
+      id: 'prov-1',
+      user_id: 'user-123',
+      hosts: ['http://iptv.example.com'],
+    });
+
+    const token = makeUserToken();
+    const res = await request(app)
+      .post('/api/providers/prov-1/health/recheck')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(202);
+    expect(res.body).toMatchObject({
+      started: true,
+      message: 'Host recheck started in background',
+    });
   });
 });
 

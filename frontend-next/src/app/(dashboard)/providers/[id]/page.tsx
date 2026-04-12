@@ -35,6 +35,8 @@ function splitHosts(hosts: string[] = [], activeHost?: string) {
   }
 }
 
+const MAX_PROVIDER_HOSTS = 30
+
 export default function ProviderDetailPage() {
   const params = useParams()
   const id = params.id as string
@@ -148,6 +150,7 @@ export default function ProviderDetailPage() {
       .filter(Boolean)
     if (!form.name.trim()) return toast.error('Provider name is required')
     if (!hosts.length) return toast.error('Enter at least one host URL')
+    if (hosts.length > MAX_PROVIDER_HOSTS) return toast.error(`You can add up to ${MAX_PROVIDER_HOSTS} hosts per provider`)
     if (!form.username.trim()) return toast.error('Username is required')
 
     const payload: Record<string, unknown> = {
@@ -202,10 +205,16 @@ export default function ProviderDetailPage() {
     setRechecking(true)
     try {
       const res = await providerAPI.recheckHealth(id)
-      setHealth(res.data)
-      toast.success('Health recheck complete')
-    } catch {
-      toast.error('Recheck failed')
+      if (res.data.started) {
+        toast.success('Health recheck started in background')
+        setTimeout(() => {
+          load()
+        }, 12000)
+      } else {
+        toast('Health recheck is already running', { icon: '⏳' })
+      }
+    } catch (err: unknown) {
+      toast.error((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Recheck failed')
     } finally {
       setRechecking(false)
     }
@@ -450,6 +459,7 @@ export default function ProviderDetailPage() {
                 onChange={(e) => setForm((prev) => ({ ...prev, hostsInput: e.target.value }))}
                 className="field-input min-h-[140px] resize-y"
               />
+              <p className="mt-2 text-xs text-slate-400/70">One host per line, up to 30 total.</p>
             </div>
             <div>
               <label className="field-label">Password</label>

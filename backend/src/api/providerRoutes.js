@@ -9,11 +9,29 @@ const cache = require('../utils/cache');
 const logger = require('../utils/logger');
 const eventBus = require('../utils/eventBus');
 
+const MAX_PROVIDER_HOSTS = 30;
+
 const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   next();
 };
+
+function normalizeHosts(hosts = []) {
+  return Array.from(new Set(
+    hosts
+      .map((host) => String(host || '').trim().replace(/\/+$/, ''))
+      .filter(Boolean)
+  ));
+}
+
+function validateHostLimit(res, hosts) {
+  if (hosts.length > MAX_PROVIDER_HOSTS) {
+    res.status(400).json({ error: `A provider can have at most ${MAX_PROVIDER_HOSTS} hosts.` });
+    return false;
+  }
+  return true;
+}
 
 // POST /api/providers
 router.post('/',
@@ -25,7 +43,9 @@ router.post('/',
   validate,
   async (req, res, next) => {
     try {
-      const { name, hosts, username, password } = req.body;
+      const { name, username, password } = req.body;
+      const hosts = normalizeHosts(req.body.hosts);
+      if (!validateHostLimit(res, hosts)) return;
       const provider = await providerService.create(req.user.id, { name, hosts, username, password });
       res.status(201).json(provider);
     } catch (err) {
@@ -52,7 +72,16 @@ router.patch('/:id',
   requireAuth,
   async (req, res) => {
     try {
-      const updated = await providerQueries.update(req.params.id, req.user.id, req.body);
+      const payload = { ...req.body };
+      if (Array.isArray(payload.hosts)) {
+        payload.hosts = normalizeHosts(payload.hosts);
+        if (!payload.hosts.length) {
+          return res.status(400).json({ error: 'Enter at least one host URL' });
+        }
+        if (!validateHostLimit(res, payload.hosts)) return;
+      }
+
+      const updated = await providerQueries.update(req.params.id, req.user.id, payload);
       if (!updated) return res.status(404).json({ error: 'Provider not found' });
       const providerForCrm = await providerQueries.findByIdForCrm(updated.id);
       if (providerForCrm) {
@@ -256,8 +285,33 @@ router.get('/:id/health', requireAuth, async (req, res) => {
 // POST /api/providers/:id/health/recheck
 router.post('/:id/health/recheck', requireAuth, async (req, res) => {
   try {
-    const health = await hostHealthService.checkSingleProvider(req.params.id, req.user.id);
-    res.json(health);
+    const provider = await providerQueries.findByIdAndUser(req.params.id, req.user.id);
+    if (!provider) return res.status(404).json({ error: 'Provider not found' });
+
+    const recheckKey = `manual:${req.user.id}:${req.params.id}`;
+    const alreadyRunning = await cache.get('providerHostRecheck', recheckKey);
+    if (alreadyRunning) {
+      return res.status(202).json({
+        started: false,
+        message: 'Host recheck already running',
+      });
+    }
+
+    await cache.set('providerHostRecheck', recheckKey, true);
+
+    res.status(202).json({
+      started: true,
+      message: 'Host recheck started in background',
+    });
+
+    Promise.resolve()
+      .then(() => hostHealthService.checkSingleProvider(req.params.id, req.user.id))
+      .catch((err) => {
+        logger.warn(`Background host recheck failed for provider ${req.params.id}: ${err.message}`);
+      })
+      .finally(async () => {
+        await cache.del('providerHostRecheck', recheckKey);
+      });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
   }
