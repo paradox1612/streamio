@@ -47,12 +47,12 @@ const hostHealthService = {
     logger.info('Health check complete');
   },
 
-  async checkProvider(provider) {
-    const lastCheckedAt = provider.last_checked_at || provider.updated_at || null;
-    if (PROVIDER_HEALTH_MIN_INTERVAL_MS > 0 && lastCheckedAt) {
+  async checkProvider(provider, { force = false } = {}) {
+    const lastCheckedAt = provider.last_checked_at || provider.last_checked || provider.updated_at || null;
+    if (!force && PROVIDER_HEALTH_MIN_INTERVAL_MS > 0 && lastCheckedAt) {
       const elapsedMs = Date.now() - new Date(lastCheckedAt).getTime();
       if (Number.isFinite(elapsedMs) && elapsedMs >= 0 && elapsedMs < PROVIDER_HEALTH_MIN_INTERVAL_MS) {
-        logger.info(`Skipping provider ${provider.id} health check; last checked ${elapsedMs}ms ago`);
+        logger.info(`Skipping provider ${provider.id} health check; last checked ${elapsedMs}ms ago (throttle: ${PROVIDER_HEALTH_MIN_INTERVAL_MS}ms)`);
         return;
       }
     }
@@ -115,7 +115,7 @@ const hostHealthService = {
       : await providerQueries.findById(providerId);
 
     if (!provider) throw Object.assign(new Error('Provider not found'), { status: 404 });
-    await hostHealthService.checkProvider(provider);
+    await hostHealthService.checkProvider(provider, { force: true });
     const health = await hostHealthQueries.getByProvider(providerId);
     return health;
   },
