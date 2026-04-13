@@ -61,6 +61,8 @@ backend:
     twoCaptchaApiKey: ""
     paygateWalletAddress: ""
     googleClientId: ""
+    resendApiKey: ""
+    resendFromEmail: "noreply@thekush.dev"
   resources: {}
   nodeSelector: {}
   tolerations: []

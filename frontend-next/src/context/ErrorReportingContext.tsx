@@ -28,6 +28,8 @@ type ErrorExtra = {
 }
 
 interface NormalizedErrorReport {
+  reportKind?: 'error' | 'ticket'
+  ticketCategory?: string | null
   source: string
   severity: 'error'
   message: string
@@ -43,6 +45,7 @@ interface NormalizedErrorReport {
 interface ErrorReportingValue {
   captureError: (error: unknown, extra?: ErrorExtra) => void
   openReportDialog: (report: NormalizedErrorReport) => void
+  openTicketDialog: (ticket: { message: string; ticketCategory: string; routePath?: string | null; source?: string }) => void
 }
 
 const ErrorReportingContext = createContext<ErrorReportingValue | null>(null)
@@ -84,6 +87,8 @@ function normalizeError(error: unknown, extra: ErrorExtra = {}): NormalizedError
   }
 
   return {
+    reportKind: 'error',
+    ticketCategory: null,
     source,
     severity: 'error',
     message,
@@ -239,6 +244,31 @@ export function ErrorReportingProvider({ children }: { children: React.ReactNode
     () => ({
       captureError,
       openReportDialog: (report: NormalizedErrorReport) => setDraftReport(report),
+      openTicketDialog: ({
+        message,
+        ticketCategory,
+        routePath,
+        source,
+      }: {
+        message: string
+        ticketCategory: string
+        routePath?: string | null
+        source?: string
+      }) =>
+        setDraftReport({
+          reportKind: 'ticket',
+          ticketCategory,
+          source: source || 'dashboard',
+          severity: 'error',
+          message,
+          errorType: 'CustomerTicket',
+          stack: null,
+          componentStack: null,
+          pageUrl: typeof window !== 'undefined' ? window.location.href : null,
+          routePath: routePath || (typeof window !== 'undefined' ? window.location.pathname : null),
+          fingerprint: hashFingerprint(`ticket|${ticketCategory}|${message}`),
+          context: {},
+        }),
     }),
     [captureError]
   )

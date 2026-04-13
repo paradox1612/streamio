@@ -14,6 +14,7 @@ const {
   hostHealthQueries,
   jobQueries,
   errorReportQueries,
+  supportReportMessageQueries,
   freeAccessQueries,
   offeringQueries,
   subscriptionQueries,
@@ -325,6 +326,8 @@ router.get('/error-reports', requireAdmin, async (req, res) => {
     search: String(req.query.search || ''),
     status: String(req.query.status || ''),
     source: String(req.query.source || ''),
+    reportKind: String(req.query.reportKind || ''),
+    ticketCategory: String(req.query.ticketCategory || ''),
     limit: parseInt(req.query.limit || '100', 10),
     offset: parseInt(req.query.offset || '0', 10),
   });
@@ -347,6 +350,33 @@ router.patch('/error-reports/:id', requireAdmin, async (req, res) => {
   const report = await errorReportQueries.updateStatus(req.params.id, status);
   if (!report) return res.status(404).json({ error: 'Error report not found' });
   res.json(report);
+});
+
+// GET /admin/error-reports/:id/messages
+router.get('/error-reports/:id/messages', requireAdmin, async (req, res) => {
+  const report = await errorReportQueries.findById(req.params.id);
+  if (!report) return res.status(404).json({ error: 'Error report not found' });
+
+  const messages = await supportReportMessageQueries.listForReport(report.id);
+  res.json({ report, messages });
+});
+
+// POST /admin/error-reports/:id/messages
+router.post('/error-reports/:id/messages', requireAdmin, async (req, res) => {
+  const report = await errorReportQueries.findById(req.params.id);
+  if (!report) return res.status(404).json({ error: 'Error report not found' });
+
+  const body = xss(String(req.body.body || '').trim()).slice(0, 4000);
+  if (!body) return res.status(400).json({ error: 'Reply body is required' });
+
+  const message = await supportReportMessageQueries.create({
+    reportId: report.id,
+    authorType: 'admin',
+    authorEmail: req.admin?.username || 'admin',
+    body,
+  });
+
+  res.status(201).json(message);
 });
 
 // ─── TMDB ─────────────────────────────────────────────────────────────────────

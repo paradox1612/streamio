@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '@/store/auth'
 import { authAPI, userAPI } from '@/utils/api'
-import { LayoutDashboard, Server, Film, Tv2, Settings, User, Menu, X, LogOut, ShoppingCart, CreditCard } from 'lucide-react'
+import { LayoutDashboard, Server, Film, Tv2, Settings, User, Menu, X, LogOut, ShoppingCart, CreditCard, MessageSquareMore } from 'lucide-react'
 import toast from 'react-hot-toast'
 import BrandMark from './BrandMark'
 import { Button } from './ui/button'
@@ -33,6 +33,7 @@ const navGroups = [
     items: [
       { path: '/providers', label: 'My Providers', mobileLabel: 'Sources', icon: Server },
       { path: '/subscriptions', label: 'Billing', mobileLabel: 'Billing', icon: CreditCard },
+      { path: '/support', label: 'Support', mobileLabel: 'Support', icon: MessageSquareMore },
       { path: '/account', label: 'Account', mobileLabel: 'Profile', icon: User },
     ],
   },

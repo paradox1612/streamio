@@ -78,6 +78,9 @@ export const userAPI = {
     progressPct?: number
   }) => api.post('/api/user/watch-history', data),
   regenerateAddonUrl: () => api.post('/api/user/addon-url/regenerate'),
+  listSupportTickets: () => api.get('/api/user/support-tickets'),
+  getSupportTicketMessages: (id: string) => api.get(`/api/user/support-tickets/${id}/messages`),
+  replyToSupportTicket: (id: string, body: string) => api.post(`/api/user/support-tickets/${id}/messages`, { body }),
   deleteAccount: () => api.delete('/api/user/account'),
 }
 
@@ -195,6 +198,8 @@ export const adminAPI = {
   listErrorReports: (params?: Record<string, unknown>) => api.get('/api/admin/error-reports', { params }),
   getErrorReport: (id: string) => api.get(`/api/admin/error-reports/${id}`),
   updateErrorReport: (id: string, status: string) => api.patch(`/api/admin/error-reports/${id}`, { status }),
+  getErrorReportMessages: (id: string) => api.get(`/api/admin/error-reports/${id}/messages`),
+  replyToErrorReport: (id: string, body: string) => api.post(`/api/admin/error-reports/${id}/messages`, { body }),
   syncTmdb: () => api.post('/api/admin/tmdb/sync'),
   getTmdbStatus: () => api.get('/api/admin/tmdb/status'),
   rematch: () => api.post('/api/admin/tmdb/rematch'),

@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { AlertTriangle, Bug, CheckCircle2, Clock3, RefreshCw, ShieldAlert } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock3, MessagesSquare, RefreshCw, ShieldAlert } from 'lucide-react'
 import { adminAPI } from '@/utils/api'
 import AdminDataTable from '@/components/AdminDataTable'
 import { Badge } from '@/components/ui/badge'
@@ -37,9 +37,14 @@ function statusVariant(status: string) {
 }
 
 function sourceVariant(source: string) {
+  if (source === 'dashboard') return 'brand'
   if (source === 'backend') return 'danger'
   if (source === 'admin') return 'warning'
   return 'brand'
+}
+
+function kindVariant(kind: string) {
+  return kind === 'ticket' ? 'warning' : 'secondary'
 }
 
 export default function AdminErrorsPage() {
@@ -49,14 +54,26 @@ export default function AdminErrorsPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [sourceFilter, setSourceFilter] = useState('')
+  const [kindFilter, setKindFilter] = useState('')
+  const [ticketCategoryFilter, setTicketCategoryFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
   const [savingStatus, setSavingStatus] = useState('')
+  const [messages, setMessages] = useState<any[]>([])
+  const [messageLoading, setMessageLoading] = useState(false)
+  const [replyBody, setReplyBody] = useState('')
+  const [sendingReply, setSendingReply] = useState(false)
 
   const loadReports = async () => {
     setLoading(true)
     try {
-      const response = await adminAPI.listErrorReports({ search, status: statusFilter, source: sourceFilter })
+      const response = await adminAPI.listErrorReports({
+        search,
+        status: statusFilter,
+        source: sourceFilter,
+        reportKind: kindFilter,
+        ticketCategory: ticketCategoryFilter,
+      })
       setReports(response.data)
       if (response.data.length && !selectedId) setSelectedId(response.data[0].id)
       if (!response.data.find((r: any) => r.id === selectedId)) {
@@ -69,7 +86,7 @@ export default function AdminErrorsPage() {
     }
   }
 
-  useEffect(() => { loadReports() }, [search, statusFilter, sourceFilter]) // eslint-disable-line
+  useEffect(() => { loadReports() }, [search, statusFilter, sourceFilter, kindFilter, ticketCategoryFilter]) // eslint-disable-line
 
   useEffect(() => {
     if (!selectedId) { setSelectedReport(null); return }
@@ -80,10 +97,23 @@ export default function AdminErrorsPage() {
       .finally(() => setDetailLoading(false))
   }, [selectedId])
 
+  useEffect(() => {
+    if (!selectedId) {
+      setMessages([])
+      return
+    }
+
+    setMessageLoading(true)
+    adminAPI.getErrorReportMessages(selectedId)
+      .then((response) => setMessages(response.data?.messages || []))
+      .catch(() => toast.error('Failed to load report thread'))
+      .finally(() => setMessageLoading(false))
+  }, [selectedId])
+
   const stats = useMemo(() => ({
     open: reports.filter((r) => r.status === 'open').length,
     backend: reports.filter((r) => r.source === 'backend').length,
-    frontend: reports.filter((r) => r.source === 'frontend').length,
+    tickets: reports.filter((r) => r.report_kind === 'ticket').length,
     resolved: reports.filter((r) => r.status === 'resolved').length,
   }), [reports])
 
@@ -104,6 +134,26 @@ export default function AdminErrorsPage() {
     }
   }
 
+  const sendReply = async () => {
+    if (!selectedReport || sendingReply) return
+    if (!replyBody.trim()) {
+      toast.error('Reply body is required')
+      return
+    }
+
+    setSendingReply(true)
+    try {
+      const response = await adminAPI.replyToErrorReport(selectedReport.id, replyBody.trim())
+      setMessages((current) => [...current, response.data])
+      setReplyBody('')
+      toast.success('Reply sent')
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to send reply')
+    } finally {
+      setSendingReply(false)
+    }
+  }
+
   const columns = [
     {
       key: 'message',
@@ -115,6 +165,22 @@ export default function AdminErrorsPage() {
             {report.route_path || report.request_path || report.page_url || 'No path captured'}
           </div>
         </button>
+      ),
+    },
+    {
+      key: 'kind',
+      header: 'Kind',
+      render: (report: any) => (
+        <div className="flex flex-wrap gap-2">
+          <Badge variant={kindVariant(report.report_kind || 'error') as any} className="capitalize">
+            {report.report_kind || 'error'}
+          </Badge>
+          {report.ticket_category && (
+            <Badge variant="outline" className="capitalize">
+              {report.ticket_category}
+            </Badge>
+          )}
+        </div>
       ),
     },
     {
@@ -150,17 +216,17 @@ export default function AdminErrorsPage() {
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={AlertTriangle} label="Open" value={stats.open} tone="border-red-400/20 bg-red-500/10 text-red-100" />
         <StatCard icon={ShieldAlert} label="Backend" value={stats.backend} tone="border-amber-400/20 bg-amber-400/10 text-amber-100" />
-        <StatCard icon={Bug} label="Frontend" value={stats.frontend} tone="border-brand-400/20 bg-brand-500/10 text-brand-100" />
+        <StatCard icon={MessagesSquare} label="Tickets" value={stats.tickets} tone="border-brand-400/20 bg-brand-500/10 text-brand-100" />
         <StatCard icon={CheckCircle2} label="Resolved" value={stats.resolved} tone="border-emerald-400/20 bg-emerald-400/10 text-emerald-100" />
       </section>
 
       <AdminDataTable
-        title="Error inbox"
-        description="Frontend crash reports and backend unhandled exceptions land here for operator review."
+        title="Report inbox"
+        description="Frontend crashes, backend exceptions, and dashboard customer tickets land here for operator review."
         count={reports.length}
         search={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Search message, route, request path, or reporter..."
+        searchPlaceholder="Search message, route, request path, reporter, or customer email..."
         primaryAction={{ label: 'Refresh', icon: RefreshCw, onClick: loadReports, variant: 'outline' }}
         filters={[
           <select
@@ -175,6 +241,16 @@ export default function AdminErrorsPage() {
             <option value="resolved">Resolved</option>
           </select>,
           <select
+            key="kind"
+            value={kindFilter}
+            onChange={(e) => setKindFilter(e.target.value)}
+            className="h-10 rounded-full border border-white/10 bg-white/[0.04] px-4 text-sm text-slate-100"
+          >
+            <option value="">All kinds</option>
+            <option value="error">Errors</option>
+            <option value="ticket">Tickets</option>
+          </select>,
+          <select
             key="source"
             value={sourceFilter}
             onChange={(e) => setSourceFilter(e.target.value)}
@@ -184,6 +260,18 @@ export default function AdminErrorsPage() {
             <option value="frontend">Frontend</option>
             <option value="admin">Admin</option>
             <option value="backend">Backend</option>
+            <option value="dashboard">Dashboard</option>
+          </select>,
+          <select
+            key="ticketCategory"
+            value={ticketCategoryFilter}
+            onChange={(e) => setTicketCategoryFilter(e.target.value)}
+            className="h-10 rounded-full border border-white/10 bg-white/[0.04] px-4 text-sm text-slate-100"
+          >
+            <option value="">All ticket categories</option>
+            <option value="feedback">Feedback</option>
+            <option value="concern">Concern</option>
+            <option value="complaint">Complaint</option>
           </select>,
         ]}
         columns={columns}
@@ -197,7 +285,7 @@ export default function AdminErrorsPage() {
         <CardHeader className="border-b border-white/[0.08]">
           <CardTitle>Report details</CardTitle>
           <CardDescription>
-            Inspect the captured stack, route, browser data, and operator notes before marking the report resolved.
+            Inspect the captured stack, route, browser data, and customer notes before marking the report resolved.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -210,8 +298,12 @@ export default function AdminErrorsPage() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="space-y-3">
                   <div className="flex flex-wrap gap-2">
+                    <Badge variant={kindVariant(selectedReport.report_kind || 'error') as any} className="capitalize">
+                      {selectedReport.report_kind || 'error'}
+                    </Badge>
                     <Badge variant={sourceVariant(selectedReport.source) as any} className="capitalize">{selectedReport.source}</Badge>
                     <Badge variant={statusVariant(selectedReport.status) as any} className="capitalize">{selectedReport.status}</Badge>
+                    {selectedReport.ticket_category && <Badge variant="outline" className="capitalize">{selectedReport.ticket_category}</Badge>}
                     {selectedReport.admin_context && <Badge variant="warning">admin context</Badge>}
                   </div>
                   <div>
@@ -249,6 +341,62 @@ export default function AdminErrorsPage() {
               </div>
 
               <div className="space-y-4">
+                {selectedReport.context?.userDescription && (
+                  <div>
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400/80">Customer note</p>
+                    <div className="rounded-[22px] border border-white/[0.08] bg-surface-950/75 p-4 text-sm leading-7 text-slate-200">
+                      {selectedReport.context.userDescription}
+                    </div>
+                  </div>
+                )}
+                {selectedReport.report_kind === 'ticket' && (
+                  <div className="space-y-4">
+                    <div>
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400/80">Thread</p>
+                      <div className="max-h-[20rem] space-y-3 overflow-y-auto rounded-[22px] border border-white/[0.08] bg-surface-950/40 p-4">
+                        {messageLoading ? (
+                          <div className="text-sm text-slate-400">Loading conversation...</div>
+                        ) : messages.length === 0 ? (
+                          <div className="text-sm text-slate-400">No replies yet.</div>
+                        ) : (
+                          messages.map((message) => (
+                            <div
+                              key={message.id}
+                              className={`rounded-[18px] border p-4 ${
+                                message.author_type === 'admin'
+                                  ? 'border-brand-400/20 bg-brand-500/10'
+                                  : 'border-white/[0.08] bg-white/[0.03]'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-sm font-semibold text-white">
+                                  {message.author_type === 'admin' ? 'Admin reply' : 'Customer reply'}
+                                </span>
+                                <span className="text-xs text-slate-400">{formatDate(message.created_at)}</span>
+                              </div>
+                              <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-200">{message.body}</p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400/80">Reply to customer</p>
+                      <textarea
+                        value={replyBody}
+                        onChange={(event) => setReplyBody(event.target.value)}
+                        placeholder="Write a reply that the customer will see in their dashboard support thread."
+                        rows={5}
+                        className="w-full rounded-[22px] border border-white/10 bg-surface-900/80 px-4 py-3 text-sm text-white placeholder:text-slate-400/55 transition-all duration-200 focus:border-brand-500/40 focus:outline-none focus:shadow-[0_0_0_3px_rgba(20,145,255,0.15)]"
+                      />
+                      <div className="mt-3 flex justify-end">
+                        <Button type="button" onClick={sendReply} disabled={sendingReply}>
+                          {sendingReply ? 'Sending...' : 'Send reply'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div>
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400/80">Stack trace</p>
                   <pre className="overflow-x-auto rounded-[22px] border border-white/[0.08] bg-surface-950/75 p-4 text-xs leading-6 text-slate-200">

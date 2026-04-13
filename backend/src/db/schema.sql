@@ -683,6 +683,8 @@ ALTER TABLE matched_content ADD COLUMN IF NOT EXISTS manually_matched BOOLEAN DE
 -- ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS error_reports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  report_kind VARCHAR NOT NULL DEFAULT 'error',
+  ticket_category VARCHAR,
   source VARCHAR NOT NULL DEFAULT 'frontend',
   status VARCHAR NOT NULL DEFAULT 'open',
   severity VARCHAR NOT NULL DEFAULT 'error',
@@ -705,9 +707,24 @@ CREATE TABLE IF NOT EXISTS error_reports (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+ALTER TABLE error_reports ADD COLUMN IF NOT EXISTS report_kind VARCHAR NOT NULL DEFAULT 'error';
+ALTER TABLE error_reports ADD COLUMN IF NOT EXISTS ticket_category VARCHAR;
+
 CREATE INDEX IF NOT EXISTS idx_error_reports_created_at ON error_reports(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_error_reports_status ON error_reports(status);
 CREATE INDEX IF NOT EXISTS idx_error_reports_source ON error_reports(source);
+CREATE INDEX IF NOT EXISTS idx_error_reports_report_kind ON error_reports(report_kind);
+
+CREATE TABLE IF NOT EXISTS support_report_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  report_id UUID NOT NULL REFERENCES error_reports(id) ON DELETE CASCADE,
+  author_type VARCHAR NOT NULL,
+  author_email TEXT,
+  body TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_support_report_messages_report_id ON support_report_messages(report_id, created_at ASC);
 
 -- ─────────────────────────────────────────
 -- Marketplace: Stripe + Twenty CRM columns

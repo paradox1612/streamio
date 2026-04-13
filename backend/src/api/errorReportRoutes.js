@@ -46,10 +46,22 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'Error message is required' });
   }
 
+  const reportKind = clip(req.body?.reportKind, 30) || 'error';
+  if (!['error', 'ticket'].includes(reportKind)) {
+    return res.status(400).json({ error: 'Invalid report kind' });
+  }
+
+  const ticketCategory = clip(req.body?.ticketCategory, 50);
+  if (reportKind === 'ticket' && !ticketCategory) {
+    return res.status(400).json({ error: 'Ticket category is required' });
+  }
+
   const reporter = await resolveReporter(req, req.body?.reporterEmail);
   const report = await errorReportQueries.create({
+    reportKind,
+    ticketCategory: reportKind === 'ticket' ? ticketCategory : null,
     source: clip(req.body?.source, 50) || (reporter.adminContext ? 'admin' : 'frontend'),
-    severity: clip(req.body?.severity, 30) || 'error',
+    severity: clip(req.body?.severity, 30) || (reportKind === 'ticket' ? 'info' : 'error'),
     message,
     errorType: clip(req.body?.errorType, 255),
     stack: clip(req.body?.stack, 16000),

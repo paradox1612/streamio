@@ -32,6 +32,10 @@ jest.mock('../../src/utils/logger', () => ({
   error: jest.fn(),
 }));
 
+jest.mock('../../src/services/emailService', () => ({
+  sendPasswordReset: jest.fn().mockResolvedValue({}),
+}));
+
 const { userQueries } = require('../../src/db/queries');
 const authService = require('../../src/services/authService');
 

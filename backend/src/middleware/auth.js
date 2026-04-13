@@ -64,6 +64,7 @@ function requireAdmin(req, res, next) {
     if (payload.jti && revokedAdminJtis.has(payload.jti)) {
       return res.status(401).json({ error: 'Token has been revoked' });
     }
+    req.admin = payload;
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Invalid or expired admin token' });

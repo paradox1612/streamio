@@ -296,6 +296,8 @@ jobs:
           TWENTY_FILE_TOKEN_SECRET: ${{ secrets.TWENTY_FILE_TOKEN_SECRET }}
           TWO_CAPTCHA_API_KEY: ${{ secrets.TWO_CAPTCHA_API_KEY }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
         run: |
           set -euo pipefail
           if [ -n "${KUBECONFIG_PATH:-}" ]; then
@@ -353,6 +355,13 @@ jobs:
           if [ -n "${GOOGLE_CLIENT_ID:-}" ]; then
             GOOGLE_ARGS="--set-string backend.secrets.googleClientId=${GOOGLE_CLIENT_ID}"
           fi
+          RESEND_ARGS=""
+          if [ -n "${RESEND_API_KEY:-}" ]; then
+            RESEND_ARGS="--set-string backend.secrets.resendApiKey=${RESEND_API_KEY}"
+            if [ -n "${RESEND_FROM_EMAIL:-}" ]; then
+              RESEND_ARGS+=" --set-string backend.secrets.resendFromEmail=${RESEND_FROM_EMAIL}"
+            fi
+          fi
           TWENTY_SECRET_ARGS=""
           if [ -n "${TWENTY_APP_SECRET:-}" ]; then
             TWENTY_SECRET_ARGS=" --set-string twenty.secrets.appSecret=${TWENTY_APP_SECRET}"
@@ -377,7 +386,8 @@ jobs:
             $TWENTY_ARGS \
             $TWO_CAPTCHA_ARGS \
             $TWENTY_SECRET_ARGS \
-            $GOOGLE_ARGS
+            $GOOGLE_ARGS \
+            $RESEND_ARGS
 
       - name: Wait for rollout
         shell: bash

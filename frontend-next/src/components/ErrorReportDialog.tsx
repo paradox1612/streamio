@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
 interface ErrorReportPayload {
+  reportKind?: 'error' | 'ticket'
+  ticketCategory?: string | null
   message: string
   source: string
   routePath?: string | null
@@ -34,6 +36,7 @@ export default function ErrorReportDialog({
   onSubmit,
 }: Props) {
   if (!open || !report) return null
+  const isTicket = report.reportKind === 'ticket'
 
   return (
     <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/75 p-4 backdrop-blur-md sm:items-center">
@@ -44,10 +47,16 @@ export default function ErrorReportDialog({
               <AlertTriangle className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-200/70">Report issue</p>
-              <h2 className="mt-2 text-2xl font-bold text-white">Send this error to the backend inbox</h2>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-200/70">
+                {isTicket ? 'Customer ticket' : 'Report issue'}
+              </p>
+              <h2 className="mt-2 text-2xl font-bold text-white">
+                {isTicket ? 'Send this ticket to the backend inbox' : 'Send this error to the backend inbox'}
+              </h2>
               <p className="mt-2 text-sm leading-6 text-slate-300/70">
-                The report includes the route, browser details, message, and any stack data we captured.
+                {isTicket
+                  ? 'The ticket includes your summary, category, route, browser details, and the note you add below.'
+                  : 'The report includes the route, browser details, message, and any stack data we captured.'}
               </p>
             </div>
           </div>
@@ -55,7 +64,9 @@ export default function ErrorReportDialog({
 
         <div className="space-y-5 px-6 py-5">
           <div className="rounded-[22px] border border-white/[0.08] bg-white/[0.03] p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400/80">Captured error</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400/80">
+              {isTicket ? 'Ticket summary' : 'Captured error'}
+            </p>
             <p className="mt-3 break-words text-sm font-semibold text-white">{report.message}</p>
             <div className="mt-3 grid gap-3 text-xs text-slate-400 sm:grid-cols-2">
               <div>
@@ -64,6 +75,11 @@ export default function ErrorReportDialog({
               <div>
                 <span className="text-slate-500">Route:</span> {report.routePath || 'unknown'}
               </div>
+              {isTicket && report.ticketCategory && (
+                <div className="sm:col-span-2">
+                  <span className="text-slate-500">Category:</span> {report.ticketCategory}
+                </div>
+              )}
             </div>
           </div>
 
@@ -81,11 +97,17 @@ export default function ErrorReportDialog({
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-white">What were you doing?</label>
+            <label className="text-sm font-semibold text-white">
+              {isTicket ? 'What should we know?' : 'What were you doing?'}
+            </label>
             <textarea
               value={description}
               onChange={(event) => onDescriptionChange(event.target.value)}
-              placeholder="Tell us what you clicked or what you expected to happen."
+              placeholder={
+                isTicket
+                  ? 'Share the full feedback, concern, or complaint so the team can follow up.'
+                  : 'Tell us what you clicked or what you expected to happen.'
+              }
               rows={5}
               className="w-full rounded-[22px] border border-white/10 bg-surface-900/80 px-4 py-3 text-sm text-white placeholder:text-slate-400/55 transition-all duration-200 focus:border-brand-500/40 focus:outline-none focus:shadow-[0_0_0_3px_rgba(20,145,255,0.15)]"
             />
@@ -98,7 +120,7 @@ export default function ErrorReportDialog({
           </Button>
           <Button type="button" onClick={onSubmit} disabled={loading}>
             <Send className="h-4 w-4" />
-            {loading ? 'Sending...' : 'Send report'}
+            {loading ? 'Sending...' : isTicket ? 'Send ticket' : 'Send report'}
           </Button>
         </div>
       </div>

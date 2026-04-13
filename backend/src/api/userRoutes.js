@@ -1,6 +1,7 @@
 const router = require('express').Router();
+const xss = require('xss');
 const { requireAuth } = require('../middleware/auth');
-const { userQueries, watchHistoryQueries } = require('../db/queries');
+const { userQueries, watchHistoryQueries, errorReportQueries, supportReportMessageQueries } = require('../db/queries');
 const authService = require('../services/authService');
 const cache = require('../utils/cache');
 
@@ -93,6 +94,39 @@ router.post('/addon-url/regenerate', requireAuth, async (req, res) => {
 router.delete('/account', requireAuth, async (req, res) => {
   await userQueries.deleteUser(req.user.id);
   res.json({ message: 'Account deleted' });
+});
+
+// GET /api/user/support-tickets
+router.get('/support-tickets', requireAuth, async (req, res) => {
+  const tickets = await errorReportQueries.listTicketsForUser(req.user.id);
+  res.json(tickets);
+});
+
+// GET /api/user/support-tickets/:id/messages
+router.get('/support-tickets/:id/messages', requireAuth, async (req, res) => {
+  const ticket = await errorReportQueries.findTicketForUser(req.params.id, req.user.id);
+  if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+
+  const messages = await supportReportMessageQueries.listForReport(ticket.id);
+  res.json({ ticket, messages });
+});
+
+// POST /api/user/support-tickets/:id/messages
+router.post('/support-tickets/:id/messages', requireAuth, async (req, res) => {
+  const ticket = await errorReportQueries.findTicketForUser(req.params.id, req.user.id);
+  if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+
+  const body = xss(String(req.body.body || '').trim()).slice(0, 4000);
+  if (!body) return res.status(400).json({ error: 'Reply body is required' });
+
+  const message = await supportReportMessageQueries.create({
+    reportId: ticket.id,
+    authorType: 'user',
+    authorEmail: req.user.email,
+    body,
+  });
+
+  res.status(201).json(message);
 });
 
 module.exports = router;

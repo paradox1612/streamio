@@ -2013,6 +2013,8 @@ const jobQueries = {
 
 const errorReportQueries = {
   async create({
+    reportKind = 'error',
+    ticketCategory = null,
     source = 'frontend',
     status = 'open',
     severity = 'error',
@@ -2033,6 +2035,8 @@ const errorReportQueries = {
   }) {
     const { rows } = await pool.query(
       `INSERT INTO error_reports (
+        report_kind,
+        ticket_category,
         source,
         status,
         severity,
@@ -2051,10 +2055,12 @@ const errorReportQueries = {
         admin_context,
         context
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
       )
       RETURNING *`,
       [
+        reportKind,
+        ticketCategory,
         source,
         status,
         severity,
@@ -2077,10 +2083,12 @@ const errorReportQueries = {
     return rows[0];
   },
 
-  async list({ search = '', status = '', source = '', limit = 100, offset = 0 } = {}) {
+  async list({ search = '', status = '', source = '', reportKind = '', ticketCategory = '', limit = 100, offset = 0 } = {}) {
     const { rows } = await pool.query(
       `SELECT
          er.id,
+         er.report_kind,
+         er.ticket_category,
          er.source,
          er.status,
          er.severity,
@@ -2109,9 +2117,11 @@ const errorReportQueries = {
        )
          AND ($2 = '' OR er.status = $2)
          AND ($3 = '' OR er.source = $3)
+         AND ($4 = '' OR er.report_kind = $4)
+         AND ($5 = '' OR er.ticket_category = $5)
        ORDER BY er.created_at DESC
-       LIMIT $4 OFFSET $5`,
-      [`%${search}%`, status, source, limit, offset]
+       LIMIT $6 OFFSET $7`,
+      [`%${search}%`, status, source, reportKind, ticketCategory, limit, offset]
     );
     return rows;
   },
@@ -2123,6 +2133,33 @@ const errorReportQueries = {
        LEFT JOIN users u ON u.id = er.user_id
        WHERE er.id = $1`,
       [id]
+    );
+    return rows[0];
+  },
+
+  async listTicketsForUser(userId) {
+    const { rows } = await pool.query(
+      `SELECT er.*, u.email AS user_email
+       FROM error_reports er
+       LEFT JOIN users u ON u.id = er.user_id
+       WHERE er.report_kind = 'ticket'
+         AND er.user_id = $1
+       ORDER BY er.created_at DESC`,
+      [userId]
+    );
+    return rows;
+  },
+
+  async findTicketForUser(id, userId) {
+    const { rows } = await pool.query(
+      `SELECT er.*, u.email AS user_email
+       FROM error_reports er
+       LEFT JOIN users u ON u.id = er.user_id
+       WHERE er.id = $1
+         AND er.report_kind = 'ticket'
+         AND er.user_id = $2
+       LIMIT 1`,
+      [id, userId]
     );
     return rows[0];
   },
@@ -2140,6 +2177,33 @@ const errorReportQueries = {
     );
     if (!rows[0]) return null;
     return this.findById(id);
+  },
+};
+
+const supportReportMessageQueries = {
+  async listForReport(reportId) {
+    const { rows } = await pool.query(
+      `SELECT id, report_id, author_type, author_email, body, created_at
+       FROM support_report_messages
+       WHERE report_id = $1
+       ORDER BY created_at ASC`,
+      [reportId]
+    );
+    return rows;
+  },
+
+  async create({ reportId, authorType, authorEmail = null, body }) {
+    const { rows } = await pool.query(
+      `INSERT INTO support_report_messages (
+        report_id,
+        author_type,
+        author_email,
+        body
+      ) VALUES ($1, $2, $3, $4)
+      RETURNING id, report_id, author_type, author_email, body, created_at`,
+      [reportId, authorType, authorEmail, body]
+    );
+    return rows[0];
   },
 };
 
@@ -3026,6 +3090,7 @@ module.exports = {
   hostHealthQueries,
   jobQueries,
   errorReportQueries,
+  supportReportMessageQueries,
   freeAccessQueries,
   offeringQueries,
   subscriptionQueries,

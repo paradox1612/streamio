@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const { userQueries } = require('../db/queries');
 const logger = require('../utils/logger');
 const eventBus = require('../utils/eventBus');
+const { sendPasswordReset } = require('./emailService');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'changeme';
 const JWT_EXPIRES = '7d';
@@ -88,7 +89,8 @@ const authService = {
     const resetToken = uuidv4();
     const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
     await userQueries.setResetToken(user.id, resetToken, expires);
-    // TODO: Send reset link via email to user
+    const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+    await sendPasswordReset(user.email, resetLink);
     return resetToken;
   },
 

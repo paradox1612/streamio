@@ -85,6 +85,19 @@ VITE_API_URL=http://localhost:3001 npm start  # Starts on :3000
 | `PORT` | Backend port (default: 3001) |
 | `BASE_URL` | Public URL of the backend (for addon URLs) |
 | `FRONTEND_URL` | Frontend origin (for CORS) |
+| `RESEND_API_KEY` | Resend API key for transactional email |
+| `RESEND_FROM_EMAIL` | From address for outgoing emails (must be on a verified Resend domain) |
+
+## GitHub Secrets (CI/CD)
+
+The following secrets must be set in **GitHub → Settings → Secrets and variables → Actions**:
+
+| Secret | Description |
+|--------|-------------|
+| `RESEND_API_KEY` | Resend API key — get from [resend.com](https://resend.com) → API Keys |
+| `RESEND_FROM_EMAIL` | From address — currently `noreply@thekush.dev` (verified domain: `thekush.dev`). **If you change the sending domain, update this secret and re-verify the new domain in Resend.** |
+
+> **Domain change checklist:** Update the `RESEND_FROM_EMAIL` GitHub secret → verify the new domain in the Resend dashboard (add SPF/DKIM DNS records) → redeploy.
 
 ## Deploy to Railway
 
