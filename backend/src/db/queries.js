@@ -447,6 +447,10 @@ const providerNetworkQueries = {
     return rows;
   },
 
+  async delete(id) {
+    await pool.query('DELETE FROM provider_networks WHERE id = $1', [id]);
+  },
+
   async touchCatalogRefresh(providerNetworkId) {
     await pool.query(
       `UPDATE provider_networks

@@ -227,6 +227,8 @@ export const adminAPI = {
   deleteOffering: (id: string) => api.delete(`/api/admin/marketplace/${id}`),
   // Provider Networks (Reseller)
   listNetworks: () => api.get('/api/admin/networks'),
+  createNetwork: (name: string) => api.post('/api/admin/networks', { name }),
+  deleteNetwork: (id: string) => api.delete(`/api/admin/networks/${id}`),
   getNetwork: (id: string) => api.get(`/api/admin/networks/${id}`),
   updateNetwork: (id: string, data: Record<string, unknown>) => api.patch(`/api/admin/networks/${id}`, data),
   getNetworkBouquets: (id: string) => api.get(`/api/admin/networks/${id}/bouquets`),

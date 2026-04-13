@@ -759,6 +759,30 @@ router.get('/networks', requireAdmin, async (req, res) => {
   }
 });
 
+// POST /admin/networks — create a new provider network
+router.post('/networks', requireAdmin, async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name is required' });
+    const network = await providerNetworkQueries.create({ name: String(name).trim() });
+    res.status(201).json(network);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /admin/networks/:id — delete a provider network
+router.delete('/networks/:id', requireAdmin, async (req, res) => {
+  try {
+    const network = await providerNetworkQueries.findById(req.params.id);
+    if (!network) return res.status(404).json({ error: 'Network not found' });
+    await providerNetworkQueries.delete(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /admin/networks/:id — network details (including hosts)
 router.get('/networks/:id', requireAdmin, async (req, res) => {
   try {

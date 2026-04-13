@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Loader2,
   Lock,
+  Plus,
   Settings2,
   UserPlus,
   Wifi,
@@ -72,6 +73,16 @@ export default function NetworksPage() {
   // Modals
   const [showResellerModal, setShowResellerModal] = useState(false)
   const [showLineModal, setShowLineModal] = useState(false)
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [showRenameModal, setShowRenameModal] = useState(false)
+
+  // Add / Rename / Delete state
+  const [newNetworkName, setNewNetworkName] = useState('')
+  const [renameName, setRenameName] = useState('')
+  const [savingAdd, setSavingAdd] = useState(false)
+  const [savingRename, setSavingRename] = useState(false)
+  const [deletingNetwork, setDeletingNetwork] = useState(false)
   
   // Reseller Form
   const [resellerForm, setResellerForm] = useState({ 
@@ -99,6 +110,64 @@ export default function NetworksPage() {
       toast.error('Failed to load networks')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleAddNetwork() {
+    if (!newNetworkName.trim()) return
+    setSavingAdd(true)
+    try {
+      await adminAPI.createNetwork(newNetworkName.trim())
+      toast.success('Network created')
+      setShowAddModal(false)
+      setNewNetworkName('')
+      setLoading(true)
+      await loadNetworks()
+    } catch {
+      toast.error('Failed to create network')
+    } finally {
+      setSavingAdd(false)
+    }
+  }
+
+  function openRename(network: Network) {
+    setSelectedNetwork(network)
+    setRenameName(network.name)
+    setShowRenameModal(true)
+  }
+
+  async function handleRenameNetwork() {
+    if (!selectedNetwork || !renameName.trim()) return
+    setSavingRename(true)
+    try {
+      await adminAPI.updateNetwork(selectedNetwork.id, { name: renameName.trim() })
+      toast.success('Network renamed')
+      setShowRenameModal(false)
+      setNetworks(prev => prev.map(n => n.id === selectedNetwork.id ? { ...n, name: renameName.trim() } : n))
+    } catch {
+      toast.error('Failed to rename network')
+    } finally {
+      setSavingRename(false)
+    }
+  }
+
+  function openDelete(network: Network) {
+    setSelectedNetwork(network)
+    setShowDeleteModal(true)
+  }
+
+  async function handleDeleteNetwork() {
+    if (!selectedNetwork) return
+    setDeletingNetwork(true)
+    try {
+      await adminAPI.deleteNetwork(selectedNetwork.id)
+      toast.success('Network deleted')
+      setShowDeleteModal(false)
+      setNetworks(prev => prev.filter(n => n.id !== selectedNetwork.id))
+    } catch {
+      toast.error('Failed to delete network')
+    } finally {
+      setDeletingNetwork(false)
     }
   }
 
@@ -276,6 +345,9 @@ export default function NetworksPage() {
           <h1 className="text-2xl font-bold text-white">Managed Networks</h1>
           <p className="mt-1 text-sm text-slate-400">Configure IPTV reseller panels and automate line creation</p>
         </div>
+        <Button onClick={() => setShowAddModal(true)} className="gap-2">
+          <Plus className="h-4 w-4" /> Add Network
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -360,8 +432,8 @@ export default function NetworksPage() {
               )}
               
               <div className="flex flex-col gap-2 pt-2">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="w-full justify-between rounded-xl border-white/10"
                   onClick={() => openResellerConfig(network)}
                 >
@@ -371,8 +443,8 @@ export default function NetworksPage() {
                   </span>
                   <ChevronRight className="h-4 w-4 text-slate-600" />
                 </Button>
-                
-                <Button 
+
+                <Button
                   className="w-full gap-2 rounded-xl bg-brand-600 hover:bg-brand-500"
                   disabled={
                     getAdapterType(network) === 'gold_panel_api'
@@ -384,6 +456,23 @@ export default function NetworksPage() {
                   <UserPlus className="h-4 w-4" />
                   Create User Line
                 </Button>
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1 rounded-xl border-white/10 text-slate-400 hover:text-white"
+                    onClick={() => openRename(network)}
+                  >
+                    Rename
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 rounded-xl border-red-500/20 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                    onClick={() => openDelete(network)}
+                  >
+                    Delete
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -653,6 +742,81 @@ export default function NetworksPage() {
             >
               {creatingLine ? <Loader2 className="h-4 w-4 animate-spin" /> : <Box className="h-4 w-4" />}
               Generate Line
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Network Modal */}
+      <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Network</DialogTitle>
+            <DialogDescription>Create a new managed network. You can configure credentials after.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Network Name</Label>
+              <Input
+                value={newNetworkName}
+                onChange={e => setNewNetworkName(e.target.value)}
+                placeholder="e.g. Gold Panel, Starshare"
+                onKeyDown={e => e.key === 'Enter' && handleAddNetwork()}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowAddModal(false)}>Cancel</Button>
+            <Button onClick={handleAddNetwork} disabled={savingAdd || !newNetworkName.trim()}>
+              {savingAdd ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create Network'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename Network Modal */}
+      <Dialog open={showRenameModal} onOpenChange={setShowRenameModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Network</DialogTitle>
+            <DialogDescription>Change the display name for {selectedNetwork?.name}.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Network Name</Label>
+              <Input
+                value={renameName}
+                onChange={e => setRenameName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleRenameNetwork()}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowRenameModal(false)}>Cancel</Button>
+            <Button onClick={handleRenameNetwork} disabled={savingRename || !renameName.trim()}>
+              {savingRename ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Network Modal */}
+      <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Network</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{selectedNetwork?.name}</strong>? This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowDeleteModal(false)}>Cancel</Button>
+            <Button
+              className="bg-red-600 hover:bg-red-500"
+              onClick={handleDeleteNetwork}
+              disabled={deletingNetwork}
+            >
+              {deletingNetwork ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Delete'}
             </Button>
           </DialogFooter>
         </DialogContent>
