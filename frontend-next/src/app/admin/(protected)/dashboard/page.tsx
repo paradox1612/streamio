@@ -4,7 +4,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Activity, ArrowRight, Database, FileText, Server, Shield, Users, DollarSign, CreditCard } from 'lucide-react'
+import { Activity, ArrowRight, FileText, Server, Shield, Users, DollarSign } from 'lucide-react'
 import { adminAPI } from '@/utils/api'
 import toast from 'react-hot-toast'
 import { Badge } from '@/components/ui/badge'

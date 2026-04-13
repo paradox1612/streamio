@@ -1,5 +1,13 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Environment
+
+- `NEXT_PUBLIC_API_URL`: public backend base URL used by the browser client.
+- `NEXT_PUBLIC_SITE_URL`: public site URL used for metadata and canonical-style absolute URLs.
+
+In production, both should normally point at the same public origin and should be injected by CI/CD.
+For local development, copy [.env.example](/Users/kush-mac/Documents/Claude/Projects/streamio/frontend-next/.env.example) to `.env.local` and adjust as needed.
+
 ## Getting Started
 
 First, run the development server:

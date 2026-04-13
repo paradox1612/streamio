@@ -236,7 +236,7 @@ export const adminAPI = {
   getCrmTasks: (params?: { limit?: number; cursor?: string }) => api.get('/api/admin/crm/tasks', { params }),
   // System Settings
   getCreditsSettings: () => api.get('/api/admin/settings/credits'),
-  updateCreditsSettings: (data: any) => api.put('/api/admin/settings/credits', data),
+  updateCreditsSettings: (data: object) => api.put('/api/admin/settings/credits', data),
 }
 
 export const blogAPI = {

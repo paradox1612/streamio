@@ -7,7 +7,7 @@ import {
 } from '@/components/ui/dialog'
 import VideoPlayer from './VideoPlayer'
 import EpisodeSelector from './EpisodeSelector'
-import { X, Play, Heart, PlayCircle, Star, ExternalLink, Copy, Monitor, Smartphone, Laptop } from 'lucide-react'
+import { X, Play, Heart, PlayCircle, Star, ExternalLink, Copy, Smartphone, Laptop } from 'lucide-react'
 import { homeAPI, userAPI, vodAPI } from '@/utils/api'
 import { isMobileDevice, isBrowserUnfriendly, isIOS, isAndroid } from '@/utils/device'
 import { getAvailablePlayers, getMobilePlayerUrl, MobilePlayer } from '@/utils/player'
@@ -43,9 +43,10 @@ export default function WatchModal({
   const [activeStream, setActiveStream] = useState<{ url: string; title: string } | null>(null)
   const [isFavorite, setIsFavorite] = useState(false)
   const [favoriteId, setFavoriteId] = useState<string | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [tmdbDetails, setTmdbDetails] = useState<any>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [similarTitles, setSimilarTitles] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
   const [showTrailer, setShowTrailer] = useState(false)
 
   // Mobile player state
@@ -58,17 +59,48 @@ export default function WatchModal({
   const [currentVodType, setCurrentVodType] = useState(vodType)
   const [currentStreamId, setCurrentStreamId] = useState(streamId)
 
-  useEffect(() => {
-    setCurrentTmdbId(initialTmdbId)
-    setCurrentTitle(title)
-    setCurrentVodType(vodType)
-    setCurrentStreamId(streamId)
-  }, [initialTmdbId, title, vodType, streamId])
+  const [prevProps, setPrevProps] = useState({ initialTmdbId, title, vodType, streamId, isOpen })
+
+  if (prevProps.initialTmdbId !== initialTmdbId || 
+      prevProps.title !== title || 
+      prevProps.vodType !== vodType || 
+      prevProps.streamId !== streamId ||
+      prevProps.isOpen !== isOpen) {
+    
+    setPrevProps({ initialTmdbId, title, vodType, streamId, isOpen })
+    
+    if (prevProps.isOpen !== isOpen && !isOpen) {
+      // Modal just closed — reset everything
+      setActiveStream(null)
+      setIsFavorite(false)
+      setFavoriteId(null)
+      setTmdbDetails(null)
+      setSimilarTitles([])
+      setShowTrailer(false)
+    } else {
+      // Item changed or modal opened — update internal state
+      if (prevProps.initialTmdbId !== initialTmdbId || prevProps.title !== title) {
+        setCurrentTmdbId(initialTmdbId)
+        setCurrentTitle(title)
+        setCurrentVodType(vodType)
+        setCurrentStreamId(streamId)
+        setTmdbDetails(null)
+        setSimilarTitles([])
+        setShowTrailer(false)
+      }
+
+      // Handle auto-play during render if it's the first time modal is opening for this item
+      if (!prevProps.isOpen && isOpen && autoPlay && currentVodType !== 'series' && src && !activeStream) {
+        if (!isUnfriendly) {
+           setActiveStream({ url: src, title: currentTitle })
+        }
+      }
+    }
+  }
 
   // Fetch TMDB details and similar titles
   useEffect(() => {
     if (isOpen && currentTmdbId) {
-      setLoading(true)
       Promise.all([
         vodAPI.getDetails(currentTmdbId, currentVodType === 'series' ? 'series' : 'movie'),
         vodAPI.getSimilar(currentTmdbId, currentVodType === 'series' ? 'series' : 'movie')
@@ -77,35 +109,21 @@ export default function WatchModal({
         setSimilarTitles(similarRes.data)
       }).catch(err => {
         console.error('Failed to fetch TMDB data', err)
-      }).finally(() => {
-        setLoading(false)
       })
     }
   }, [isOpen, currentTmdbId, currentVodType])
 
   // Sync active stream and favorite status
   useEffect(() => {
-    if (!isOpen) {
-      setActiveStream(null)
-      setIsFavorite(false)
-      setFavoriteId(null)
-      setTmdbDetails(null)
-      setSimilarTitles([])
-      setShowTrailer(false)
-    } else {
-      // ONLY auto-play if specifically requested AND it's not a series
-      if (autoPlay && currentVodType !== 'series' && src && !activeStream) {
-        if (isUnfriendly) {
-           toast.success('Use an external player for this stream format')
-        } else {
-           setActiveStream({ url: src, title: currentTitle })
-        }
+    if (isOpen) {
+      if (autoPlay && currentVodType !== 'series' && src && !activeStream && isUnfriendly) {
+         toast.success('Use an external player for this stream format')
       }
       
       const checkFavorite = async () => {
         try {
           const res = await homeAPI.getFavorites(currentVodType === 'live' ? 'channel' : currentVodType)
-          const fav = res.data.favorites.find((f: any) => 
+          const fav = res.data.favorites.find((f: { id: string; item_id: string }) => 
             f.item_id === (currentVodType === 'live' ? `${providerId}:${currentStreamId || currentTitle}` : (currentStreamId || currentTitle))
           )
           if (fav) {
@@ -115,7 +133,7 @@ export default function WatchModal({
             setIsFavorite(false)
             setFavoriteId(null)
           }
-        } catch (_) {}
+        } catch {}
       }
       checkFavorite()
     }
@@ -142,7 +160,7 @@ export default function WatchModal({
         setFavoriteId(res.data.favorite.id)
         toast.success('Added to favorites')
       }
-    } catch (err) {
+    } catch {
       toast.error('Failed to update favorite')
     }
   }
@@ -158,7 +176,7 @@ export default function WatchModal({
         vodType: currentVodType,
         progressPct: pct
       })
-    } catch (_) {}
+    } catch {}
   }
 
   const openInPlayer = (player: MobilePlayer) => {
@@ -198,9 +216,9 @@ export default function WatchModal({
 
   if (!isOpen) return null
 
-  const trailer = tmdbDetails?.videos?.results?.find((v: any) => v.type === 'Trailer' && v.site === 'YouTube')
+  const trailer = tmdbDetails?.videos?.results?.find((v: { type: string; site: string }) => v.type === 'Trailer' && v.site === 'YouTube')
   const cast = tmdbDetails?.credits?.cast?.slice(0, 10) || []
-  const genres = tmdbDetails?.genres?.map((g: any) => g.name).join(', ')
+  const genres = tmdbDetails?.genres?.map((g: { name: string }) => g.name).join(', ')
   const runtime = tmdbDetails?.runtime 
     ? `${Math.floor(tmdbDetails.runtime / 60)}h ${tmdbDetails.runtime % 60}m`
     : tmdbDetails?.episode_run_time?.[0] 
@@ -339,7 +357,7 @@ export default function WatchModal({
               {/* Right Column */}
               <div className="space-y-6">
                 <h1 className="text-4xl md:text-7xl font-bold tracking-tight">{currentTitle}</h1>
-                {tmdbDetails?.tagline && <p className="text-2xl italic text-zinc-400 font-medium">"{tmdbDetails.tagline}"</p>}
+                {tmdbDetails?.tagline && <p className="text-2xl italic text-zinc-400 font-medium">&ldquo;{tmdbDetails.tagline}&rdquo;</p>}
                 
                 <div className="flex flex-wrap items-center gap-6 text-base font-semibold">
                   {tmdbDetails?.release_date && <span className="text-zinc-300">{tmdbDetails.release_date.split('-')[0]}</span>}
@@ -384,7 +402,7 @@ export default function WatchModal({
                   <div className="space-y-4 pt-8 border-t border-white/10">
                     <h3 className="text-xl font-bold uppercase tracking-widest text-zinc-500">Cast</h3>
                     <div className="flex gap-6 overflow-x-auto scrollbar-hide pb-4">
-                      {cast.map((person: any) => (
+                      {cast.map((person: { id: number; profile_path: string | null; name: string; character: string }) => (
                         <div key={person.id} className="flex-shrink-0 w-28 text-center space-y-3">
                           <div className="h-28 w-28 rounded-full overflow-hidden mx-auto border-2 border-zinc-800 shadow-xl">
                             {person.profile_path ? (
@@ -418,7 +436,6 @@ export default function WatchModal({
                 <EpisodeSelector 
                   providerId={providerId}
                   seriesId={currentStreamId}
-                  seriesTitle={currentTitle}
                   tmdbId={currentTmdbId}
                   onWatch={(url, epTitle) => setActiveStream({ url, title: epTitle })}
                 />
@@ -430,11 +447,11 @@ export default function WatchModal({
               <div className="mt-20 px-4 md:px-12 space-y-8 pt-12 border-t border-white/10">
                 <h3 className="text-3xl font-bold tracking-tight">More Like This</h3>
                 <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-8">
-                  {similarTitles.map((item: any) => {
+                  {similarTitles.map((item: { id: number; title?: string; name?: string; poster_path?: string; in_library: boolean; library_item?: { id?: string; stream_id?: string; is_watched?: boolean; streamUrl?: string } }) => {
                     const vodItem: VodItem = {
                       id: item.library_item?.id || `similar-${item.id}`,
                       stream_id: item.library_item?.stream_id || '',
-                      raw_title: item.title || item.name,
+                      raw_title: item.title || item.name || 'Unknown',
                       vod_type: currentVodType === 'series' ? 'series' : 'movie',
                       poster_url: item.poster_path ? `https://image.tmdb.org/t/p/w342${item.poster_path}` : undefined,
                       tmdb_id: item.id,
@@ -446,9 +463,9 @@ export default function WatchModal({
                         <NetflixCard 
                           item={vodItem}
                           onInfo={() => {
-                             if (item.in_library) {
+                             if (item.in_library && item.library_item) {
                                setCurrentTmdbId(item.id)
-                               setCurrentTitle(item.title || item.name)
+                               setCurrentTitle(item.title || item.name || 'Unknown')
                                setCurrentStreamId(item.library_item.stream_id)
                                setTmdbDetails(null)
                                setSimilarTitles([])
@@ -458,12 +475,12 @@ export default function WatchModal({
                              }
                           }}
                           onPlay={() => {
-                            if (item.in_library && item.library_item.streamUrl) {
-                              setActiveStream({ url: item.library_item.streamUrl, title: item.title || item.name })
-                            } else if (item.in_library) {
+                            if (item.in_library && item.library_item?.streamUrl) {
+                              setActiveStream({ url: item.library_item.streamUrl, title: item.title || item.name || 'Unknown' })
+                            } else if (item.in_library && item.library_item) {
                                // If it's in library but no stream URL yet, navigate to it
                                setCurrentTmdbId(item.id)
-                               setCurrentTitle(item.title || item.name)
+                               setCurrentTitle(item.title || item.name || 'Unknown')
                                setCurrentStreamId(item.library_item.stream_id)
                                setTmdbDetails(null)
                                setSimilarTitles([])

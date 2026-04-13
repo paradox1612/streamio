@@ -7,7 +7,7 @@ Last updated: 2026-04-04
 - StreamBridge has a Helm chart suitable as a base for K3s deployment.
 - The repository already includes a starter K3s values file at `deployment/helm/streambridge/values.k3s.yaml`.
 - A LAN-only homelab values file now exists at `deployment/helm/streambridge/values.homelab.yaml`.
-- A secret-bearing deployment values file has been staged outside the repo at `~/Desktop/k3s/artifacts/streambridge-values.thekush.dev.yaml`.
+- A secret-bearing deployment values file has been staged outside the repo at `~/Desktop/k3s/artifacts/streambridge-values.example.yaml`.
 - Deployment has not been executed from this workspace yet.
 
 ## Known Facts
@@ -19,7 +19,7 @@ Last updated: 2026-04-04
 - User reports ingress controller: NGINX
 - User reports Cloudflare container/services exist in cluster
 - Resolved K3s context via `KUBECONFIG=/Users/kush-mac/.kube/config-k3s`
-- Target hostname: `streambridge.thekush.dev`
+- Target hostname: `stream.example.com`
 - GitHub Actions image publishing workflow added for GHCR
 - Current repo state: clean working tree
 
@@ -34,7 +34,7 @@ Last updated: 2026-04-04
 - Confirmed access to target K3s cluster from this shell: yes
 - External image registry required: no
 - Public DNS required: no
-- Planned hostname: `streambridge.thekush.dev`
+- Planned hostname: `stream.example.com`
 - Planned database model: in-cluster PostgreSQL
 
 ## Immediate Blockers

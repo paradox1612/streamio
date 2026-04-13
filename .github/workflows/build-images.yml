@@ -12,8 +12,7 @@ env:
   REGISTRY: ghcr.io
   FRONTEND_IMAGE: ghcr.io/paradox1612/streambridge-frontend
   BACKEND_IMAGE: ghcr.io/paradox1612/streambridge-backend
-  DEFAULT_FRONTEND_URL: https://streambridge.thekush.dev
-  DEFAULT_API_URL: https://streambridge.thekush.dev
+  PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
 
 jobs:
   build-and-push:
@@ -121,6 +120,13 @@ jobs:
           dockerfile: frontend-next/Dockerfile
           skip-extraction: ${{ steps.frontend-cache-mounts.outputs.cache-hit }}
 
+      - name: Validate frontend public URL
+        if: steps.changes.outputs.frontend == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${PUBLIC_BASE_URL:-}" || { echo "Set the PUBLIC_BASE_URL repository variable before building the frontend image."; exit 1; }
+
       - name: Build and push frontend
         if: steps.changes.outputs.frontend == 'true'
         uses: docker/build-push-action@v7
@@ -131,7 +137,8 @@ jobs:
           tags: ${{ steps.frontend-meta.outputs.tags }}
           labels: ${{ steps.frontend-meta.outputs.labels }}
           build-args: |
-            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL || env.DEFAULT_API_URL }}
+            NEXT_PUBLIC_API_URL=${{ env.PUBLIC_BASE_URL }}
+            NEXT_PUBLIC_SITE_URL=${{ env.PUBLIC_BASE_URL }}
             NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
           cache-from: |
             type=gha,scope=frontend-next-image
@@ -242,6 +249,7 @@ jobs:
       VALUES_FILE: ${{ vars.K3S_VALUES_FILE || '/runner-secrets/streambridge-values.yaml' }}
       RELEASE_NAME: ${{ vars.K3S_RELEASE_NAME || 'streambridge' }}
       RELEASE_NAMESPACE: ${{ vars.K3S_NAMESPACE || 'streambridge' }}
+      PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
 
     steps:
       - name: Checkout
@@ -258,6 +266,7 @@ jobs:
         run: |
           set -euo pipefail
           test -f "$VALUES_FILE"
+          test -n "${PUBLIC_BASE_URL:-}" || { echo "Set the PUBLIC_BASE_URL repository variable before building or deploying."; exit 1; }
           if [ -n "${KUBECONFIG_PATH:-}" ]; then
             test -f "$KUBECONFIG_PATH"
             export KUBECONFIG="$KUBECONFIG_PATH"
@@ -359,9 +368,9 @@ jobs:
             -f "$VALUES_FILE" \
             --set-string frontend.image.tag="$FRONTEND_TAG" \
             --set-string backend.image.tag="$BACKEND_TAG" \
-            --set-string backend.env.frontendUrl="${{ vars.NEXT_PUBLIC_API_URL || env.DEFAULT_FRONTEND_URL }}" \
-            --set-string backend.env.baseUrl="${{ vars.NEXT_PUBLIC_API_URL || env.DEFAULT_API_URL }}" \
-            --set-string backend.env.apiBaseUrl="${{ vars.NEXT_PUBLIC_API_URL || env.DEFAULT_API_URL }}" \
+            --set-string backend.env.frontendUrl="$PUBLIC_BASE_URL" \
+            --set-string backend.env.baseUrl="$PUBLIC_BASE_URL" \
+            --set-string backend.env.apiBaseUrl="$PUBLIC_BASE_URL" \
             $VPN_ARG \
             $PIA_ARGS \
             $PAYGATE_ARGS \

@@ -83,18 +83,19 @@ The chart expects prebuilt container images.
 - `frontend.image.repository`
 - `deployment/helm/streambridge/values.k3s.yaml` assumes Traefik, `local-path`, and cert-manager with a `letsencrypt-prod` ClusterIssuer.
 
-The frontend image must be built with the correct `VITE_API_URL` because the current frontend uses a build-time API URL.
+The frontend image must be built with the correct public URL values because the current frontend uses build-time environment variables.
 
 Example:
 
 ```bash
 docker build \
   -t ghcr.io/your-org/streambridge-frontend:latest \
-  --build-arg VITE_API_URL=https://stream.example.com \
-  ./frontend
+  --build-arg NEXT_PUBLIC_API_URL=https://stream.example.com \
+  --build-arg NEXT_PUBLIC_SITE_URL=https://stream.example.com \
+  ./frontend-next
 ```
 
-The frontend image must be rebuilt whenever the public API URL changes because Vite injects `VITE_API_URL` at build time.
+The frontend image must be rebuilt whenever the public URL changes because Next.js injects `NEXT_PUBLIC_*` variables at build time.
 
 For a homelab with no external registry, a common workflow is:
 
@@ -102,8 +103,9 @@ For a homelab with no external registry, a common workflow is:
 docker build -t streambridge-backend:homelab ./backend
 docker build \
   -t streambridge-frontend:homelab \
-  --build-arg VITE_API_URL=http://streambridge.<node-ip>.nip.io \
-  ./frontend
+  --build-arg NEXT_PUBLIC_API_URL=http://streambridge.<node-ip>.nip.io \
+  --build-arg NEXT_PUBLIC_SITE_URL=http://streambridge.<node-ip>.nip.io \
+  ./frontend-next
 
 docker save streambridge-backend:homelab | ssh <k3s-node> "sudo k3s ctr images import -"
 docker save streambridge-frontend:homelab | ssh <k3s-node> "sudo k3s ctr images import -"
@@ -114,7 +116,7 @@ For a GitHub-driven workflow, push to `main` or run the workflow manually to pub
 - `ghcr.io/paradox1612/streambridge-backend`
 - `ghcr.io/paradox1612/streambridge-frontend`
 
-The frontend build reads `VITE_API_URL` from the GitHub Actions repository variable `VITE_API_URL`. If that variable is not set, it defaults to `https://streambridge.thekush.dev`.
+The GitHub Actions workflow reads the public origin from the repository variable `PUBLIC_BASE_URL` and uses it for both frontend build args and backend Helm env injection.
 
 ### Self-Hosted K3s Deploy Runner
 

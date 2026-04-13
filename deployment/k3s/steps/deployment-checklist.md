@@ -30,8 +30,8 @@
 ## 4. Image Build
 
 - Commit and push the workflow at `.github/workflows/build-images.yml`.
-- In GitHub repository settings, add repository variable `VITE_API_URL`:
-  - `https://streambridge.thekush.dev`
+- In GitHub repository settings, add repository variable `PUBLIC_BASE_URL`:
+  - `https://stream.example.com`
 - Run the workflow manually or push to `main`.
 - Confirm the images exist in GHCR before deployment.
 
@@ -64,7 +64,7 @@ ghcr.io/paradox1612/streambridge-frontend:sha-<short-sha>
 - Chosen hostname:
 
 ```text
-streambridge.thekush.dev
+stream.example.com
 ```
 
 ## 6. Database Choice
@@ -111,8 +111,8 @@ kubectl logs deploy/streambridge-scheduler -n streambridge --tail=200
 - Test health:
 
 ```bash
-  curl -I http://streambridge.thekush.dev/health
-  curl -I http://streambridge.thekush.dev/
+  curl -I https://stream.example.com/health
+  curl -I https://stream.example.com/
 ```
 
 ## 10. Post-Deploy

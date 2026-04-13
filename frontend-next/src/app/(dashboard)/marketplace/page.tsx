@@ -8,7 +8,6 @@ import {
   ChevronRight,
   CreditCard,
   ExternalLink,
-  Globe2,
   History,
   LayoutGrid,
   Loader2,
@@ -92,11 +91,6 @@ function formatPrice(cents: number, currency = 'USD') {
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-function formatPeriod(period: string, count: number = 1) {
-  if (count === 1) return period === 'day' ? 'daily' : period === 'month' ? 'monthly' : 'yearly'
-  return `every ${count} ${period}s`
 }
 
 function getDurationLabel(offering: Offering) {

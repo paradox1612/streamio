@@ -111,14 +111,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const filteredGroups = navGroups.map((group) => ({
     ...group,
     items: group.items.filter((item) => {
-      if (item.path === '/live') return Boolean((user as any)?.can_use_live_tv)
-      if (item.path === '/vod') return Boolean((user as any)?.canBrowseWebCatalog ?? (user as any)?.can_browse_web_catalog ?? (user as any)?.has_byo_providers)
+      if (item.path === '/live') return Boolean(user?.can_use_live_tv)
+      if (item.path === '/vod') return Boolean(user?.canBrowseWebCatalog ?? user?.can_browse_web_catalog ?? user?.has_byo_providers)
       return true
     }),
   })).filter(g => g.items.length > 0)
 
   const flatNavItems = filteredGroups.flatMap(g => g.items)
-  /* eslint-enable @typescript-eslint/no-explicit-any */
+   
 
   return (
     <div className="flex min-h-screen">

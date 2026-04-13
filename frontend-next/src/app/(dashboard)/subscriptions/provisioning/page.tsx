@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { marketplaceAPI } from '@/utils/api'
-import { CheckCircle2, XCircle, Tv2 } from 'lucide-react'
+import { XCircle, Tv2 } from 'lucide-react'
 
 const MESSAGES = [
   'Securing your stream credentials…',
@@ -38,7 +38,8 @@ function ProvisioningContent() {
   const [elapsed, setElapsed] = useState(0)
   const [timedOut, setTimedOut] = useState(false)
 
-  const startedAt = useRef(Date.now())
+  const [startTime] = useState(() => Date.now())
+  const startedAt = useRef(startTime)
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const msgTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   const elapsedTimer = useRef<ReturnType<typeof setInterval> | null>(null)

@@ -146,12 +146,12 @@ twenty:
     port: 3000
   ingress:
     enabled: true
-    host: twenty.thekush.dev
+    host: twenty.example.com
     tls: false
     secretName: ""
     annotations: {}
   env:
-    SERVER_URL: "https://twenty.thekush.dev"
+    SERVER_URL: "https://twenty.example.com"
     REDIS_URL: "redis://{{ .Release.Name }}-redis-master:6379"
     STORAGE_TYPE: local
   secrets:

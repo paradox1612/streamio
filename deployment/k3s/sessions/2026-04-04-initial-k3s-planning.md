@@ -17,7 +17,7 @@ Prepare StreamBridge for deployment to a home-lab K3s cluster and establish pers
 - The cluster has multiple nodes on the `192.168.1.x` LAN.
 - User reports the cluster uses NGINX ingress, not Traefik.
 - User reports Cloudflare components are running in-cluster.
-- Chosen hostname: `streambridge.thekush.dev`
+- Chosen hostname: `stream.example.com`
 - The repo working tree was clean during this session.
 
 ## Actions Taken
@@ -29,7 +29,7 @@ Prepare StreamBridge for deployment to a home-lab K3s cluster and establish pers
 - Resolved the active K3s context from `KUBECONFIG=/Users/kush-mac/.kube/config-k3s`.
 - Retrieved the TMDB API key from local `backend/.env`.
 - Generated a JWT secret and a PostgreSQL password.
-- Wrote a deployment-ready values file to `~/Desktop/k3s/artifacts/streambridge-values.thekush.dev.yaml`.
+- Wrote a deployment-ready values file to `~/Desktop/k3s/artifacts/streambridge-values.example.yaml`.
 - Added a GitHub Actions workflow to build and publish backend and frontend images to GHCR.
 - Recorded this initial session.
 

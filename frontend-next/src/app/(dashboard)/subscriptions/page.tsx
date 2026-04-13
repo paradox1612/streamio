@@ -6,13 +6,32 @@ import { motion } from 'framer-motion'
 import { marketplaceAPI } from '@/utils/api'
 import { 
   CreditCard, Calendar, CheckCircle2, AlertCircle, 
-  ExternalLink, XCircle, ArrowRight, History
+  ExternalLink, ArrowRight, History
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import { AxiosError } from 'axios'
+
+interface Subscription {
+  id: string
+  offering_name: string | null
+  payment_provider: string
+  status: string
+  current_period_end: string
+  cancel_at_period_end: boolean
+  user_provider_id?: string
+}
+
+interface Payment {
+  id: string
+  amount_cents: number
+  currency: string
+  created_at: string
+  status: string
+}
 
 function formatCents(cents: number, currency = 'usd') {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(cents / 100)
@@ -28,8 +47,8 @@ function formatDate(dateString?: string | null) {
 }
 
 export default function SubscriptionsPage() {
-  const [subscriptions, setSubscriptions] = useState<any[]>([])
-  const [payments, setPayments] = useState<any[]>([])
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
+  const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
@@ -58,8 +77,9 @@ export default function SubscriptionsPage() {
       const res = await marketplaceAPI.cancelSubscription(cancellingId)
       toast.success(res.data.message || 'Subscription cancelled')
       load()
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Failed to cancel subscription')
+    } catch (err) {
+      const axiosError = err as AxiosError<{ error?: string }>
+      toast.error(axiosError.response?.data?.error || 'Failed to cancel subscription')
     } finally {
       setIsCancelling(false)
       setCancellingId(null)

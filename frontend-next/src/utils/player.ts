@@ -1,10 +1,9 @@
-import { isIOS, isAndroid } from './device'
+import { isAndroid } from './device'
 
 export type MobilePlayer = 'vlc' | 'infuse' | 'nplayer' | 'mxplayer' | 'iina'
 
 export const getMobilePlayerUrl = (player: MobilePlayer, videoUrl: string, title?: string) => {
   const encodedUrl = encodeURIComponent(videoUrl)
-  const rawUrlNoProto = videoUrl.replace(/^https?:\/\//, '')
 
   switch (player) {
     case 'vlc':

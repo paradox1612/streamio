@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { providerAPI } from '@/utils/api'
 import { isMobileDevice, isBrowserUnfriendly, isIOS, isAndroid } from '@/utils/device'
 import { getAvailablePlayers, getMobilePlayerUrl, MobilePlayer } from '@/utils/player'
-import { Play, Laptop, Monitor, Smartphone, Loader2, List, Check, Copy, ExternalLink } from 'lucide-react'
+import { Play, Laptop, Monitor, Smartphone, Loader2, List, Check, Copy } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface Episode {
@@ -37,16 +37,20 @@ interface SeasonMap {
 interface EpisodeSelectorProps {
   providerId: string
   seriesId: string
-  seriesTitle: string
   tmdbId?: number
   onWatch: (url: string, title: string) => void
 }
 
-export default function EpisodeSelector({ providerId, seriesId, seriesTitle, tmdbId, onWatch }: EpisodeSelectorProps) {
+export default function EpisodeSelector({ providerId, seriesId, tmdbId, onWatch }: EpisodeSelectorProps) {
   const [seasons, setSeasons] = useState<SeasonMap>({})
   const [loading, setLoading] = useState(true)
   const [activeSeason, setActiveSeason] = useState<string | null>(null)
-  const [providerInfo, setProviderInfo] = useState<any>(null)
+  const [providerInfo, setProviderInfo] = useState<{
+    username: string
+    password: string
+    active_host?: string
+    hosts?: string[]
+  } | null>(null)
 
   const isMobile = isMobileDevice()
 
@@ -64,7 +68,7 @@ export default function EpisodeSelector({ providerId, seriesId, seriesTitle, tmd
         if (seasonKeys.length > 0) {
           setActiveSeason(seasonKeys[0])
         }
-      } catch (err) {
+      } catch {
         toast.error('Failed to load episodes')
       } finally {
         setLoading(false)

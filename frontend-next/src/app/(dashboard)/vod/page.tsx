@@ -13,10 +13,22 @@ import { useAuthStore } from '@/store/auth'
 import toast from 'react-hot-toast'
 import { VodItem } from '@/types/vod'
 
+interface Provider {
+  id: string
+  name: string
+}
+
+interface User {
+  id: string
+  has_byo_providers?: boolean
+  preferred_languages?: string[]
+  excluded_languages?: string[]
+}
+
 export default function VodPage() {
-  const { user } = useAuthStore()
+  const { user } = useAuthStore() as unknown as { user: User | null }
   const router = useRouter()
-  const [providers, setProviders] = useState<any[]>([])
+  const [providers, setProviders] = useState<Provider[]>([])
   const [selectedProvider, setSelectedProvider] = useState('')
   const [loadingProviders, setLoadingProviders] = useState(true)
 
@@ -44,7 +56,6 @@ export default function VodPage() {
   // Browse state (Infinite Scroll)
   const [browseItems, setBrowseItems] = useState<VodItem[]>([])
   const [browseLoading, setBrowseLoading] = useState(false)
-  const [browsePage, setBrowsePage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
 
   // Filters
@@ -57,7 +68,7 @@ export default function VodPage() {
   const [watchItem, setWatchItem] = useState<VodItem | null>(null)
   const [autoPlay, setAutoPlay] = useState(false)
 
-  const hasByoProviders = Boolean((user as any)?.has_byo_providers)
+  const hasByoProviders = Boolean(user?.has_byo_providers)
 
   // Infinite Scroll Trigger
   const loaderRef = useRef(null)
@@ -76,11 +87,12 @@ export default function VodPage() {
       .finally(() => setLoadingProviders(false))
   }, [hasByoProviders])
 
-  const mapToVodItem = useCallback((item: any): VodItem => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapToVodItem = useCallback((item: Record<string, any>): VodItem => ({
     id: item.id || item.tmdb_id?.toString() || Math.random().toString(),
     stream_id: item.stream_id || '',
     raw_title: item.raw_title || item.title || item.name || 'Unknown Title',
-    vod_type: item.vod_type || (item.media_type === 'tv' ? 'series' : item.type === 'series' ? 'series' : 'movie'),
+    vod_type: (item.vod_type || (item.media_type === 'tv' ? 'series' : item.type === 'series' ? 'series' : 'movie')) as 'movie' | 'series',
     tmdb_id: item.tmdb_id || item.id,
     imdb_id: item.imdb_id,
     confidence_score: item.confidence_score,
@@ -102,8 +114,8 @@ export default function VodPage() {
   const filterByLanguage = useCallback((items: VodItem[]) => {
     if (!user) return items
     
-    const preferred = (user as any).preferred_languages || []
-    const excluded = (user as any).excluded_languages || []
+    const preferred = user.preferred_languages || []
+    const excluded = user.excluded_languages || []
     
     if (preferred.length === 0 && excluded.length === 0) return items
 
@@ -188,7 +200,7 @@ export default function VodPage() {
               backdrop_url: details.data.backdrop_path ? `https://image.tmdb.org/t/p/w1280${details.data.backdrop_path}` : item.backdrop_url,
               overview: details.data.overview,
               rating: details.data.vote_average,
-              genres: details.data.genres?.map((g: any) => g.name),
+              genres: details.data.genres?.map((g: { name: string }) => g.name),
               runtime: details.data.runtime ? `${details.data.runtime}m` : undefined,
             })
             // Update featured section progressively
@@ -208,7 +220,7 @@ export default function VodPage() {
     if (!selectedProvider) return
     setBrowseLoading(true)
     try {
-      const params: any = {
+      const params: Record<string, string | number | undefined> = {
         page,
         limit: 40,
         type: activeType || undefined,
@@ -230,14 +242,12 @@ export default function VodPage() {
   useEffect(() => {
     if (selectedProvider) {
       loadSections()
-      setBrowsePage(1)
       loadBrowse(1, true)
     }
   }, [selectedProvider, loadSections, loadBrowse])
 
   useEffect(() => {
     if (selectedProvider) {
-      setBrowsePage(1)
       loadBrowse(1, true)
     }
   }, [activeType, searchQuery, activeSort, selectedProvider, loadBrowse])
@@ -245,13 +255,9 @@ export default function VodPage() {
   const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
     const target = entries[0]
     if (target.isIntersecting && hasMore && !browseLoading) {
-      setBrowsePage(prev => {
-        const next = prev + 1
-        loadBrowse(next)
-        return next
-      })
+      loadBrowse(Math.floor(browseItems.length / 40) + 1)
     }
-  }, [hasMore, browseLoading, loadBrowse])
+  }, [hasMore, browseLoading, loadBrowse, browseItems.length])
 
   useEffect(() => {
     const observer = new IntersectionObserver(handleObserver, { threshold: 0.1 })
@@ -375,7 +381,7 @@ export default function VodPage() {
                       {['', 'movie', 'series'].map(type => (
                         <button
                           key={type}
-                          onClick={() => setActiveType(type as any)}
+                          onClick={() => setActiveType(type as '' | 'movie' | 'series')}
                           className={`px-4 py-1.5 rounded text-xs font-bold border transition-all ${activeType === type ? 'bg-white text-black border-white' : 'bg-zinc-900 text-zinc-400 border-white/10 hover:border-white/30'}`}
                         >
                           {type === '' ? 'All' : type === 'movie' ? 'Movies' : 'Series'}
@@ -389,7 +395,7 @@ export default function VodPage() {
                       {['', 'newest', 'rating'].map(sort => (
                         <button
                           key={sort}
-                          onClick={() => setActiveSort(sort as any)}
+                          onClick={() => setActiveSort(sort as '' | 'newest' | 'rating')}
                           className={`px-4 py-1.5 rounded text-xs font-bold border transition-all ${activeSort === sort ? 'bg-white text-black border-white' : 'bg-zinc-900 text-zinc-400 border-white/10 hover:border-white/30'}`}
                         >
                           {sort === '' ? 'Default' : sort === 'newest' ? 'Newest' : 'Top Rated'}

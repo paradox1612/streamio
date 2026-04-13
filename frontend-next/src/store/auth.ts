@@ -15,6 +15,9 @@ export interface User {
   has_byo_providers?: boolean
   free_access_status?: string
   provider_count?: number
+  can_use_live_tv?: boolean
+  canBrowseWebCatalog?: boolean
+  can_browse_web_catalog?: boolean
 }
 
 interface AuthState {

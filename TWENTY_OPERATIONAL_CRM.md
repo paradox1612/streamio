@@ -143,7 +143,7 @@ curl -sS -H "Authorization: Bearer $API_KEY" \
 - Get an admin token from StreamBridge:
 
 ```bash
-curl -sS -X POST https://streambridge.thekush.dev/api/admin/auth/login \
+curl -sS -X POST ${PUBLIC_BASE_URL:-https://stream.example.com}/api/admin/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"<admin-username>","password":"<admin-password>"}'
 ```
@@ -151,14 +151,14 @@ curl -sS -X POST https://streambridge.thekush.dev/api/admin/auth/login \
 - Trigger a full CRM sync:
 
 ```bash
-curl -X POST https://streambridge.thekush.dev/api/admin/crm/sync-all \
+curl -X POST ${PUBLIC_BASE_URL:-https://stream.example.com}/api/admin/crm/sync-all \
   -H "x-admin-token: <admin-token>"
 ```
 
 - Check CRM status:
 
 ```bash
-curl -sS https://streambridge.thekush.dev/api/admin/crm/status \
+curl -sS ${PUBLIC_BASE_URL:-https://stream.example.com}/api/admin/crm/status \
   -H "x-admin-token: <admin-token>"
 ```
 
