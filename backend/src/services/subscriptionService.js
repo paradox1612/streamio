@@ -3,8 +3,10 @@ const { pool, offeringQueries, subscriptionQueries, paymentQueries, providerNetw
 const logger = require('../utils/logger');
 const eventBus = require('../utils/eventBus');
 const providerService = require('./providerService');
+const { sendOrderConfirmation } = require('./emailService');
 const ProviderAdapterFactory = require('../providers/ProviderAdapterFactory');
 const { resolveSelectedPlan } = require('../utils/marketplacePlans');
+const authService = require('./authService');
 
 function sanitizeTokenPart(value, fallback = 'user') {
   const cleaned = String(value || '')
@@ -55,6 +57,35 @@ async function provisionInBackground(subscriptionId, userId, offering, opts) {
       await subscriptionQueries.update(subscriptionId, { user_provider_id: userProvider.id });
       await subscriptionQueries.updateProvisioningStatus(subscriptionId, 'active');
       logger.info(`[SubscriptionService] Provisioning complete for sub ${subscriptionId}, provider ${userProvider.id}`);
+
+      // ── Notification ──────────────────────────────────────────────────────────
+      try {
+        const { rows: userRows } = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+        const user = userRows[0];
+        if (user && user.email) {
+          const host = userProvider.active_host || (userProvider.hosts && userProvider.hosts[0]);
+          const m3uUrl = `${host}/get.php?username=${encodeURIComponent(userProvider.username)}&password=${encodeURIComponent(userProvider.password)}&type=m3u_plus&output=ts`;
+          
+          // One-click login link
+          const token = authService.signJwt({ userId: user.id, email: user.email });
+          const loginLink = `${process.env.FRONTEND_URL}/login?token=${token}&redirect=/providers/${userProvider.id}`;
+
+          await sendOrderConfirmation(user.email, {
+            offeringName: offering.name,
+            m3uUrl,
+            xtreamInfo: {
+              host,
+              username: userProvider.username,
+              password: userProvider.password,
+            },
+            loginLink,
+          });
+          logger.info(`[SubscriptionService] Order confirmation sent to ${user.email}`);
+        }
+      } catch (notifyErr) {
+        logger.error(`[SubscriptionService] Failed to send order confirmation for sub ${subscriptionId}: ${notifyErr.message}`);
+      }
+      // ─────────────────────────────────────────────────────────────────────────
     } else {
       await subscriptionQueries.updateProvisioningStatus(subscriptionId, 'failed', 'No credentials returned from provider');
       logger.warn(`[SubscriptionService] Provisioning returned null for sub ${subscriptionId}`);

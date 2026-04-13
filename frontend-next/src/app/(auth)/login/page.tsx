@@ -1,13 +1,13 @@
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import toast from 'react-hot-toast'
 import axios from 'axios'
 import { useGoogleLogin } from '@react-oauth/google'
 import { useAuthStore } from '@/store/auth'
-import { authAPI } from '@/utils/api'
+import { authAPI, userAPI } from '@/utils/api'
 import { ModernStunningSignIn } from '@/components/ui/modern-stunning-sign-in'
 
 function GoogleIcon() {
@@ -21,13 +21,42 @@ function GoogleIcon() {
   )
 }
 
-export default function LoginPage() {
+function LoginForm() {
   const { login } = useAuthStore()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [form, setForm] = useState({ email: '', password: '' })
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // ── Auto-login via Token ────────────────────────────────────────────────────
+  useEffect(() => {
+    const token = searchParams.get('token')
+    if (token) {
+      const doAutoLogin = async () => {
+        setLoading(true)
+        try {
+          // Persist token immediately so userAPI.getProfile works
+          localStorage.setItem('sb_token', token)
+          const { data: user } = await userAPI.getProfile()
+          login(user, token)
+          toast.success('Signed in automatically')
+          
+          const redirect = searchParams.get('redirect') || '/dashboard'
+          router.push(redirect)
+        } catch (err) {
+          console.error('Auto-login failed:', err)
+          localStorage.removeItem('sb_token')
+          toast.error('Session link expired or invalid')
+        } finally {
+          setLoading(false)
+        }
+      }
+      doAutoLogin()
+    }
+  }, [searchParams, login, router])
+  // ────────────────────────────────────────────────────────────────────────────
 
   const logo = useMemo(() => (
     <div className="relative flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/10 bg-white/[0.04] shadow-[0_18px_45px_rgba(8,16,31,0.38)]">
@@ -125,5 +154,13 @@ export default function LoginPage() {
         </div>
       }
     />
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   )
 }
