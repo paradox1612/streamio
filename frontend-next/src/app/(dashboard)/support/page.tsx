@@ -1,10 +1,11 @@
 'use client'
 
-import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { LifeBuoy, MessageSquareWarning, Send } from 'lucide-react'
+import { FormEvent, useEffect, useMemo, useState, useRef } from 'react'
+import { LifeBuoy, MessageSquareWarning, Send, ChevronLeft, RefreshCw, User, ShieldCheck, CheckCircle2, Clock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { errorReportAPI, userAPI } from '@/utils/api'
 import { useAuthStore } from '@/store/auth'
+import StatusBadge from '@/components/StatusBadge'
 
 const ticketCategories = [
   { value: 'feedback', label: 'Feedback' },
@@ -18,6 +19,8 @@ interface Ticket {
   status: string
   ticket_category?: string | null
   created_at: string
+  reviewed_at?: string | null
+  resolved_at?: string | null
 }
 
 interface TicketMessage {
@@ -29,7 +32,9 @@ interface TicketMessage {
 }
 
 function formatDate(value?: string | null) {
-  return value ? new Date(value).toLocaleString() : 'Unknown'
+  if (!value) return 'Unknown'
+  const d = new Date(value)
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 export default function SupportPage() {
@@ -46,6 +51,15 @@ export default function SupportPage() {
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [reply, setReply] = useState('')
   const [sendingReply, setSendingReply] = useState(false)
+  
+  // Mobile UI state
+  const [mobileThreadView, setMobileThreadView] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  const selectedTicket = useMemo(
+    () => tickets.find(t => t.id === selectedId),
+    [tickets, selectedId]
+  )
 
   const categoryLabel = useMemo(
     () => ticketCategories.find((entry) => entry.value === category)?.label || 'Support',
@@ -89,6 +103,12 @@ export default function SupportPage() {
       .finally(() => setLoadingMessages(false))
   }, [selectedId])
 
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [messages, loadingMessages])
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
     if (sending) return
@@ -116,6 +136,7 @@ export default function SupportPage() {
       setSubject('')
       setDetails('')
       await loadTickets(response.data?.id || null)
+      if (window.innerWidth < 1024) setMobileThreadView(true)
     } catch (error: unknown) {
       const message =
         (error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to send ticket'
@@ -147,15 +168,16 @@ export default function SupportPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
+      {/* Hero Section */}
       <section className="panel overflow-hidden p-5 sm:p-7 lg:p-8">
         <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
           <div>
             <div className="kicker mb-4">Support</div>
             <h1 className="text-3xl font-bold leading-tight text-white sm:text-4xl">
-              Send feedback, concerns, or complaints without leaving the dashboard.
+              Send feedback, concerns, or complaints.
             </h1>
             <p className="hero-copy mt-3">
-              Tickets land in the shared operator inbox, and replies from the admin team show up back here in the same thread.
+              Replies from the admin team show up back here in the same thread.
             </p>
           </div>
           <div className="panel-soft p-4 sm:p-5">
@@ -164,21 +186,25 @@ export default function SupportPage() {
               Shared operator inbox
             </div>
             <p className="mt-4 text-sm leading-6 text-slate-300/[0.68]">
-              Include a short subject and enough detail for follow-up. We attach your account context automatically when available.
+              Include enough detail for follow-up. We attach your account context automatically.
             </p>
           </div>
         </div>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-        <form onSubmit={handleSubmit} className="panel-soft p-5 sm:p-8">
+      <section className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
+        {/* New Ticket Form - Hidden on mobile if in thread view */}
+        <form 
+          onSubmit={handleSubmit} 
+          className={`panel-soft p-5 sm:p-8 ${mobileThreadView ? 'hidden lg:block' : 'block'}`}
+        >
           <p className="eyebrow mb-2">New Ticket</p>
-          <h2 className="section-title">Tell the team what happened</h2>
+          <h2 className="section-title">Open a discussion</h2>
 
           <div className="mt-6 space-y-5">
             <div>
               <label className="field-label">Category</label>
-              <select value={category} onChange={(event) => setCategory(event.target.value)} className="field-input">
+              <select value={category} onChange={(event) => setCategory(event.target.value)} className="field-select">
                 {ticketCategories.map((entry) => (
                   <option key={entry.value} value={entry.value}>
                     {entry.label}
@@ -192,7 +218,7 @@ export default function SupportPage() {
               <input
                 value={subject}
                 onChange={(event) => setSubject(event.target.value)}
-                placeholder="Short summary of the issue"
+                placeholder="Short summary"
                 className="field-input"
                 maxLength={200}
               />
@@ -203,134 +229,218 @@ export default function SupportPage() {
               <textarea
                 value={details}
                 onChange={(event) => setDetails(event.target.value)}
-                placeholder="Explain what happened, what you expected, and anything else the team should check."
-                className="field-input min-h-40"
+                placeholder="Explain what happened..."
+                className="field-input min-h-32"
               />
             </div>
 
-            <div>
-              <label className="field-label">Contact email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-                className="field-input"
-              />
-            </div>
-
-            <button type="submit" disabled={sending} className="btn-primary w-full sm:w-auto">
+            <button type="submit" disabled={sending} className="btn-primary w-full">
               <Send className="mr-2 inline h-4 w-4" />
-              {sending ? 'Sending ticket...' : 'Send Ticket'}
+              {sending ? 'Sending...' : 'Send Ticket'}
             </button>
           </div>
         </form>
 
-        <div className="panel-soft p-5 sm:p-8">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="eyebrow mb-2">Ticket Thread</p>
-              <h2 className="section-title">Replies and updates</h2>
+        {/* Ticket List & Thread Container */}
+        <div className="panel-soft flex flex-col overflow-hidden min-h-[600px] lg:h-[700px]">
+          
+          {/* List View - Hidden on mobile if in thread view */}
+          <div className={`flex-1 flex flex-col ${mobileThreadView ? 'hidden lg:flex' : 'flex'}`}>
+            <div className="p-5 sm:p-6 border-b border-white/[0.08] flex items-center justify-between">
+              <div>
+                <p className="eyebrow mb-1">Your Tickets</p>
+                <h3 className="text-lg font-bold text-white">Recent conversations</h3>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => loadTickets()} 
+                className="p-2 rounded-full hover:bg-white/5 transition-colors text-slate-400"
+              >
+                <RefreshCw className={`h-5 w-5 ${loadingTickets ? 'animate-spin' : ''}`} />
+              </button>
             </div>
-            <button type="button" onClick={() => loadTickets()} className="btn-secondary px-4 py-2 text-sm">
-              Refresh
-            </button>
-          </div>
 
-          <div className="mt-6 grid gap-5 lg:grid-cols-[0.82fr_1.18fr]">
-            <div className="space-y-3">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {loadingTickets ? (
-                <div className="text-sm text-slate-400">Loading tickets...</div>
+                <div className="text-sm text-slate-400 p-4 text-center">Loading...</div>
               ) : tickets.length === 0 ? (
-                <div className="rounded-3xl border border-white/[0.08] bg-white/[0.03] p-4 text-sm text-slate-400">
-                  No tickets yet. Submit one from the form to start a conversation.
+                <div className="p-8 text-center">
+                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-white/5 text-slate-500 mb-3">
+                    <LifeBuoy className="h-6 w-6" />
+                  </div>
+                  <p className="text-sm text-slate-400">No tickets yet.</p>
                 </div>
               ) : (
                 tickets.map((ticket) => (
                   <button
                     key={ticket.id}
                     type="button"
-                    onClick={() => setSelectedId(ticket.id)}
-                    className={`w-full rounded-3xl border p-4 text-left transition ${
+                    onClick={() => {
+                      setSelectedId(ticket.id)
+                      if (window.innerWidth < 1024) setMobileThreadView(true)
+                    }}
+                    className={`w-full rounded-2xl border p-4 text-left transition ${
                       selectedId === ticket.id
                         ? 'border-brand-400/25 bg-brand-500/10'
-                        : 'border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.05]'
+                        : 'border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.04]'
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm font-semibold text-white">{ticket.message}</span>
-                      <span className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
-                        {ticket.status}
-                      </span>
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <span className="text-sm font-semibold text-white line-clamp-1">{ticket.message}</span>
+                      <StatusBadge 
+                        status={ticket.status === 'open' ? 'checking' : ticket.status === 'resolved' ? 'online' : 'unknown'} 
+                        size="sm"
+                      />
                     </div>
-                    <p className="mt-2 text-xs text-slate-400">
-                      {(ticket.ticket_category || 'ticket').toUpperCase()} · {formatDate(ticket.created_at)}
+                    <p className="text-[11px] text-slate-400 uppercase tracking-wider font-medium">
+                      {(ticket.ticket_category || 'ticket')} · {formatDate(ticket.created_at)}
                     </p>
                   </button>
                 ))
               )}
             </div>
+          </div>
 
-            <div className="space-y-4">
-              {!selectedId ? (
-                <div className="rounded-3xl border border-white/[0.08] bg-white/[0.03] p-4 text-sm text-slate-400">
-                  Select a ticket to read the conversation.
-                </div>
-              ) : (
-                <>
-                  <div className="max-h-[26rem] space-y-3 overflow-y-auto pr-1">
-                    {loadingMessages ? (
-                      <div className="text-sm text-slate-400">Loading conversation...</div>
-                    ) : messages.length === 0 ? (
-                      <div className="rounded-3xl border border-white/[0.08] bg-white/[0.03] p-4 text-sm text-slate-400">
-                        No replies yet. The original ticket details are visible to the admin team in their inbox.
-                      </div>
-                    ) : (
-                      messages.map((message) => (
-                        <div
-                          key={message.id}
-                          className={`rounded-3xl border p-4 ${
-                            message.author_type === 'admin'
-                              ? 'border-brand-400/20 bg-brand-500/10'
-                              : 'border-white/[0.08] bg-white/[0.03]'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-semibold text-white">
-                              {message.author_type === 'admin' ? 'Admin' : 'You'}
-                            </p>
-                            <p className="text-xs text-slate-400">{formatDate(message.created_at)}</p>
-                          </div>
-                          <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-200">{message.body}</p>
-                        </div>
-                      ))
-                    )}
+          {/* Thread View - Hidden on mobile if NOT in thread view */}
+          <div className={`flex-1 flex flex-col bg-black/20 ${!mobileThreadView ? 'hidden lg:flex' : 'flex'}`}>
+            {!selectedId ? (
+              <div className="flex-1 flex items-center justify-center p-8 text-center">
+                <p className="text-sm text-slate-400">Select a ticket to read the conversation.</p>
+              </div>
+            ) : (
+              <>
+                {/* Thread Header */}
+                <div className="p-4 border-b border-white/[0.08] flex items-center gap-3 glass sticky top-0 z-10">
+                  <button 
+                    onClick={() => setMobileThreadView(false)}
+                    className="lg:hidden p-2 -ml-2 rounded-full hover:bg-white/5"
+                  >
+                    <ChevronLeft className="h-6 w-6" />
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-bold text-white truncate">{selectedTicket?.message}</h4>
+                    <p className="text-[10px] text-slate-400 uppercase tracking-widest">
+                      {selectedTicket?.ticket_category || 'SUPPORT'} · {selectedId.slice(0, 8)}
+                    </p>
                   </div>
+                  <StatusBadge 
+                    status={selectedTicket?.status === 'open' ? 'checking' : selectedTicket?.status === 'resolved' ? 'online' : 'unknown'} 
+                    size="sm"
+                  />
+                </div>
 
-                  <form onSubmit={handleReply} className="rounded-3xl border border-white/[0.08] bg-white/[0.03] p-4">
-                    <label className="field-label">Reply</label>
+                {/* Messages Container */}
+                <div 
+                  ref={scrollRef}
+                  className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')]"
+                >
+                  {loadingMessages ? (
+                    <div className="text-sm text-slate-400 text-center py-4">Loading conversation...</div>
+                  ) : (
+                    <>
+                      {/* Original Ticket Context as a System Message */}
+                      <div className="flex justify-center my-6">
+                        <div className="bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-[11px] text-slate-400 flex items-center gap-2">
+                          <Clock className="h-3 w-3" />
+                          Ticket opened on {formatDate(selectedTicket?.created_at)}
+                        </div>
+                      </div>
+
+                      {messages.map((message) => {
+                        const isAdmin = message.author_type === 'admin'
+                        return (
+                          <div 
+                            key={message.id} 
+                            className={`flex ${isAdmin ? 'justify-start' : 'justify-end'} animate-fade-in`}
+                          >
+                            <div className={`flex items-end gap-2 max-w-[85%] ${isAdmin ? 'flex-row' : 'flex-row-reverse'}`}>
+                              <div className={`h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                                isAdmin ? 'bg-brand-500/20 text-brand-300' : 'bg-white/10 text-slate-400'
+                              }`}>
+                                {isAdmin ? <ShieldCheck className="h-4 w-4" /> : <User className="h-4 w-4" />}
+                              </div>
+                              <div className={`group relative p-3 sm:p-4 rounded-2xl ${
+                                isAdmin 
+                                  ? 'bg-surface-800 border border-white/10 rounded-bl-none text-slate-200' 
+                                  : 'bg-brand-500 border border-brand-400/20 rounded-br-none text-white'
+                              }`}>
+                                <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.body}</p>
+                                <p className={`mt-1.5 text-[10px] opacity-50 ${isAdmin ? 'text-slate-400' : 'text-brand-50 text-right'}`}>
+                                  {formatDate(message.created_at)}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+
+                      {/* Status Change Interstitials */}
+                      {selectedTicket?.reviewed_at && (
+                        <div className="flex justify-center my-4">
+                          <div className="bg-amber-500/10 border border-amber-500/20 rounded-full px-4 py-1.5 text-[11px] text-amber-200/80 flex items-center gap-2">
+                            <Clock className="h-3 w-3" />
+                            Admin started reviewing on {formatDate(selectedTicket.reviewed_at)}
+                          </div>
+                        </div>
+                      )}
+
+                      {selectedTicket?.resolved_at && (
+                        <div className="flex justify-center my-4">
+                          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-full px-4 py-1.5 text-[11px] text-emerald-300 flex items-center gap-2">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Ticket marked as resolved on {formatDate(selectedTicket.resolved_at)}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Reply Bar */}
+                <form 
+                  onSubmit={handleReply} 
+                  className="p-4 border-t border-white/[0.08] glass flex items-end gap-2 sticky bottom-0"
+                >
+                  <div className="flex-1">
                     <textarea
                       value={reply}
                       onChange={(event) => setReply(event.target.value)}
-                      placeholder="Add more detail or respond to the admin team."
-                      className="field-input mt-2 min-h-28"
+                      placeholder="Type your reply..."
+                      className="field-input min-h-[48px] max-h-32 py-3 !rounded-[24px] resize-none overflow-y-auto"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          handleReply(e as any)
+                        }
+                      }}
                     />
-                    <div className="mt-4 flex justify-end">
-                      <button type="submit" disabled={sendingReply} className="btn-primary">
-                        {sendingReply ? 'Sending...' : 'Send Reply'}
-                      </button>
-                    </div>
-                  </form>
-                </>
-              )}
-            </div>
+                  </div>
+                  <button 
+                    type="submit" 
+                    disabled={sendingReply || !reply.trim()} 
+                    className="btn-primary !h-[48px] !w-[48px] !p-0 !rounded-full flex-shrink-0"
+                  >
+                    <Send className={`h-5 w-5 ${sendingReply ? 'animate-pulse' : ''}`} />
+                  </button>
+                </form>
+              </>
+            )}
           </div>
+        </div>
+      </section>
 
-          <div className="mt-6 rounded-3xl border border-white/[0.08] bg-white/[0.03] p-4 text-sm leading-6 text-slate-300/[0.72]">
-            <p className="font-medium text-white">How the categories are used</p>
-            <p className="mt-2 flex items-center gap-2">
-              <MessageSquareWarning className="h-4 w-4 text-amber-200" />
-              Use feedback for ideas, concern for issues needing attention, and complaint when service quality needs escalation.
+      {/* Info Panel */}
+      <section className="rounded-3xl border border-white/[0.08] bg-white/[0.03] p-5 sm:p-8">
+        <div className="flex flex-col sm:flex-row items-start gap-4">
+          <div className="h-10 w-10 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+            <MessageSquareWarning className="h-5 w-5 text-amber-400" />
+          </div>
+          <div>
+            <h4 className="font-bold text-white mb-2">How we use categories</h4>
+            <p className="text-sm leading-7 text-slate-300/[0.72]">
+              Use <strong className="text-white">Feedback</strong> for ideas or suggestions. 
+              Use <strong className="text-white">Concern</strong> for bugs or technical issues. 
+              Use <strong className="text-white">Complaint</strong> for account-specific problems or escalations.
             </p>
           </div>
         </div>

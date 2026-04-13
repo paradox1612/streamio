@@ -374,18 +374,24 @@ function MarketplaceCard({
         </ul>
       </CardContent>
 
-      <CardFooter className="pt-2">
-        {isSubscribed ? (
-          <Button asChild className="w-full gap-2 rounded-xl py-6 text-base font-semibold" variant="outline">
+      <CardFooter className="pt-2 flex flex-col gap-2">
+        <Button 
+          className={cn(
+            "w-full gap-2 rounded-xl py-6 text-base font-semibold",
+            isSubscribed ? "bg-white/5 border border-white/10 text-white hover:bg-white/10" : "shadow-lg shadow-brand-500/10"
+          )} 
+          onClick={() => onCheckout(offeringGroup)}
+        >
+          {isSubscribed ? <Plus className="h-5 w-5" /> : <ShoppingCart className="h-5 w-5" />}
+          {isSubscribed ? 'Buy Another Line' : 'Get Started'}
+        </Button>
+        
+        {isSubscribed && (
+          <Button asChild className="w-full gap-2 rounded-xl py-6 text-base font-semibold border-brand-500/20 text-brand-400 hover:bg-brand-500/5 hover:border-brand-500/40" variant="outline">
             <Link href="/subscriptions">
               <ShieldCheck className="h-5 w-5 text-emerald-400" />
-              Manage Subscription
+              Manage Active Plan
             </Link>
-          </Button>
-        ) : (
-          <Button className="w-full gap-2 rounded-xl py-6 text-base font-semibold shadow-lg shadow-brand-500/10" onClick={() => onCheckout(offeringGroup)}>
-            <ShoppingCart className="h-5 w-5" />
-            Get Started
           </Button>
         )}
       </CardFooter>
@@ -563,7 +569,7 @@ export default function MarketplacePage() {
   const [creditTxs, setCreditTxs] = useState<CreditTransaction[]>([])
   const [providers, setProviders] = useState<PaymentProviders>({ stripe: true, paygate: false })
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'browse' | 'subscriptions' | 'history' | 'credits'>('browse')
+  const [activeTab, setActiveTab] = useState<'browse' | 'subscriptions' | 'history'>('browse')
   const [checkoutGroup, setCheckoutGroup] = useState<Offering[] | null>(null)
   const [showTopup, setShowTopup] = useState(false)
 
@@ -644,6 +650,33 @@ export default function MarketplacePage() {
     return Object.values(groups)
   }, [offerings])
 
+  const combinedHistory = useMemo(() => {
+    const combined = [
+      ...payments.map((p) => ({
+        id: p.id,
+        date: p.created_at,
+        amount: p.amount_cents,
+        currency: p.currency,
+        status: p.status,
+        provider: p.payment_provider || 'stripe',
+        type: 'subscription',
+        description: p.payment_provider === 'stripe' ? 'Subscription Payment' : 'Purchase',
+      })),
+      ...creditTxs.map((ct) => ({
+        id: ct.id,
+        date: ct.created_at,
+        amount: Math.abs(ct.amount_cents),
+        currency: 'USD', // Credits are USD based
+        status: ct.status,
+        provider: 'credits',
+        type: ct.amount_cents > 0 ? 'topup' : 'subscription',
+        description: ct.description || ct.type.replace(/_/g, ' '),
+        isNegative: ct.amount_cents < 0,
+      })),
+    ]
+    return combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }, [payments, creditTxs])
+
   const providerLabel = (provider?: string) => {
     if (provider === 'paygate') return 'PayGate'
     if (provider === 'credits') return 'Credits'
@@ -683,7 +716,7 @@ export default function MarketplacePage() {
             </p>
           </div>
           
-          <div className="group w-full md:w-auto cursor-pointer rounded-2xl md:rounded-3xl border border-amber-500/20 bg-amber-500/5 p-4 md:p-6 backdrop-blur-md transition-all hover:border-amber-500/40 hover:bg-amber-500/10" onClick={() => setActiveTab('credits')}>
+          <div className="group w-full md:w-auto cursor-pointer rounded-2xl md:rounded-3xl border border-amber-500/20 bg-amber-500/5 p-4 md:p-6 backdrop-blur-md transition-all hover:border-amber-500/40 hover:bg-amber-500/10" onClick={() => setActiveTab('history')}>
             <div className="flex items-center gap-3 md:gap-4">
               <div className="flex h-10 w-10 md:h-14 md:w-14 items-center justify-center rounded-xl md:rounded-2xl bg-amber-500/20 text-amber-400">
                 <Zap className="h-5 w-5 md:h-8 md:w-8" />
@@ -708,8 +741,7 @@ export default function MarketplacePage() {
             {([
               { key: 'browse', icon: LayoutGrid, label: 'Store' },
               { key: 'subscriptions', icon: Receipt, label: 'My Plans' },
-              { key: 'history', icon: History, label: 'Transactions' },
-              { key: 'credits', icon: Zap, label: 'Wallet' },
+              { key: 'history', icon: History, label: 'Activity' },
             ] as const).map(({ key, icon: Icon, label }) => (
               <button
                 key={key}
@@ -801,12 +833,12 @@ export default function MarketplacePage() {
               </div>
             ))}
           </div>
-        ) : activeTab === 'history' ? (
+        ) : (
           <div className="overflow-x-auto rounded-3xl border border-white/[0.08] bg-surface-900/40 no-scrollbar">
             <table className="w-full text-left text-xs md:text-sm min-w-[600px]">
               <thead>
                 <tr className="border-b border-white/5 bg-white/[0.02]">
-                  <th className="px-6 md:px-8 py-4 md:py-5 font-bold uppercase tracking-widest text-[10px] text-slate-500">Transaction</th>
+                  <th className="px-6 md:px-8 py-4 md:py-5 font-bold uppercase tracking-widest text-[10px] text-slate-500">Event</th>
                   <th className="px-6 md:px-8 py-4 md:py-5 font-bold uppercase tracking-widest text-[10px] text-slate-500">Date</th>
                   <th className="px-6 md:px-8 py-4 md:py-5 font-bold uppercase tracking-widest text-[10px] text-slate-500">Amount</th>
                   <th className="px-6 md:px-8 py-4 md:py-5 font-bold uppercase tracking-widest text-[10px] text-slate-500">Provider</th>
@@ -814,18 +846,27 @@ export default function MarketplacePage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {payments.map((tx) => (
+                {combinedHistory.map((tx) => (
                   <tr key={tx.id} className="transition-colors hover:bg-white/[0.01]">
                     <td className="px-6 md:px-8 py-4 md:py-5">
                       <div className="flex items-center gap-3 md:gap-4 text-slate-200">
-                        <Receipt className="h-3.5 w-3.5 md:h-4 md:w-4 text-slate-600" />
-                        <span className="font-semibold">{tx.payment_provider === 'stripe' ? 'Subscription' : 'Purchase'}</span>
+                        {tx.type === 'topup' ? (
+                          <Plus className="h-3.5 w-3.5 md:h-4 md:w-4 text-emerald-500" />
+                        ) : (
+                          <Receipt className="h-3.5 w-3.5 md:h-4 md:w-4 text-slate-600" />
+                        )}
+                        <span className="font-semibold">{tx.description}</span>
                       </div>
                     </td>
-                    <td className="px-6 md:px-8 py-4 md:py-5 text-slate-400 font-mono text-[10px] md:text-xs">{formatDate(tx.created_at)}</td>
-                    <td className="px-6 md:px-8 py-4 md:py-5 font-bold text-white">{formatPrice(tx.amount_cents)}</td>
+                    <td className="px-6 md:px-8 py-4 md:py-5 text-slate-400 font-mono text-[10px] md:text-xs">{formatDate(tx.date)}</td>
+                    <td className={cn(
+                      "px-6 md:px-8 py-4 md:py-5 font-bold",
+                      tx.type === 'topup' ? "text-emerald-400" : (tx.provider === 'credits' ? "text-slate-200" : "text-white")
+                    )}>
+                      {tx.type === 'topup' ? '+' : (tx.provider === 'credits' ? '-' : '')}{formatPrice(tx.amount, tx.currency)}
+                    </td>
                     <td className="px-6 md:px-8 py-4 md:py-5">
-                      <Badge variant="outline" className="text-[9px] md:text-[10px] border-white/10 uppercase tracking-tighter">{providerLabel(tx.payment_provider)}</Badge>
+                      <Badge variant="outline" className="text-[9px] md:text-[10px] border-white/10 uppercase tracking-tighter">{providerLabel(tx.provider)}</Badge>
                     </td>
                     <td className="px-6 md:px-8 py-4 md:py-5">
                       <div className="flex items-center gap-2">
@@ -851,60 +892,6 @@ export default function MarketplacePage() {
               </tbody>
             </table>
           </div>
-        ) : (
-          <div className="space-y-8">
-            <div className="grid gap-4 md:gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {creditTxs.map((tx) => (
-                <div key={tx.id} className="rounded-3xl border border-white/[0.08] bg-surface-900/40 p-5 md:p-6 flex flex-col justify-between transition-all hover:bg-surface-900/60">
-                  <div>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className={cn(
-                        "h-9 w-9 md:h-10 md:w-10 flex items-center justify-center rounded-xl", 
-                        tx.status === 'completed' 
-                          ? (tx.amount_cents > 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-brand-500/10 text-brand-400")
-                          : tx.status === 'pending'
-                          ? "bg-amber-500/10 text-amber-400"
-                          : "bg-red-500/10 text-red-400"
-                      )}>
-                        {tx.status === 'completed' && tx.amount_cents > 0 ? <Plus className="h-4 w-4 md:h-5 md:w-5" /> : 
-                         tx.status === 'pending' ? <Clock className="h-4 w-4 md:h-5 md:w-5" /> :
-                         tx.status === 'failed' ? <AlertCircle className="h-4 w-4 md:h-5 md:w-5" /> :
-                         <Zap className="h-4 w-4 md:h-5 md:w-5" />}
-                      </div>
-                      <Badge 
-                        variant={
-                          tx.status === 'completed' ? 'success' : 
-                          tx.status === 'pending' ? 'warning' : 
-                          tx.status === 'failed' ? 'danger' : 'outline'
-                        } 
-                        className="text-[9px] md:text-[10px] gap-1"
-                      >
-                        {tx.status === 'completed' && <Check className="h-2.5 w-2.5" />}
-                        {tx.status === 'pending' && <Clock className="h-2.5 w-2.5" />}
-                        {tx.status === 'failed' && <AlertCircle className="h-2.5 w-2.5" />}
-                        {tx.status.toUpperCase()}
-                      </Badge>
-                    </div>
-                    <p className="text-sm font-bold text-white leading-relaxed line-clamp-2">{tx.description || tx.type.replace(/_/g, ' ')}</p>
-                    <p className="mt-1 text-[10px] md:text-xs text-slate-500 font-mono">{formatDate(tx.created_at)}</p>
-                  </div>
-                  <div className="mt-5 md:mt-6 flex items-baseline gap-2">
-                    <span className={cn(
-                      "text-xl md:text-2xl font-bold", 
-                      tx.status === 'completed' 
-                        ? (tx.amount_cents > 0 ? "text-emerald-400" : "text-slate-200")
-                        : tx.status === 'pending' 
-                        ? "text-amber-400" 
-                        : "text-red-400"
-                    )}>
-                      {tx.amount_cents > 0 ? '+' : '-'}{formatPrice(Math.abs(tx.amount_cents))}
-                    </span>
-                    <span className="text-[9px] md:text-[10px] font-bold text-slate-600 uppercase tracking-widest">Credits</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
         )}
       </div>
 
@@ -918,7 +905,7 @@ export default function MarketplacePage() {
           onTopup={() => {
             setCheckoutGroup(null)
             setShowTopup(true)
-            setActiveTab('credits')
+            setActiveTab('history')
           }}
         />
       )}
