@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { creditsAPI, marketplaceAPI } from '@/utils/api'
+import { useErrorReporting } from '@/context/ErrorReportingContext'
 import { getCountryOption } from '@/lib/countries'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -50,6 +51,8 @@ interface Offering {
   live_count?: number
   vod_count?: number
   network_name?: string
+  trial_ticket_enabled?: boolean
+  trial_ticket_message?: string | null
 }
 
 interface Subscription {
@@ -298,10 +301,12 @@ function MarketplaceCard({
   offeringGroup,
   isSubscribed,
   onCheckout,
+  onRequestTrial,
 }: {
   offeringGroup: Offering[]
   isSubscribed: boolean
   onCheckout: (group: Offering[]) => void
+  onRequestTrial: (offering: Offering) => void
 }) {
   const base = offeringGroup[0]
   const cheapest = [...offeringGroup].sort((a, b) => a.price_cents - b.price_cents)[0]
@@ -392,6 +397,18 @@ function MarketplaceCard({
               <ShieldCheck className="h-5 w-5 text-emerald-400" />
               Manage Active Plan
             </Link>
+          </Button>
+        )}
+
+        {base.trial_ticket_enabled && (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full gap-2 rounded-xl border-amber-500/20 text-amber-300 hover:bg-amber-500/5 hover:border-amber-500/40"
+            onClick={() => onRequestTrial(base)}
+          >
+            <AlertCircle className="h-4 w-4" />
+            Request Trial
           </Button>
         )}
       </CardFooter>
@@ -562,6 +579,7 @@ function TopupModal({
 }
 
 export default function MarketplacePage() {
+  const { openTicketDialog } = useErrorReporting()
   const [offerings, setOfferings] = useState<Offering[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [payments, setPayments] = useState<PaymentTransaction[]>([])
@@ -602,6 +620,21 @@ export default function MarketplacePage() {
     }
     loadData()
   }, [])
+
+  const handleRequestTrial = useCallback((offering: Offering) => {
+    openTicketDialog({
+      message: offering.trial_ticket_message || `Trial request for ${offering.name}`,
+      ticketCategory: 'trial_request',
+      routePath: '/marketplace',
+      source: 'dashboard',
+      context: {
+        offeringId: offering.id,
+        offeringName: offering.name,
+        networkName: offering.network_name || null,
+      },
+      defaultDescription: `Please create a trial for ${offering.name}.`,
+    })
+  }, [openTicketDialog])
 
   useEffect(() => {
     if (!paygateAddressIn) return
@@ -774,6 +807,7 @@ export default function MarketplacePage() {
                 offeringGroup={group}
                 isSubscribed={subscriptions.some((sub) => group.some(o => o.id === sub.offering_id) && sub.status === 'active')}
                 onCheckout={setCheckoutGroup}
+                onRequestTrial={handleRequestTrial}
               />
             ))}
           </div>

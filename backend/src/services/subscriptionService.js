@@ -274,6 +274,8 @@ async function provisionManagedResellerLine(userId, offering, { user = null, exp
     password: linePassword,
     maxConnections,
     expDate: unixExpiry,
+    billingPeriod: selectedPlan?.billing_period || offering.billing_period,
+    billingIntervalCount: selectedPlan?.billing_interval_count || offering.billing_interval_count,
     bouquetIds,
     trial: isTrial,
     notes,
@@ -282,12 +284,18 @@ async function provisionManagedResellerLine(userId, offering, { user = null, exp
     throw new Error(result?.message || 'Failed to create reseller line');
   }
 
+  const provisionedUsername = result.username || lineUsername;
+  const provisionedPassword = result.password || linePassword;
+  const resolvedHostUrls = result.host
+    ? [result.host, ...hostUrls.filter((host) => host !== result.host)]
+    : hostUrls;
+
   return providerQueries.create({
     userId,
     name: offering.name,
-    hosts: hostUrls,
-    username: lineUsername,
-    password: linePassword,
+    hosts: resolvedHostUrls,
+    username: provisionedUsername,
+    password: provisionedPassword,
     networkId: offering.provider_network_id,
   });
 }

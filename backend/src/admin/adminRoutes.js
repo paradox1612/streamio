@@ -26,6 +26,7 @@ const providerService = require('../services/providerService');
 const hostHealthService = require('../services/hostHealthService');
 const freeAccessService = require('../services/freeAccessService');
 const creditService = require('../services/creditService');
+const ProviderAdapterFactory = require('../providers/ProviderAdapterFactory');
 const { jobs } = require('../jobs/scheduler');
 const logger = require('../utils/logger');
 const { getRuntimeInfo } = require('../utils/runtimeInfo');
@@ -56,7 +57,7 @@ async function resolveManagedNetworkHosts(network) {
 }
 
 async function ensureManagedSessionCookie(network, panelHost) {
-  if (!network.xtream_ui_scraped) return null;
+  if (!(network.xtream_ui_scraped || network.adapter_type === 'xtream_ui_scraper')) return null;
   const xtreamUiScraper = require('../utils/xtreamUiScraper');
 
   if (network.reseller_session_cookie) {
@@ -75,6 +76,23 @@ async function ensureManagedSessionCookie(network, panelHost) {
   );
   await providerNetworkQueries.update(network.id, { reseller_session_cookie: session });
   return session;
+}
+
+async function getManagedNetworkAdapter(network, panelHost = null) {
+  const hydrated = {
+    ...network,
+    reseller_portal_url: network.reseller_portal_url || panelHost || null,
+  };
+  const adapter = ProviderAdapterFactory.create(hydrated);
+  if (hydrated.adapter_type === 'xtream_ui_scraper' || hydrated.xtream_ui_scraped) {
+    await adapter.ensureSession();
+    if (adapter.network.reseller_session_cookie !== network.reseller_session_cookie) {
+      await providerNetworkQueries.update(network.id, {
+        reseller_session_cookie: adapter.network.reseller_session_cookie,
+      });
+    }
+  }
+  return adapter;
 }
 
 // ─── Admin Auth ───────────────────────────────────────────────────────────────
@@ -604,6 +622,8 @@ router.post('/marketplace', requireAdmin, async (req, res) => {
       reseller_notes,
       group_id,
       is_trial,
+      trial_ticket_enabled,
+      trial_ticket_message,
     } = req.body;
 
     const normalizedPlans = normalizePlanOptions({
@@ -647,6 +667,8 @@ router.post('/marketplace', requireAdmin, async (req, res) => {
       reseller_notes,
       group_id,
       is_trial,
+      trial_ticket_enabled,
+      trial_ticket_message,
     });
 
     // Sync to Stripe if key is configured
@@ -779,19 +801,8 @@ router.get('/networks/:id/bouquets', requireAdmin, async (req, res) => {
     if (!panelHost) {
       return res.status(400).json({ error: 'No reseller portal URL or customer hosts configured for this network' });
     }
-
-    if (network.xtream_ui_scraped) {
-      const xtreamUiScraper = require('../utils/xtreamUiScraper');
-      const sessionCookie = await ensureManagedSessionCookie(network, panelHost);
-      const bouquets = await xtreamUiScraper.getBouquets(panelHost, sessionCookie);
-      return res.json(bouquets);
-    }
-
-    if (!network.reseller_username || !network.reseller_password) {
-      return res.status(400).json({ error: 'Reseller credentials not configured for this network' });
-    }
-
-    const bouquets = await providerService.getBouquets(panelHost, network.reseller_username, network.reseller_password);
+    const adapter = await getManagedNetworkAdapter(network, panelHost);
+    const bouquets = await adapter.getBouquets();
     res.json(bouquets);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -809,26 +820,20 @@ router.post('/networks/:id/create-line', requireAdmin, async (req, res) => {
     if (!panelHost) {
       return res.status(400).json({ error: 'No reseller portal URL or customer hosts configured for this network' });
     }
-
-    if (network.xtream_ui_scraped) {
-      const xtreamUiScraper = require('../utils/xtreamUiScraper');
-      const sessionCookie = await ensureManagedSessionCookie(network, panelHost);
-      const result = await xtreamUiScraper.createLine(panelHost, sessionCookie, {
-        username, password, maxConnections, expDate, bouquetIds, trial, notes
-      });
-      return res.json(result);
-    }
-
-    if (!network.reseller_username || !network.reseller_password) {
-      return res.status(400).json({ error: 'Reseller credentials not configured for this network' });
-    }
-
-    const result = await providerService.createResellerUser(
-      panelHost, 
-      network.reseller_username, 
-      network.reseller_password, 
-      { username, password, maxConnections, expDate, bouquetIds }
-    );
+    const adapter = await getManagedNetworkAdapter(network, panelHost);
+    const billingIntervalCount = parseInt(req.body.billingIntervalCount ?? req.body.subscriptionMonths ?? 0, 10) || undefined;
+    const result = await adapter.createLine({
+      username,
+      password,
+      maxConnections,
+      expDate,
+      bouquetIds,
+      trial,
+      notes,
+      billingPeriod: billingIntervalCount ? 'month' : undefined,
+      billingIntervalCount,
+      subscriptionMonths: billingIntervalCount,
+    });
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -840,6 +845,9 @@ router.post('/networks/:id/test-session', requireAdmin, async (req, res) => {
   try {
     const network = await providerNetworkQueries.findById(req.params.id);
     if (!network) return res.status(404).json({ error: 'Network not found' });
+    if (!(network.xtream_ui_scraped || network.adapter_type === 'xtream_ui_scraper')) {
+      return res.status(400).json({ error: 'Session testing is only available for scraper networks' });
+    }
     if (!network.reseller_session_cookie) return res.status(400).json({ error: 'No session cookie' });
 
     const { panelHost } = await resolveManagedNetworkHosts(network);
@@ -858,6 +866,9 @@ router.post('/networks/:id/refresh-session', requireAdmin, async (req, res) => {
   try {
     const network = await providerNetworkQueries.findById(req.params.id);
     if (!network) return res.status(404).json({ error: 'Network not found' });
+    if (!(network.xtream_ui_scraped || network.adapter_type === 'xtream_ui_scraper')) {
+      return res.status(400).json({ error: 'Session refresh is only available for scraper networks' });
+    }
     
     if (!network.reseller_username || !network.reseller_password) {
       return res.status(400).json({ error: 'Reseller username and password required for auto-login' });

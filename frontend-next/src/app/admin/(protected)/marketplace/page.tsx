@@ -77,6 +77,8 @@ const EMPTY_FORM = {
   provisioning_mode: 'pooled_account',
   reseller_bouquet_ids: [] as string[],
   reseller_notes: '',
+  trial_ticket_enabled: false,
+  trial_ticket_message: '',
   country_codes: [] as string[],
   provider_stats_vod: '',
   provider_stats_live: '',
@@ -166,6 +168,8 @@ export default function AdminMarketplacePage() {
       provisioning_mode: offering.provisioning_mode || 'pooled_account',
       reseller_bouquet_ids: Array.isArray(offering.reseller_bouquet_ids) ? offering.reseller_bouquet_ids : [],
       reseller_notes: offering.reseller_notes || '',
+      trial_ticket_enabled: offering.trial_ticket_enabled || false,
+      trial_ticket_message: offering.trial_ticket_message || '',
       country_codes: Array.isArray(offering.country_codes) ? offering.country_codes : [],
       provider_stats_vod: String(offering.provider_stats?.vod ?? ''),
       provider_stats_live: String(offering.provider_stats?.live ?? ''),
@@ -260,6 +264,8 @@ export default function AdminMarketplacePage() {
         provider_network_id: form.provider_network_id || null,
         reseller_bouquet_ids: form.reseller_bouquet_ids,
         reseller_notes: form.reseller_notes.trim() || null,
+        trial_ticket_enabled: form.trial_ticket_enabled,
+        trial_ticket_message: form.trial_ticket_message.trim() || null,
         plan_options: normalizedPlans,
       }
 
@@ -412,6 +418,9 @@ export default function AdminMarketplacePage() {
                         </td>
                         <td className="px-5 py-3 text-slate-300">
                           {offering.provisioning_mode === 'reseller_line' ? 'Reseller line' : 'Pooled account'}
+                          {offering.trial_ticket_enabled && (
+                            <div className="mt-1 text-xs text-amber-400">Trial via support ticket</div>
+                          )}
                         </td>
                         <td className="px-5 py-3">
                           <Badge
@@ -628,6 +637,29 @@ export default function AdminMarketplacePage() {
                     <option key={network.id} value={network.id}>{network.name}</option>
                   ))}
                 </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-1">
+                <Label>Trial Request via Support</Label>
+                <div className="flex h-10 items-center rounded-md border border-white/10 bg-slate-900 px-3">
+                  <input
+                    type="checkbox"
+                    checked={form.trial_ticket_enabled}
+                    onChange={(e) => setForm({ ...form, trial_ticket_enabled: e.target.checked })}
+                    className="h-4 w-4"
+                  />
+                  <span className="ml-3 text-sm text-slate-300">Show a “Request Trial” ticket button in the dashboard</span>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label>Trial Ticket Message</Label>
+                <Input
+                  value={form.trial_ticket_message}
+                  onChange={(e) => setForm({ ...form, trial_ticket_message: e.target.value })}
+                  placeholder="Request a trial for this provider"
+                />
               </div>
             </div>
 

@@ -33,6 +33,8 @@ interface Network {
   reseller_portal_url: string | null
   reseller_username: string | null
   reseller_password?: string | null
+  reseller_api_key?: string | null
+  adapter_type?: 'xtream_ui_scraper' | 'xtream_api' | 'gold_panel_api'
   xtream_ui_scraped: boolean
   reseller_session_cookie: string | null
   catalog_last_refreshed_at: string | null
@@ -48,6 +50,16 @@ interface NetworkHost {
   id: string
   host_url: string
   is_active: boolean
+}
+
+function getAdapterType(network: Network) {
+  return network.adapter_type || (network.xtream_ui_scraped ? 'xtream_ui_scraper' : 'xtream_api')
+}
+
+function getAdapterLabel(adapterType: string) {
+  if (adapterType === 'xtream_ui_scraper') return 'Scraped Session'
+  if (adapterType === 'gold_panel_api') return 'GOLD PANEL API'
+  return 'Xtream API'
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -66,7 +78,8 @@ export default function NetworksPage() {
     portalUrl: '',
     username: '', 
     password: '', 
-    isScraped: false,
+    apiKey: '',
+    adapterType: 'xtream_api' as 'xtream_ui_scraper' | 'xtream_api' | 'gold_panel_api',
     sessionCookie: '',
     customerHosts: ''
   })
@@ -95,7 +108,8 @@ export default function NetworksPage() {
       portalUrl: network.reseller_portal_url || '',
       username: network.reseller_username || '',
       password: '',
-      isScraped: network.xtream_ui_scraped || false,
+      apiKey: '',
+      adapterType: network.adapter_type || (network.xtream_ui_scraped ? 'xtream_ui_scraper' : 'xtream_api'),
       sessionCookie: network.reseller_session_cookie || '',
       customerHosts: ''
     })
@@ -109,7 +123,8 @@ export default function NetworksPage() {
         portalUrl: detail?.reseller_portal_url || network.reseller_portal_url || '',
         username: detail?.reseller_username || network.reseller_username || '',
         password: '',
-        isScraped: detail?.xtream_ui_scraped ?? network.xtream_ui_scraped ?? false,
+        apiKey: '',
+        adapterType: detail?.adapter_type || (detail?.xtream_ui_scraped ?? network.xtream_ui_scraped ? 'xtream_ui_scraper' : 'xtream_api'),
         sessionCookie: detail?.reseller_session_cookie || network.reseller_session_cookie || '',
         customerHosts: hosts.map((host) => host.host_url).join('\n')
       })
@@ -124,10 +139,14 @@ export default function NetworksPage() {
     try {
       await adminAPI.updateNetwork(selectedNetwork.id, {
         reseller_portal_url: resellerForm.portalUrl || undefined,
-        reseller_username: resellerForm.username,
-        reseller_password: resellerForm.password || undefined,
-        xtream_ui_scraped: resellerForm.isScraped,
-        reseller_session_cookie: resellerForm.sessionCookie,
+        reseller_username: resellerForm.adapterType === 'gold_panel_api' ? undefined : resellerForm.username,
+        reseller_password: resellerForm.adapterType === 'xtream_api' || resellerForm.adapterType === 'xtream_ui_scraper'
+          ? (resellerForm.password || undefined)
+          : undefined,
+        reseller_api_key: resellerForm.adapterType === 'gold_panel_api' ? (resellerForm.apiKey || undefined) : undefined,
+        adapter_type: resellerForm.adapterType,
+        xtream_ui_scraped: resellerForm.adapterType === 'xtream_ui_scraper',
+        reseller_session_cookie: resellerForm.adapterType === 'xtream_ui_scraper' ? resellerForm.sessionCookie : '',
         hosts: resellerForm.customerHosts
           .split('\n')
           .map(host => host.trim())
@@ -188,11 +207,23 @@ export default function NetworksPage() {
   const [creatingLine, setCreatingLine] = useState(false)
 
   const openLineCreation = async (network: Network) => {
-    if (!network.reseller_username && !network.reseller_session_cookie) {
-      toast.error('Configure reseller credentials or session first')
+    const adapterType = getAdapterType(network)
+    const hasCredentials = adapterType === 'gold_panel_api'
+      ? Boolean(network.reseller_portal_url && network.reseller_api_key)
+      : Boolean(network.reseller_username || network.reseller_session_cookie)
+
+    if (!hasCredentials) {
+      toast.error('Configure the network integration first')
       return
     }
     setSelectedNetwork(network)
+    setLineForm({
+      username: '',
+      password: '',
+      duration: adapterType === 'gold_panel_api' ? '1' : '24',
+      maxConnections: '1',
+      selectedBouquets: [],
+    })
     setShowLineModal(true)
     setLoadingBouquets(true)
     try {
@@ -209,15 +240,19 @@ export default function NetworksPage() {
     if (!selectedNetwork) return
     setCreatingLine(true)
     try {
-      const expDate = Math.floor(Date.now() / 1000) + (parseInt(lineForm.duration) * 3600)
+      const adapterType = getAdapterType(selectedNetwork)
+      const expDate = adapterType === 'gold_panel_api'
+        ? undefined
+        : Math.floor(Date.now() / 1000) + (parseInt(lineForm.duration) * 3600)
       const payload = {
         username: lineForm.username,
         password: lineForm.password,
         maxConnections: parseInt(lineForm.maxConnections),
         expDate,
         bouquetIds: lineForm.selectedBouquets,
-        trial: lineForm.duration === '24',
-        notes: `StreamBridge User Line - ${new Date().toLocaleDateString()}`
+        trial: adapterType !== 'gold_panel_api' && lineForm.duration === '24',
+        notes: `StreamBridge User Line - ${new Date().toLocaleDateString()}`,
+        billingIntervalCount: adapterType === 'gold_panel_api' ? parseInt(lineForm.duration, 10) : undefined,
       }
       const { data } = await adminAPI.createResellerLine(selectedNetwork.id, payload)
       
@@ -253,9 +288,9 @@ export default function NetworksPage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/10 text-brand-400">
                   <Wifi className="h-5 w-5" />
                 </div>
-                {network.reseller_username || network.reseller_session_cookie ? (
+                {network.reseller_username || network.reseller_session_cookie || network.reseller_api_key ? (
                   <Badge variant="success" className="gap-1">
-                    <CheckCircle2 className="h-3 w-3" /> {network.xtream_ui_scraped ? 'Scraped' : 'Managed'}
+                    <CheckCircle2 className="h-3 w-3" /> {getAdapterLabel(getAdapterType(network))}
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="text-slate-500">Unmanaged</Badge>
@@ -270,9 +305,13 @@ export default function NetworksPage() {
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-400">Auth Method</span>
                 <span className="text-white">
-                  {network.xtream_ui_scraped ? (
+                  {getAdapterType(network) === 'xtream_ui_scraper' ? (
                     <span className="flex items-center gap-1.5 text-blue-400">
                       <Box className="h-3 w-3" /> Session Cookie
+                    </span>
+                  ) : getAdapterType(network) === 'gold_panel_api' ? (
+                    <span className="flex items-center gap-1.5 text-amber-400">
+                      <Lock className="h-3 w-3" /> API Key
                     </span>
                   ) : network.reseller_username ? (
                     <span className="flex items-center gap-1.5 text-emerald-400">
@@ -284,7 +323,7 @@ export default function NetworksPage() {
                 </span>
               </div>
 
-              {network.xtream_ui_scraped && (
+              {getAdapterType(network) === 'xtream_ui_scraper' && (
                 <div className="flex flex-col gap-2">
                   <Button 
                     variant="ghost" 
@@ -335,7 +374,11 @@ export default function NetworksPage() {
                 
                 <Button 
                   className="w-full gap-2 rounded-xl bg-brand-600 hover:bg-brand-500"
-                  disabled={!network.reseller_username && !network.reseller_session_cookie}
+                  disabled={
+                    getAdapterType(network) === 'gold_panel_api'
+                      ? !(network.reseller_portal_url && network.reseller_api_key)
+                      : !network.reseller_username && !network.reseller_session_cookie
+                  }
                   onClick={() => openLineCreation(network)}
                 >
                   <UserPlus className="h-4 w-4" />
@@ -358,21 +401,30 @@ export default function NetworksPage() {
           </DialogHeader>
           
           <div className="space-y-6 py-4">
-            <div className="flex items-center justify-between rounded-xl bg-white/5 p-4">
-              <div className="space-y-0.5">
-                <Label className="text-base">Use Web Scraping</Label>
-                <p className="text-xs text-slate-400">Enable if the panel lacks a Reseller API (Xtream UI style)</p>
-              </div>
-              <input 
-                type="checkbox"
-                className="h-5 w-5 rounded border-white/10 bg-slate-900"
-                checked={resellerForm.isScraped}
-                onChange={e => setResellerForm({...resellerForm, isScraped: e.target.checked})}
-              />
+            <div className="space-y-2">
+              <Label>Adapter Type</Label>
+              <select
+                className="w-full rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+                value={resellerForm.adapterType}
+                onChange={(e) => setResellerForm({ ...resellerForm, adapterType: e.target.value as 'xtream_ui_scraper' | 'xtream_api' | 'gold_panel_api' })}
+              >
+                <option value="xtream_api">Xtream API</option>
+                <option value="xtream_ui_scraper">Xtream UI Scraper</option>
+                <option value="gold_panel_api">GOLD PANEL API</option>
+              </select>
+              <p className="text-xs text-slate-400">Choose the provisioning protocol this network exposes.</p>
             </div>
 
-            {!resellerForm.isScraped ? (
+            {resellerForm.adapterType === 'xtream_api' ? (
               <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Reseller Portal URL</Label>
+                  <Input 
+                    value={resellerForm.portalUrl}
+                    onChange={e => setResellerForm({...resellerForm, portalUrl: e.target.value})}
+                    placeholder="http://example.com:80"
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label>Reseller Username (API)</Label>
                   <Input 
@@ -390,6 +442,33 @@ export default function NetworksPage() {
                     placeholder="••••••••"
                   />
                   <p className="text-[10px] text-slate-500 italic">Leave blank to keep existing password</p>
+                </div>
+              </div>
+            ) : resellerForm.adapterType === 'gold_panel_api' ? (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>API Endpoint</Label>
+                  <Input 
+                    value={resellerForm.portalUrl}
+                    onChange={e => setResellerForm({...resellerForm, portalUrl: e.target.value})}
+                    placeholder="https://8k.cms-only.ru/api/api.php"
+                  />
+                  <p className="text-xs text-slate-500">
+                    Use the full GOLD PANEL API URL, not the customer playlist domain.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>API Key</Label>
+                  <Input 
+                    type="password"
+                    value={resellerForm.apiKey}
+                    onChange={e => setResellerForm({...resellerForm, apiKey: e.target.value})}
+                    placeholder="••••••••"
+                  />
+                  <p className="text-[10px] text-slate-500 italic">Leave blank to keep the existing key</p>
+                </div>
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-xs text-amber-100/80">
+                  This integration provisions `M3U` lines only. GOLD PANEL trials are not auto-created here.
                 </div>
               </div>
             ) : (
@@ -487,7 +566,7 @@ export default function NetworksPage() {
                 <Input 
                   value={lineForm.username}
                   onChange={e => setLineForm({...lineForm, username: e.target.value})}
-                  placeholder="leave empty for auto"
+                  placeholder={getAdapterType(selectedNetwork || {} as Network) === 'gold_panel_api' ? 'not required for GOLD PANEL M3U' : 'leave empty for auto'}
                 />
               </div>
               <div className="space-y-2">
@@ -495,7 +574,7 @@ export default function NetworksPage() {
                 <Input 
                   value={lineForm.password}
                   onChange={e => setLineForm({...lineForm, password: e.target.value})}
-                  placeholder="leave empty for auto"
+                  placeholder={getAdapterType(selectedNetwork || {} as Network) === 'gold_panel_api' ? 'not required for GOLD PANEL M3U' : 'leave empty for auto'}
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -506,10 +585,21 @@ export default function NetworksPage() {
                     value={lineForm.duration}
                     onChange={e => setLineForm({...lineForm, duration: e.target.value})}
                   >
-                    <option value="24">24 Hours (Trial)</option>
-                    <option value="720">1 Month</option>
-                    <option value="2160">3 Months</option>
-                    <option value="8760">1 Year</option>
+                    {getAdapterType(selectedNetwork || {} as Network) === 'gold_panel_api' ? (
+                      <>
+                        <option value="1">1 Month</option>
+                        <option value="3">3 Months</option>
+                        <option value="6">6 Months</option>
+                        <option value="12">12 Months</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="24">24 Hours (Trial)</option>
+                        <option value="720">1 Month</option>
+                        <option value="2160">3 Months</option>
+                        <option value="8760">1 Year</option>
+                      </>
+                    )}
                   </select>
                 </div>
                 <div className="space-y-2">

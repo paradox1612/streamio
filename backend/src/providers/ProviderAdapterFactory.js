@@ -7,6 +7,7 @@
  * Supported adapter types:
  *   'xtream_ui_scraper' — session-based web scraping + 2Captcha (default, e.g. Starshare)
  *   'xtream_api'        — standard Xtream Codes REST API
+ *   'gold_panel_api'    — API-key based provisioning API that returns M3U credentials
  *
  * To add a new provider type:
  *   1. Create backend/src/providers/adapters/YourAdapter.js extending ProviderAdapter.
@@ -15,10 +16,12 @@
  */
 const XtreamUiScraperAdapter = require('./adapters/XtreamUiScraperAdapter');
 const XtreamApiAdapter = require('./adapters/XtreamApiAdapter');
+const GoldPanelApiAdapter = require('./adapters/GoldPanelApiAdapter');
 
 const ADAPTERS = {
   xtream_ui_scraper: XtreamUiScraperAdapter,
   xtream_api: XtreamApiAdapter,
+  gold_panel_api: GoldPanelApiAdapter,
 };
 
 const ProviderAdapterFactory = {

@@ -405,6 +405,8 @@ ALTER TABLE provider_networks
 ALTER TABLE provider_networks
   ADD COLUMN IF NOT EXISTS reseller_password TEXT;
 ALTER TABLE provider_networks
+  ADD COLUMN IF NOT EXISTS reseller_api_key TEXT;
+ALTER TABLE provider_networks
   ADD COLUMN IF NOT EXISTS xtream_ui_scraped BOOLEAN DEFAULT false;
 ALTER TABLE provider_networks
   ADD COLUMN IF NOT EXISTS reseller_session_cookie TEXT;
@@ -760,6 +762,8 @@ CREATE TABLE IF NOT EXISTS provider_offerings (
   is_active           BOOLEAN NOT NULL DEFAULT true,
   group_id            TEXT,
   is_trial            BOOLEAN NOT NULL DEFAULT false,
+  trial_ticket_enabled BOOLEAN NOT NULL DEFAULT false,
+  trial_ticket_message TEXT,
   countries           TEXT[] DEFAULT ARRAY[]::TEXT[],
   tags                TEXT[] DEFAULT ARRAY[]::TEXT[],
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -787,6 +791,10 @@ ALTER TABLE provider_offerings
   ADD COLUMN IF NOT EXISTS reseller_bouquet_ids TEXT[] DEFAULT ARRAY[]::TEXT[];
 ALTER TABLE provider_offerings
   ADD COLUMN IF NOT EXISTS reseller_notes TEXT;
+ALTER TABLE provider_offerings
+  ADD COLUMN IF NOT EXISTS trial_ticket_enabled BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE provider_offerings
+  ADD COLUMN IF NOT EXISTS trial_ticket_message TEXT;
 
 -- ─────────────────────────────────────────
 -- Provider Subscriptions (User Purchases)

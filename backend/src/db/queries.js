@@ -368,8 +368,10 @@ const providerNetworkQueries = {
       'twenty_company_id',
       'reseller_username',
       'reseller_password',
+      'reseller_api_key',
       'xtream_ui_scraped',
       'reseller_session_cookie',
+      'adapter_type',
     ];
     const sets = [];
     const values = [];
@@ -2775,11 +2777,11 @@ const offeringQueries = {
     return rows[0] || null;
   },
 
-  async create({ name, description, price_cents, currency, billing_period, billing_interval_count, trial_days, max_connections, features, plan_options, catalog_tags, country_codes, provider_stats, provisioning_mode, reseller_bouquet_ids, reseller_notes, stripe_price_id, stripe_product_id, provider_network_id, is_featured, group_id, is_trial }) {
+  async create({ name, description, price_cents, currency, billing_period, billing_interval_count, trial_days, max_connections, features, plan_options, catalog_tags, country_codes, provider_stats, provisioning_mode, reseller_bouquet_ids, reseller_notes, stripe_price_id, stripe_product_id, provider_network_id, is_featured, group_id, is_trial, trial_ticket_enabled, trial_ticket_message }) {
     const { rows } = await pool.query(
       `INSERT INTO provider_offerings
-         (name, description, price_cents, currency, billing_period, billing_interval_count, trial_days, max_connections, features, plan_options, catalog_tags, country_codes, provider_stats, provisioning_mode, reseller_bouquet_ids, reseller_notes, stripe_price_id, stripe_product_id, provider_network_id, is_featured, group_id, is_trial)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+         (name, description, price_cents, currency, billing_period, billing_interval_count, trial_days, max_connections, features, plan_options, catalog_tags, country_codes, provider_stats, provisioning_mode, reseller_bouquet_ids, reseller_notes, stripe_price_id, stripe_product_id, provider_network_id, is_featured, group_id, is_trial, trial_ticket_enabled, trial_ticket_message)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
        RETURNING *`,
       [
         name,
@@ -2804,13 +2806,15 @@ const offeringQueries = {
         is_featured || false,
         group_id || null,
         is_trial || false,
+        trial_ticket_enabled || false,
+        trial_ticket_message || null,
       ]
     );
     return rows[0];
   },
 
   async update(id, fields) {
-    const allowed = ['name', 'description', 'price_cents', 'currency', 'billing_period', 'billing_interval_count', 'trial_days', 'max_connections', 'features', 'plan_options', 'catalog_tags', 'country_codes', 'provider_stats', 'provisioning_mode', 'reseller_bouquet_ids', 'reseller_notes', 'stripe_price_id', 'stripe_product_id', 'provider_network_id', 'is_featured', 'is_active', 'group_id', 'is_trial', 'countries', 'tags'];
+    const allowed = ['name', 'description', 'price_cents', 'currency', 'billing_period', 'billing_interval_count', 'trial_days', 'max_connections', 'features', 'plan_options', 'catalog_tags', 'country_codes', 'provider_stats', 'provisioning_mode', 'reseller_bouquet_ids', 'reseller_notes', 'stripe_price_id', 'stripe_product_id', 'provider_network_id', 'is_featured', 'is_active', 'group_id', 'is_trial', 'trial_ticket_enabled', 'trial_ticket_message', 'countries', 'tags'];
     const sets = [];
     const values = [];
     let idx = 1;
