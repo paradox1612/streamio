@@ -469,9 +469,11 @@ function MarketplaceCard({
 function TopupModal({
   onClose,
   onSuccess,
+  providers,
 }: {
   onClose: () => void
   onSuccess: (newBalance: number) => void
+  providers: PaymentProviders
 }) {
   const [config, setConfig] = useState<{
     min_topup_cents: number
@@ -481,7 +483,7 @@ function TopupModal({
   } | null>(null)
   const [selected, setSelected] = useState<number | 'custom'>(2500)
   const [customAmount, setCustomAmount] = useState<string>('')
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState<string | null>(null)
   const [pendingTxId, setPendingTxId] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -511,23 +513,38 @@ function TopupModal({
 
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
 
-  const handleTopup = async () => {
-    let amountCents = 0
+  const getAmountCents = () => {
     if (selected === 'custom') {
-      amountCents = Math.round(parseFloat(customAmount) * 100)
-      if (isNaN(amountCents) || amountCents <= 0) return toast.error('Enter a valid amount')
-    } else {
-      amountCents = selected
+      const cents = Math.round(parseFloat(customAmount) * 100)
+      return isNaN(cents) || cents <= 0 ? null : cents
     }
+    return selected
+  }
+
+  const handleTopup = async (provider: 'paygate' | 'helcim' | 'square') => {
+    const amountCents = getAmountCents()
+    if (!amountCents) return toast.error('Enter a valid amount')
 
     if (config) {
       if (amountCents < config.min_topup_cents) return toast.error(`Minimum top-up is ${formatPrice(config.min_topup_cents)}`)
       if (amountCents > config.max_topup_cents) return toast.error(`Maximum top-up is ${formatPrice(config.max_topup_cents)}`)
     }
 
-    setLoading(true)
+    setLoading(provider)
     try {
-      const { data } = await creditsAPI.topup(amountCents)
+      const { data } = await creditsAPI.topup(amountCents, provider)
+
+      if (provider === 'helcim') {
+        window.location.href = `/checkout/helcim?token=${data.checkout_token}&tx_id=cred_${data.credit_transaction_id}`
+        return
+      }
+
+      if (provider === 'square') {
+        window.location.href = data.checkout_url
+        return
+      }
+
+      // PayGate: open in new tab and poll
       setPendingTxId(data.credit_transaction_id)
       sessionStorage.setItem('pg_topup_tx', data.credit_transaction_id)
       startPolling(data.credit_transaction_id)
@@ -535,8 +552,18 @@ function TopupModal({
       toast('Complete payment in the new tab, then return here.', { icon: '🔗' })
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to initiate top-up')
-      setLoading(false)
+      setLoading(null)
     }
+  }
+
+  const activeProviders = (
+    ['paygate', 'helcim', 'square'] as const
+  ).filter((p) => providers[p])
+
+  const providerMeta = {
+    paygate: { label: 'PayGate', color: 'bg-emerald-600 hover:bg-emerald-500', icon: <Wallet className="h-4 w-4" /> },
+    helcim: { label: 'Helcim', color: 'bg-sky-600 hover:bg-sky-500', icon: <CreditCard className="h-4 w-4" /> },
+    square: { label: 'Square', color: 'bg-teal-600 hover:bg-teal-500', icon: <CreditCard className="h-4 w-4" /> },
   }
 
   if (!config) {
@@ -557,7 +584,7 @@ function TopupModal({
         </button>
 
         <h2 className="text-lg font-bold text-white">Top Up Credits</h2>
-        <p className="mt-1 text-sm text-slate-400">Pay via PayGate.to — credits are added on confirmation.</p>
+        <p className="mt-1 text-sm text-slate-400">Credits are added automatically after payment confirmation.</p>
 
         {pendingTxId ? (
           <div className="mt-8 flex flex-col items-center gap-4">
@@ -617,10 +644,33 @@ function TopupModal({
               </div>
             )}
 
-            <Button onClick={handleTopup} disabled={loading} className="mt-6 w-full gap-2 rounded-2xl py-6 text-base font-semibold">
-              {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wallet className="h-5 w-5" />}
-              Pay {selected === 'custom' ? (customAmount ? `$${customAmount}` : '...') : formatPrice(selected)} via PayGate
-            </Button>
+            {activeProviders.length === 0 ? (
+              <p className="mt-6 text-center text-sm text-slate-500">No payment methods available.</p>
+            ) : activeProviders.length === 1 ? (
+              <button
+                onClick={() => handleTopup(activeProviders[0])}
+                disabled={!!loading}
+                className={`mt-6 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-semibold text-white transition-colors disabled:opacity-60 ${providerMeta[activeProviders[0]].color}`}
+              >
+                {loading === activeProviders[0] ? <Loader2 className="h-5 w-5 animate-spin" /> : providerMeta[activeProviders[0]].icon}
+                Pay {selected === 'custom' ? (customAmount ? `$${customAmount}` : '...') : formatPrice(selected)} via {providerMeta[activeProviders[0]].label}
+              </button>
+            ) : (
+              <div className="mt-6 flex flex-col gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Pay via</p>
+                {activeProviders.map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => handleTopup(p)}
+                    disabled={!!loading}
+                    className={`flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-semibold text-white transition-colors disabled:opacity-60 ${providerMeta[p].color}`}
+                  >
+                    {loading === p ? <Loader2 className="h-4 w-4 animate-spin" /> : providerMeta[p].icon}
+                    {providerMeta[p].label} — {selected === 'custom' ? (customAmount ? `$${customAmount}` : '...') : formatPrice(selected)}
+                  </button>
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -1001,6 +1051,7 @@ export default function MarketplacePage() {
             setCreditBalance(newBalance)
             creditsAPI.getTransactions({ limit: 15 }).then(({ data }) => setCreditTxs(data))
           }}
+          providers={providers}
         />
       )}
     </div>

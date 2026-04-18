@@ -15,14 +15,16 @@ function HelcimCheckout() {
   const searchParams = useSearchParams()
   const token = searchParams.get('token')
   const subscriptionId = searchParams.get('sub_id')
+  // tx_id is set for credit top-ups; sub_id is set for subscription purchases
+  const txId = searchParams.get('tx_id')
 
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const scriptLoaded = useRef(false)
 
   useEffect(() => {
-    if (!token || !subscriptionId) {
-      setErrorMsg('Invalid checkout link. Missing token or subscription ID.')
+    if (!token || (!subscriptionId && !txId)) {
+      setErrorMsg('Invalid checkout link. Missing token or ID.')
       setStatus('error')
       return
     }
@@ -49,7 +51,12 @@ function HelcimCheckout() {
     const handleMessage = (event: MessageEvent) => {
       if (!event.data?.eventName) return
       if (event.data.eventName === 'HELCIM_PAY_JS_SUCCESS') {
-        router.push(`/subscriptions/provisioning?subscription_id=${subscriptionId}`)
+        if (subscriptionId) {
+          router.push(`/subscriptions/provisioning?subscription_id=${subscriptionId}`)
+        } else {
+          // Credit top-up — go back to marketplace with success flag
+          router.push('/dashboard/marketplace?topup=success')
+        }
       } else if (event.data.eventName === 'HELCIM_PAY_JS_FAILED') {
         setErrorMsg('Payment was declined. Please try a different card or contact support.')
         setStatus('error')
@@ -58,7 +65,7 @@ function HelcimCheckout() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [token, subscriptionId, router])
+  }, [token, subscriptionId, txId, router])
 
   if (status === 'error') {
     return (

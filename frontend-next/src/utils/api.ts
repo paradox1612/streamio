@@ -124,7 +124,8 @@ export const creditsAPI = {
   getTransactions: (params?: { limit?: number; offset?: number }) =>
     api.get('/api/credits/transactions', { params }),
   getCreditsConfig: () => api.get('/api/credits/config'),
-  topup: (amountCents: number) => api.post('/api/credits/topup', { amount_cents: amountCents }),
+  topup: (amountCents: number, paymentProvider: 'paygate' | 'helcim' | 'square' = 'paygate') =>
+    api.post('/api/credits/topup', { amount_cents: amountCents, payment_provider: paymentProvider }),
   getTopupStatus: (creditTxId: string) => api.get(`/api/credits/topup/status/${creditTxId}`),
 }
 

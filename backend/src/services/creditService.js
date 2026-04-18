@@ -181,6 +181,21 @@ async function confirmTopup(referenceId) {
   }
 }
 
+/**
+ * Confirm a pending top-up by Square order ID.
+ * Looks up the credit transaction via square_order_id, then delegates to confirmTopup.
+ */
+async function confirmTopupBySquareOrderId(squareOrderId) {
+  const { rows } = await pool.query(
+    `SELECT reference_id FROM credit_transactions
+     WHERE square_order_id = $1 AND type LIKE 'topup_%' AND status = 'pending'`,
+    [squareOrderId]
+  );
+  const tx = rows[0];
+  if (!tx) return null;
+  return confirmTopup(tx.reference_id);
+}
+
 module.exports = {
   getBalance,
   listTransactions,
@@ -188,4 +203,5 @@ module.exports = {
   spendCredits,
   createPendingTopup,
   confirmTopup,
+  confirmTopupBySquareOrderId,
 };

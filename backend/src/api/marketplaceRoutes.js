@@ -476,20 +476,17 @@ router.get('/credits/config', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/credits/topup — initiate a PayGate credit purchase
-// Body: { amount_cents: number }  (min $5 = 500 cents)
+// POST /api/credits/topup — initiate a credit purchase
+// Body: { amount_cents: number, payment_provider?: 'paygate' | 'helcim' | 'square' }
 router.post('/credits/topup', requireAuth, async (req, res) => {
   try {
-    if (!paygateService.isEnabled) {
-      return res.status(503).json({ error: 'PayGate is not configured' });
-    }
+    const { amount_cents, payment_provider = 'paygate' } = req.body;
 
     const config = (await systemSettingQueries.get('credits_config')) || {
       min_topup_cents: 500,
       max_topup_cents: 100000,
     };
 
-    const { amount_cents } = req.body;
     if (!amount_cents || amount_cents < config.min_topup_cents) {
       return res.status(400).json({
         error: `Minimum top-up is $${(config.min_topup_cents / 100).toFixed(2)}`,
@@ -504,45 +501,147 @@ router.post('/credits/topup', requireAuth, async (req, res) => {
     const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
     const user = rows[0];
 
-    // Create a pending credit transaction
-    const tx = await creditService.createPendingTopup(user.id, amount_cents, {
-      type: 'topup_paygate',
-    });
+    // ── PayGate topup ──
+    if (payment_provider === 'paygate') {
+      if (!paygateService.isEnabled) {
+        return res.status(503).json({ error: 'PayGate is not configured' });
+      }
 
-    const invoiceId = `cred_${tx.id}`;
-    const callbackBase = `${process.env.API_BASE_URL || process.env.BASE_URL || 'http://localhost:3001'}/webhooks/paygate`;
+      const tx = await creditService.createPendingTopup(user.id, amount_cents, { type: 'topup_paygate' });
+      const invoiceId = `cred_${tx.id}`;
+      const callbackBase = `${process.env.API_BASE_URL || process.env.BASE_URL || 'http://localhost:3001'}/webhooks/paygate`;
 
-    let session;
-    try {
-      session = await paygateService.createPaymentSession(invoiceId, callbackBase);
-    } catch (err) {
-      // Mark the pending tx as failed
-      await pool.query(
-        `UPDATE credit_transactions SET status = 'failed' WHERE id = $1`,
-        [tx.id]
-      );
-      logger.error('[Credits topup] PayGate session failed:', err.message);
-      return res.status(502).json({ error: 'Failed to create PayGate session. Please try again.' });
+      let session;
+      try {
+        session = await paygateService.createPaymentSession(invoiceId, callbackBase);
+      } catch (err) {
+        await pool.query(`UPDATE credit_transactions SET status = 'failed' WHERE id = $1`, [tx.id]);
+        logger.error('[Credits topup/PayGate] Session failed:', err.message);
+        return res.status(502).json({ error: 'Failed to create PayGate session. Please try again.' });
+      }
+
+      await pool.query(`UPDATE credit_transactions SET reference_id = $1 WHERE id = $2`, [invoiceId, tx.id]);
+
+      return res.json({
+        payment_provider: 'paygate',
+        checkout_url: paygateService.buildCheckoutUrl(session.addressIn, {
+          amountCents: amount_cents,
+          currency: 'USD',
+          email: user.email,
+        }),
+        address_in: session.addressIn,
+        credit_transaction_id: tx.id,
+        amount_cents,
+      });
     }
 
-    // Persist tracking address on the credit transaction
-    await pool.query(
-      `UPDATE credit_transactions SET reference_id = $1 WHERE id = $2`,
-      [invoiceId, tx.id]
-    );
+    // ── Helcim topup ──
+    if (payment_provider === 'helcim') {
+      if (!helcimService.isEnabled) {
+        return res.status(503).json({ error: 'Helcim is not configured' });
+      }
 
-    const checkoutUrl = paygateService.buildCheckoutUrl(session.addressIn, {
-      amountCents: amount_cents,
-      currency: 'USD',
-      email: user.email,
-    });
+      const tx = await creditService.createPendingTopup(user.id, amount_cents, { type: 'topup_helcim' });
+      const invoiceId = `cred_${tx.id}`;
+      await pool.query(`UPDATE credit_transactions SET reference_id = $1 WHERE id = $2`, [invoiceId, tx.id]);
 
-    res.json({
-      checkout_url: checkoutUrl,
-      address_in: session.addressIn,
-      credit_transaction_id: tx.id,
-      amount_cents,
-    });
+      let session;
+      try {
+        session = await helcimService.initializePayment({
+          amountCents: amount_cents,
+          currency: 'USD',
+          invoiceId,
+          customerCode: user.id,
+        });
+      } catch (err) {
+        await pool.query(`UPDATE credit_transactions SET status = 'failed' WHERE id = $1`, [tx.id]);
+        logger.error('[Credits topup/Helcim] Initialize failed:', err.message);
+        return res.status(502).json({ error: 'Failed to initialize Helcim payment. Please try again.' });
+      }
+
+      return res.json({
+        payment_provider: 'helcim',
+        checkout_token: session.checkoutToken,
+        credit_transaction_id: tx.id,
+        amount_cents,
+      });
+    }
+
+    // ── Square topup ──
+    if (payment_provider === 'square') {
+      const squareEnabled = await squareService.isEnabled();
+      if (!squareEnabled) {
+        return res.status(503).json({ error: 'Square is not configured' });
+      }
+
+      const tx = await creditService.createPendingTopup(user.id, amount_cents, { type: 'topup_square' });
+      const invoiceId = `cred_${tx.id}`;
+      await pool.query(`UPDATE credit_transactions SET reference_id = $1 WHERE id = $2`, [invoiceId, tx.id]);
+
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const fakeOffering = {
+        name: 'Credit Top-up',
+        selected_plan: { price_cents: amount_cents, currency: 'USD', name: `$${(amount_cents / 100).toFixed(2)}` },
+        price_cents: amount_cents,
+        currency: 'USD',
+      };
+
+      let link;
+      try {
+        // Use a dedicated Square helper that accepts a custom redirect and reference_id
+        const squareCfg = await squareService.getConfig();
+        const { v4: uuidv4 } = require('uuid');
+        const sqRes = await fetch(
+          `${squareCfg.environment === 'sandbox' ? 'https://connect.squareupsandbox.com' : 'https://connect.squareup.com'}/v2/online-checkout/payment-links`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${squareCfg.accessToken}`,
+              'Square-Version': '2024-01-18',
+            },
+            body: JSON.stringify({
+              idempotency_key: uuidv4(),
+              order: {
+                order: {
+                  location_id: squareCfg.locationId,
+                  reference_id: invoiceId,
+                  line_items: [{
+                    name: `Credit Top-up — $${(amount_cents / 100).toFixed(2)}`,
+                    quantity: '1',
+                    base_price_money: { amount: amount_cents, currency: 'USD' },
+                  }],
+                },
+              },
+              checkout_options: {
+                redirect_url: `${frontendUrl}/dashboard/marketplace?topup=success`,
+                allow_tipping: false,
+                ask_for_shipping_address: false,
+              },
+              pre_populated_data: { buyer_email: user.email || undefined },
+            }),
+          }
+        );
+        const sqData = await sqRes.json();
+        if (!sqRes.ok || !sqData.payment_link?.url) throw new Error(sqData.errors?.[0]?.detail || 'Square error');
+        link = { url: sqData.payment_link.url, orderId: sqData.payment_link.order_id };
+      } catch (err) {
+        await pool.query(`UPDATE credit_transactions SET status = 'failed' WHERE id = $1`, [tx.id]);
+        logger.error('[Credits topup/Square] Payment link failed:', err.message);
+        return res.status(502).json({ error: 'Failed to create Square payment link. Please try again.' });
+      }
+
+      await pool.query(`UPDATE credit_transactions SET square_order_id = $1 WHERE id = $2`, [link.orderId, tx.id]);
+
+      return res.json({
+        payment_provider: 'square',
+        checkout_url: link.url,
+        credit_transaction_id: tx.id,
+        amount_cents,
+      });
+    }
+
+    return res.status(400).json({ error: `Unknown payment_provider: ${payment_provider}` });
   } catch (err) {
     logger.error('POST /credits/topup:', err.message);
     res.status(500).json({ error: 'Failed to initiate credit top-up' });

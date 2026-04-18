@@ -312,6 +312,17 @@ router.post('/helcim', express.raw({ type: 'application/json' }), async (req, re
       return;
     }
 
+    // ── Credit top-up ──
+    if (invoiceNumber?.startsWith('cred_')) {
+      const result = await creditService.confirmTopup(invoiceNumber);
+      if (result) {
+        logger.info(`[Webhook/Helcim] Credit topup confirmed: +${result.amountCents}¢ for user ${result.userId}`);
+      } else {
+        logger.warn(`[Webhook/Helcim] Credit topup ${invoiceNumber} not found or already processed`);
+      }
+      return;
+    }
+
     if (!invoiceNumber?.startsWith('sub_')) {
       logger.warn(`[Webhook/Helcim] Unknown invoiceNumber format: ${invoiceNumber}`);
       return;
@@ -440,6 +451,13 @@ router.post('/square', express.raw({ type: 'application/json' }), async (req, re
     const orderId = paymentObj.order_id;
     if (!orderId) {
       logger.warn('[Webhook/Square] Payment has no order_id');
+      return;
+    }
+
+    // ── Credit top-up (reference_id starts with cred_) ──
+    const creditResult = await creditService.confirmTopupBySquareOrderId(orderId);
+    if (creditResult) {
+      logger.info(`[Webhook/Square] Credit topup confirmed: +${creditResult.amountCents}¢ for user ${creditResult.userId}`);
       return;
     }
 

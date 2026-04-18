@@ -883,6 +883,7 @@ ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS helcim_transaction_id 
 ALTER TABLE provider_subscriptions ADD COLUMN IF NOT EXISTS square_order_id TEXT UNIQUE;
 ALTER TABLE provider_subscriptions ADD COLUMN IF NOT EXISTS square_payment_link_id TEXT;
 ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS square_payment_id TEXT UNIQUE;
+ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS square_order_id TEXT UNIQUE;
 
 -- ─────────────────────────────────────────
 -- Credits System
