@@ -96,7 +96,7 @@ export const marketplaceAPI = {
   getPaymentProviders: () => api.get('/api/marketplace/payment-providers'),
   createCheckout: (
     offeringId: string,
-    paymentProvider: 'stripe' | 'paygate' | 'credits' = 'stripe',
+    paymentProvider: 'stripe' | 'paygate' | 'credits' | 'helcim' | 'square' = 'stripe',
     confirmDuplicate = false,
     options?: { plan_code?: string; auto_renew?: boolean }
   ) =>
@@ -244,6 +244,8 @@ export const adminAPI = {
   // System Settings
   getCreditsSettings: () => api.get('/api/admin/settings/credits'),
   updateCreditsSettings: (data: object) => api.put('/api/admin/settings/credits', data),
+  getPaymentProviderSettings: () => api.get('/api/admin/settings/payment-providers'),
+  updatePaymentProviderSettings: (data: object) => api.put('/api/admin/settings/payment-providers', data),
 }
 
 export const blogAPI = {

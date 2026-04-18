@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   ArrowLeft,
+  CreditCard,
   Crosshair,
   FileText,
   Gift,
@@ -59,6 +60,7 @@ const navGroups = [
     items: [
       { path: '/admin/free-access', label: 'Free Access', icon: Gift, description: 'Promotions and trials' },
       { path: '/admin/settings/credits', label: 'Credits', icon: Shield, description: 'Top-up rules' },
+      { path: '/admin/settings/payment-providers', label: 'Payment Providers', icon: CreditCard, description: 'Keys & visibility' },
       { path: '/admin/settings/crm', label: 'CRM', icon: UserSquare2, description: 'Twenty CRM sync' },
     ]
   }

@@ -86,6 +86,8 @@ interface CreditTransaction {
 interface PaymentProviders {
   stripe: boolean
   paygate: boolean
+  helcim: boolean
+  square: boolean
 }
 
 function formatPrice(cents: number, currency = 'USD') {
@@ -129,7 +131,7 @@ function PaymentMethodModal({
   const selectedOffering = offerings.find((o) => o.id === selectedId) || offerings[0]
   const hasEnoughCredits = creditBalance >= selectedOffering.price_cents
 
-  const handlePay = async (method: 'stripe' | 'paygate' | 'credits', confirmDuplicate = false) => {
+  const handlePay = async (method: 'stripe' | 'paygate' | 'helcim' | 'square' | 'credits', confirmDuplicate = false) => {
     setLoading(method)
     try {
       const { data } = await marketplaceAPI.createCheckout(selectedOffering.id, method, confirmDuplicate, {
@@ -145,6 +147,16 @@ function PaymentMethodModal({
       if (method === 'paygate' && data.checkout_url) {
         sessionStorage.setItem('pg_pending_address', data.address_in)
         sessionStorage.setItem('pg_pending_sub_id', data.subscription_id)
+        window.location.href = data.checkout_url
+        return
+      }
+
+      if (method === 'helcim' && data.checkout_token) {
+        window.location.href = `/checkout/helcim?token=${encodeURIComponent(data.checkout_token)}&sub_id=${encodeURIComponent(data.subscription_id)}`
+        return
+      }
+
+      if (method === 'square' && data.checkout_url) {
         window.location.href = data.checkout_url
         return
       }
@@ -259,6 +271,44 @@ function PaymentMethodModal({
                   </div>
                 </div>
                 {loading === 'paygate' ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+              </button>
+            )}
+
+            {providers.helcim && (
+              <button
+                onClick={() => handlePay('helcim')}
+                disabled={!!loading}
+                className="flex w-full items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 transition-all hover:border-sky-500/40 hover:bg-white/[0.06] disabled:opacity-50"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-400">
+                    <CreditCard className="h-5 w-5" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-semibold text-white">Helcim</p>
+                    <p className="text-[10px] text-slate-400">Credit or debit card via Helcim</p>
+                  </div>
+                </div>
+                {loading === 'helcim' ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+              </button>
+            )}
+
+            {providers.square && (
+              <button
+                onClick={() => handlePay('square')}
+                disabled={!!loading}
+                className="flex w-full items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 transition-all hover:border-teal-500/40 hover:bg-white/[0.06] disabled:opacity-50"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-500/10 text-teal-400">
+                    <ShoppingCart className="h-5 w-5" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-semibold text-white">Square</p>
+                    <p className="text-[10px] text-slate-400">Credit or debit card via Square</p>
+                  </div>
+                </div>
+                {loading === 'square' ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
               </button>
             )}
 
@@ -585,7 +635,7 @@ export default function MarketplacePage() {
   const [payments, setPayments] = useState<PaymentTransaction[]>([])
   const [creditBalance, setCreditBalance] = useState(0)
   const [creditTxs, setCreditTxs] = useState<CreditTransaction[]>([])
-  const [providers, setProviders] = useState<PaymentProviders>({ stripe: true, paygate: false })
+  const [providers, setProviders] = useState<PaymentProviders>({ stripe: true, paygate: false, helcim: false, square: false })
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'browse' | 'subscriptions' | 'history'>('browse')
   const [checkoutGroup, setCheckoutGroup] = useState<Offering[] | null>(null)

@@ -2,6 +2,8 @@ const express = require('express');
 const crypto = require('crypto');
 const { constructWebhookEvent, isEnabled: stripeEnabled } = require('../services/stripeService');
 const paygateService = require('../services/paygateService');
+const helcimService = require('../services/helcimService');
+const squareService = require('../services/squareService');
 const creditService = require('../services/creditService');
 const subscriptionService = require('../services/subscriptionService');
 const { subscriptionQueries, providerQueries, paymentQueries, offeringQueries, pool } = require('../db/queries');
@@ -274,6 +276,239 @@ router.get('/paygate', async (req, res) => {
     }
   } catch (err) {
     logger.error(`[Webhook/PayGate] Error processing callback: ${err.message}`);
+  }
+});
+
+// ─── Helcim Webhook (POST) ────────────────────────────────────────────────────
+// Helcim sends a POST with transaction data when a payment is approved.
+// Configure in myHelcim dashboard: Settings → Integrations → Webhooks
+
+router.post('/helcim', express.raw({ type: 'application/json' }), async (req, res) => {
+  if (!helcimService.isEnabled) {
+    return res.status(503).json({ error: 'Helcim is not configured' });
+  }
+
+  const sig = req.headers['x-helcim-signature'] || req.headers['helcim-signature'];
+  if (!helcimService.verifyWebhookSignature(req.body, sig)) {
+    logger.warn('[Webhook/Helcim] Signature verification failed');
+    return res.status(401).json({ error: 'Invalid Helcim webhook signature' });
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(req.body.toString('utf8'));
+  } catch {
+    return res.status(400).json({ error: 'Invalid JSON' });
+  }
+
+  // Acknowledge immediately — process async
+  res.json({ received: true });
+
+  try {
+    const { transactionId, status, invoiceNumber, amount, currency } = payload;
+
+    if (String(status).toUpperCase() !== 'APPROVED') {
+      logger.info(`[Webhook/Helcim] Non-approved transaction status=${status} for invoice=${invoiceNumber}`);
+      return;
+    }
+
+    if (!invoiceNumber?.startsWith('sub_')) {
+      logger.warn(`[Webhook/Helcim] Unknown invoiceNumber format: ${invoiceNumber}`);
+      return;
+    }
+
+    const subId = invoiceNumber.slice(4);
+    const sub = await subscriptionQueries.findById(subId);
+
+    if (!sub) {
+      logger.error(`[Webhook/Helcim] Subscription ${subId} not found`);
+      return;
+    }
+
+    if (sub.status !== 'pending_payment') {
+      logger.info(`[Webhook/Helcim] Subscription ${subId} already status=${sub.status}, skipping`);
+      return;
+    }
+
+    const periodEnd = helcimService.calcPeriodEnd(
+      sub.selected_billing_period || sub.billing_period,
+      sub.selected_interval_count || sub.billing_interval_count || 1
+    );
+
+    // Activate subscription and store Helcim transaction ID
+    await subscriptionQueries.update(subId, {
+      status: 'active',
+      current_period_start: new Date(),
+      current_period_end: periodEnd,
+      helcim_transaction_id: transactionId ? String(transactionId) : null,
+    });
+
+    // Record payment transaction
+    const amountCents = amount != null
+      ? Math.round(parseFloat(amount) * 100)
+      : sub.selected_price_cents || 0;
+
+    await paymentQueries.insert({
+      user_id: sub.user_id,
+      subscription_id: subId,
+      amount_cents: amountCents,
+      currency: (currency || sub.selected_currency || 'usd').toLowerCase(),
+      status: 'succeeded',
+      payment_provider: 'helcim',
+      helcim_transaction_id: transactionId ? String(transactionId) : null,
+    });
+
+    // Provision IPTV credentials in background
+    if (!sub.user_provider_id && sub.provider_network_id) {
+      try {
+        const offering = await offeringQueries.findById(sub.offering_id);
+        const userProvider = await subscriptionService.provisionCredentialsPublic(
+          sub.user_id,
+          offering || { name: sub.offering_name, provider_network_id: sub.provider_network_id },
+          {
+            expiresAt: periodEnd,
+            selectedPlan: offering
+              ? {
+                code: sub.selected_plan_code,
+                name: sub.selected_plan_name,
+                price_cents: sub.selected_price_cents,
+                currency: sub.selected_currency,
+                billing_period: sub.selected_billing_period,
+                billing_interval_count: sub.selected_interval_count,
+              }
+              : null,
+          }
+        );
+        if (userProvider) {
+          await subscriptionQueries.update(subId, { user_provider_id: userProvider.id });
+        }
+      } catch (err) {
+        logger.error(`[Webhook/Helcim] Credential provisioning failed: ${err.message}`);
+      }
+    }
+
+    eventBus.emit('subscription.created', { subscription: sub });
+    logger.info(`[Webhook/Helcim] Subscription ${subId} activated, transactionId=${transactionId}`);
+  } catch (err) {
+    logger.error(`[Webhook/Helcim] Error processing webhook: ${err.message}`);
+  }
+});
+
+// ─── Square Webhook (POST) ────────────────────────────────────────────────────
+// Square sends payment events here. Configure in Square Developer Dashboard:
+// Webhooks → Add Webhook → URL: https://your-api-domain/webhooks/square
+// Subscribe to: payment.updated
+
+router.post('/square', express.raw({ type: 'application/json' }), async (req, res) => {
+  const squareEnabled = await squareService.isEnabled();
+  if (!squareEnabled) {
+    return res.status(503).json({ error: 'Square is not configured' });
+  }
+
+  const sig = req.headers['x-square-hmacsha256-signature'];
+  const notificationUrl = `${process.env.API_BASE_URL || process.env.BASE_URL || 'http://localhost:3001'}/webhooks/square`;
+
+  if (!await squareService.verifyWebhookSignature(req.body, sig, notificationUrl)) {
+    logger.warn('[Webhook/Square] Signature verification failed');
+    return res.status(401).json({ error: 'Invalid Square webhook signature' });
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(req.body.toString('utf8'));
+  } catch {
+    return res.status(400).json({ error: 'Invalid JSON' });
+  }
+
+  // Acknowledge immediately
+  res.json({ received: true });
+
+  try {
+    const eventType = payload?.type;
+    const paymentObj = payload?.data?.object?.payment;
+
+    if (eventType !== 'payment.updated' || !paymentObj) {
+      logger.debug(`[Webhook/Square] Unhandled event type: ${eventType}`);
+      return;
+    }
+
+    if (paymentObj.status !== 'COMPLETED') {
+      logger.info(`[Webhook/Square] Payment not completed (status=${paymentObj.status}), skipping`);
+      return;
+    }
+
+    const orderId = paymentObj.order_id;
+    if (!orderId) {
+      logger.warn('[Webhook/Square] Payment has no order_id');
+      return;
+    }
+
+    const sub = await subscriptionQueries.findBySquareOrderId(orderId);
+    if (!sub) {
+      logger.warn(`[Webhook/Square] No subscription found for order_id=${orderId}`);
+      return;
+    }
+
+    if (sub.status !== 'pending_payment') {
+      logger.info(`[Webhook/Square] Subscription ${sub.id} already status=${sub.status}, skipping`);
+      return;
+    }
+
+    const periodEnd = squareService.calcPeriodEnd(
+      sub.selected_billing_period || sub.billing_period,
+      sub.selected_interval_count || sub.billing_interval_count || 1
+    );
+
+    await subscriptionQueries.update(sub.id, {
+      status: 'active',
+      current_period_start: new Date(),
+      current_period_end: periodEnd,
+    });
+
+    const amountCents = paymentObj.amount_money?.amount ?? sub.selected_price_cents ?? 0;
+    const currency = (paymentObj.amount_money?.currency || sub.selected_currency || 'usd').toLowerCase();
+
+    await paymentQueries.insert({
+      user_id: sub.user_id,
+      subscription_id: sub.id,
+      amount_cents: amountCents,
+      currency,
+      status: 'succeeded',
+      payment_provider: 'square',
+      square_payment_id: paymentObj.id,
+    });
+
+    // Provision IPTV credentials in background
+    if (!sub.user_provider_id && sub.provider_network_id) {
+      try {
+        const offering = await offeringQueries.findById(sub.offering_id);
+        const userProvider = await subscriptionService.provisionCredentialsPublic(
+          sub.user_id,
+          offering || { name: sub.offering_name, provider_network_id: sub.provider_network_id },
+          {
+            expiresAt: periodEnd,
+            selectedPlan: offering ? {
+              code: sub.selected_plan_code,
+              name: sub.selected_plan_name,
+              price_cents: sub.selected_price_cents,
+              currency: sub.selected_currency,
+              billing_period: sub.selected_billing_period,
+              billing_interval_count: sub.selected_interval_count,
+            } : null,
+          }
+        );
+        if (userProvider) {
+          await subscriptionQueries.update(sub.id, { user_provider_id: userProvider.id });
+        }
+      } catch (err) {
+        logger.error(`[Webhook/Square] Credential provisioning failed: ${err.message}`);
+      }
+    }
+
+    eventBus.emit('subscription.created', { subscription: sub });
+    logger.info(`[Webhook/Square] Subscription ${sub.id} activated, paymentId=${paymentObj.id}`);
+  } catch (err) {
+    logger.error(`[Webhook/Square] Error processing webhook: ${err.message}`);
   }
 });
 

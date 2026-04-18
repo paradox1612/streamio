@@ -10,6 +10,9 @@ const {
 } = require('../db/queries');
 const stripeService = require('../services/stripeService');
 const paygateService = require('../services/paygateService');
+const helcimService = require('../services/helcimService');
+const squareService = require('../services/squareService');
+const paymentProviderConfigService = require('../services/paymentProviderConfigService');
 const creditService = require('../services/creditService');
 const subscriptionService = require('../services/subscriptionService');
 const logger = require('../utils/logger');
@@ -40,12 +43,41 @@ router.get('/marketplace/offerings/:id', async (req, res) => {
   }
 });
 
-// GET /api/marketplace/payment-providers — list enabled payment methods
+// GET /api/marketplace/payment-providers — list enabled payment methods (DB visibility + env keys)
 router.get('/marketplace/payment-providers', requireAuth, async (req, res) => {
-  res.json({
-    stripe: stripeService.isEnabled,
-    paygate: paygateService.isEnabled,
-  });
+  try {
+    const cfg = await paymentProviderConfigService.getAll();
+
+    const isVisible = (provider, envEnabled) => {
+      const dbCfg = cfg[provider] || {};
+      // DB `enabled: false` overrides env
+      if (dbCfg.enabled === false) return false;
+      // DB `visible: false` hides from customers regardless of enabled state
+      if (dbCfg.visible === false) return false;
+      // DB `visible: true` shows it — requires the provider to actually be enabled
+      if (dbCfg.visible === true) return envEnabled || dbCfg.enabled === true;
+      // Default: show if enabled via env
+      return envEnabled;
+    };
+
+    const squareEnabled = await squareService.isEnabled();
+
+    res.json({
+      stripe:  isVisible('stripe',  stripeService.isEnabled),
+      paygate: isVisible('paygate', paygateService.isEnabled),
+      helcim:  isVisible('helcim',  helcimService.isEnabled),
+      square:  isVisible('square',  squareEnabled),
+    });
+  } catch (err) {
+    logger.error('GET /marketplace/payment-providers:', err.message);
+    // Fall back to env-only if DB is unavailable
+    res.json({
+      stripe:  stripeService.isEnabled,
+      paygate: paygateService.isEnabled,
+      helcim:  helcimService.isEnabled,
+      square:  false,
+    });
+  }
 });
 
 // POST /api/marketplace/checkout — create checkout session
@@ -136,6 +168,99 @@ router.post('/marketplace/checkout', requireAuth, async (req, res) => {
         checkout_url: checkoutUrl,
         subscription_id: sub.id,
         address_in: session.addressIn,
+      });
+    }
+
+    // ── Helcim checkout ──
+    if (payment_provider === 'helcim') {
+      if (!helcimService.isEnabled) {
+        return res.status(503).json({ error: 'Helcim is not configured' });
+      }
+
+      // Create a pending subscription so we have an ID before the user pays
+      const sub = await subscriptionQueries.create({
+        user_id: user.id,
+        offering_id: offering.id,
+        status: 'pending_payment',
+        payment_provider: 'helcim',
+        current_period_start: new Date(),
+        current_period_end: helcimService.calcPeriodEnd(selectedPlan.billing_period, selectedPlan.billing_interval_count),
+        auto_renew: false,
+        selected_plan_code: selectedPlan.code,
+        selected_plan_name: selectedPlan.name,
+        selected_price_cents: selectedPlan.price_cents,
+        selected_currency: selectedPlan.currency,
+        selected_billing_period: selectedPlan.billing_period,
+        selected_interval_count: selectedPlan.billing_interval_count,
+      });
+
+      const invoiceId = `sub_${sub.id}`;
+
+      let session;
+      try {
+        session = await helcimService.initializePayment({
+          amountCents: selectedPlan.price_cents,
+          currency: selectedPlan.currency || offering.currency || 'USD',
+          invoiceId,
+          customerCode: user.id,
+        });
+      } catch (err) {
+        await subscriptionQueries.update(sub.id, { status: 'cancelled', cancelled_at: new Date() });
+        logger.error('[Helcim checkout] Initialize failed:', err.message);
+        return res.status(502).json({ error: 'Failed to initialize Helcim payment. Please try again.' });
+      }
+
+      // Persist the checkout token for webhook correlation
+      await subscriptionQueries.update(sub.id, { helcim_checkout_token: session.checkoutToken });
+
+      return res.json({
+        payment_provider: 'helcim',
+        checkout_token: session.checkoutToken,
+        subscription_id: sub.id,
+      });
+    }
+
+    // ── Square checkout ──
+    if (payment_provider === 'square') {
+      const squareEnabled = await squareService.isEnabled();
+      if (!squareEnabled) {
+        return res.status(503).json({ error: 'Square is not configured' });
+      }
+
+      const sub = await subscriptionQueries.create({
+        user_id: user.id,
+        offering_id: offering.id,
+        status: 'pending_payment',
+        payment_provider: 'square',
+        current_period_start: new Date(),
+        current_period_end: squareService.calcPeriodEnd(selectedPlan.billing_period, selectedPlan.billing_interval_count),
+        auto_renew: false,
+        selected_plan_code: selectedPlan.code,
+        selected_plan_name: selectedPlan.name,
+        selected_price_cents: selectedPlan.price_cents,
+        selected_currency: selectedPlan.currency,
+        selected_billing_period: selectedPlan.billing_period,
+        selected_interval_count: selectedPlan.billing_interval_count,
+      });
+
+      let link;
+      try {
+        link = await squareService.createPaymentLink(user, checkoutOffering, { subscriptionId: sub.id });
+      } catch (err) {
+        await subscriptionQueries.update(sub.id, { status: 'cancelled', cancelled_at: new Date() });
+        logger.error('[Square checkout] createPaymentLink failed:', err.message);
+        return res.status(502).json({ error: 'Failed to create Square payment link. Please try again.' });
+      }
+
+      await subscriptionQueries.update(sub.id, {
+        square_order_id: link.orderId,
+        square_payment_link_id: link.paymentLinkId,
+      });
+
+      return res.json({
+        payment_provider: 'square',
+        checkout_url: link.url,
+        subscription_id: sub.id,
       });
     }
 

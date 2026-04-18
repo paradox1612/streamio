@@ -2878,7 +2878,7 @@ const subscriptionQueries = {
   },
 
   async update(id, fields) {
-    const allowed = ['status', 'current_period_start', 'current_period_end', 'cancel_at_period_end', 'cancelled_at', 'trial_end', 'user_provider_id', 'twenty_subscription_id', 'auto_renew', 'selected_plan_code', 'selected_plan_name', 'selected_price_cents', 'selected_currency', 'selected_billing_period', 'selected_interval_count', 'provisioning_status', 'provisioning_error'];
+    const allowed = ['status', 'current_period_start', 'current_period_end', 'cancel_at_period_end', 'cancelled_at', 'trial_end', 'user_provider_id', 'twenty_subscription_id', 'auto_renew', 'selected_plan_code', 'selected_plan_name', 'selected_price_cents', 'selected_currency', 'selected_billing_period', 'selected_interval_count', 'provisioning_status', 'provisioning_error', 'paygate_address_in', 'helcim_checkout_token', 'helcim_transaction_id', 'square_order_id', 'square_payment_link_id'];
     const sets = [];
     const values = [];
     let idx = 1;
@@ -2937,6 +2937,19 @@ const subscriptionQueries = {
        JOIN users u ON u.id = ps.user_id
        WHERE ps.paygate_address_in = $1`,
       [paygate_address_in]
+    );
+    return rows[0] || null;
+  },
+
+  async findBySquareOrderId(square_order_id) {
+    const { rows } = await pool.query(
+      `SELECT ps.*, po.name AS offering_name, po.provider_network_id, po.billing_period,
+              po.billing_interval_count, po.price_cents, u.email AS user_email, u.twenty_person_id
+       FROM provider_subscriptions ps
+       JOIN provider_offerings po ON po.id = ps.offering_id
+       JOIN users u ON u.id = ps.user_id
+       WHERE ps.square_order_id = $1`,
+      [square_order_id]
     );
     return rows[0] || null;
   },
@@ -3027,8 +3040,8 @@ const subscriptionQueries = {
 // ─── Marketplace: Payment Transactions ───────────────────────────────────────
 
 const paymentQueries = {
-  async insert({ user_id, subscription_id, amount_cents, currency, status, stripe_payment_intent_id, stripe_invoice_id, failure_reason, payment_provider, paygate_address_in }) {
-    // Stripe payments de-dup on stripe_payment_intent_id; PayGate payments always insert
+  async insert({ user_id, subscription_id, amount_cents, currency, status, stripe_payment_intent_id, stripe_invoice_id, failure_reason, payment_provider, paygate_address_in, helcim_transaction_id, square_payment_id }) {
+    // Stripe payments de-dup on stripe_payment_intent_id; PayGate/Helcim payments always insert
     if (stripe_payment_intent_id) {
       const { rows } = await pool.query(
         `INSERT INTO payment_transactions
@@ -3039,6 +3052,30 @@ const paymentQueries = {
         [user_id, subscription_id || null, amount_cents, currency || 'usd', status,
          stripe_payment_intent_id, stripe_invoice_id || null, failure_reason || null,
          payment_provider || 'stripe']
+      );
+      return rows[0] || null;
+    }
+    if (helcim_transaction_id) {
+      const { rows } = await pool.query(
+        `INSERT INTO payment_transactions
+           (user_id, subscription_id, amount_cents, currency, status, failure_reason, payment_provider, helcim_transaction_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (helcim_transaction_id) DO NOTHING
+         RETURNING *`,
+        [user_id, subscription_id || null, amount_cents, currency || 'usd', status,
+         failure_reason || null, payment_provider || 'helcim', helcim_transaction_id]
+      );
+      return rows[0] || null;
+    }
+    if (square_payment_id) {
+      const { rows } = await pool.query(
+        `INSERT INTO payment_transactions
+           (user_id, subscription_id, amount_cents, currency, status, failure_reason, payment_provider, square_payment_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (square_payment_id) DO NOTHING
+         RETURNING *`,
+        [user_id, subscription_id || null, amount_cents, currency || 'usd', status,
+         failure_reason || null, payment_provider || 'square', square_payment_id]
       );
       return rows[0] || null;
     }

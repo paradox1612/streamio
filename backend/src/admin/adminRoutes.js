@@ -26,6 +26,7 @@ const providerService = require('../services/providerService');
 const hostHealthService = require('../services/hostHealthService');
 const freeAccessService = require('../services/freeAccessService');
 const creditService = require('../services/creditService');
+const paymentProviderConfigService = require('../services/paymentProviderConfigService');
 const ProviderAdapterFactory = require('../providers/ProviderAdapterFactory');
 const { jobs } = require('../jobs/scheduler');
 const logger = require('../utils/logger');
@@ -1209,6 +1210,50 @@ router.put('/settings/credits', requireAdmin, async (req, res) => {
     await systemSettingQueries.set('credits_config', newConfig);
     res.json(newConfig);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Payment Provider Settings ───────────────────────────────────────────────
+
+// GET /api/admin/settings/payment-providers — return config (sensitive fields redacted)
+router.get('/settings/payment-providers', requireAdmin, async (req, res) => {
+  try {
+    const config = await paymentProviderConfigService.getAll();
+    res.json(paymentProviderConfigService.redactConfig(config));
+  } catch (err) {
+    logger.error('GET /admin/settings/payment-providers:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/admin/settings/payment-providers — save config
+// Empty string for a key field = keep existing value
+router.put('/settings/payment-providers', requireAdmin, async (req, res) => {
+  try {
+    const ALLOWED_PROVIDERS = ['stripe', 'paygate', 'helcim', 'square'];
+    const ALLOWED_FIELDS = {
+      stripe:  ['enabled', 'visible', 'secret_key', 'webhook_secret', 'publishable_key'],
+      paygate: ['enabled', 'visible', 'wallet_address', 'api_key'],
+      helcim:  ['enabled', 'visible', 'api_token', 'webhook_secret', 'company_name'],
+      square:  ['enabled', 'visible', 'access_token', 'location_id', 'webhook_signature_key', 'environment'],
+    };
+
+    const updates = {};
+    for (const provider of ALLOWED_PROVIDERS) {
+      if (!req.body[provider]) continue;
+      updates[provider] = {};
+      for (const field of ALLOWED_FIELDS[provider]) {
+        if (field in req.body[provider]) {
+          updates[provider][field] = req.body[provider][field];
+        }
+      }
+    }
+
+    const saved = await paymentProviderConfigService.saveAll(updates);
+    res.json(paymentProviderConfigService.redactConfig(saved));
+  } catch (err) {
+    logger.error('PUT /admin/settings/payment-providers:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
