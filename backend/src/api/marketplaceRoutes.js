@@ -248,7 +248,7 @@ router.post('/marketplace/checkout', requireAuth, async (req, res) => {
         link = await squareService.createPaymentLink(user, checkoutOffering, { subscriptionId: sub.id });
       } catch (err) {
         await subscriptionQueries.update(sub.id, { status: 'cancelled', cancelled_at: new Date() });
-        logger.error('[Square checkout] createPaymentLink failed:', err.message);
+        logger.error('[Square checkout] createPaymentLink failed:', err.message, err.squareErrors || '', err.cause || '');
         return res.status(502).json({ error: 'Failed to create Square payment link. Please try again.' });
       }
 

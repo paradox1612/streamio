@@ -28,15 +28,23 @@ async function squareFetch(endpoint, options = {}) {
   if (!cfg.enabled) throw Object.assign(new Error('Square is not configured'), { status: 503 });
 
   const base = SQUARE_BASE[cfg.environment] || SQUARE_BASE.production;
-  const response = await fetch(`${base}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${cfg.accessToken}`,
-      'Square-Version': '2024-01-18',
-      ...(options.headers || {}),
-    },
-  });
+  const url = `${base}${endpoint}`;
+
+  let response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${cfg.accessToken}`,
+        'Square-Version': '2024-01-18',
+        ...(options.headers || {}),
+      },
+    });
+  } catch (netErr) {
+    const cause = netErr.cause?.message || netErr.cause || '';
+    throw new Error(`Square network error: ${netErr.message}${cause ? ` (${cause})` : ''}`);
+  }
 
   let data;
   try {
@@ -47,7 +55,10 @@ async function squareFetch(endpoint, options = {}) {
 
   if (!response.ok) {
     const msg = data?.errors?.[0]?.detail || data?.errors?.[0]?.code || `Square API error: ${response.status}`;
-    throw new Error(msg);
+    const err = new Error(msg);
+    err.squareErrors = data?.errors;
+    err.httpStatus = response.status;
+    throw err;
   }
 
   return data;
@@ -72,20 +83,18 @@ async function createPaymentLink(user, offering, { subscriptionId } = {}) {
     body: JSON.stringify({
       idempotency_key: uuidv4(),
       order: {
-        order: {
-          location_id: cfg.locationId,
-          reference_id: `sub_${subscriptionId}`,
-          line_items: [
-            {
-              name: itemName,
-              quantity: '1',
-              base_price_money: {
-                amount: amountCents,
-                currency,
-              },
+        location_id: cfg.locationId,
+        reference_id: `sub_${subscriptionId}`,
+        line_items: [
+          {
+            name: itemName,
+            quantity: '1',
+            base_price_money: {
+              amount: amountCents,
+              currency,
             },
-          ],
-        },
+          },
+        ],
       },
       checkout_options: {
         redirect_url: redirectUrl,
