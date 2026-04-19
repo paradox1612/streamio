@@ -132,6 +132,8 @@ CREATE TABLE IF NOT EXISTS user_provider_vod (
   canonical_title VARCHAR,
   canonical_normalized_title VARCHAR,
   title_year INTEGER,
+  tmdb_id INTEGER,
+  imdb_id TEXT,
   content_languages TEXT[] DEFAULT ARRAY[]::TEXT[],
   quality_tags TEXT[] DEFAULT ARRAY[]::TEXT[],
   poster_url VARCHAR,
@@ -182,6 +184,8 @@ CREATE TABLE IF NOT EXISTS network_vod (
   canonical_title VARCHAR,
   canonical_normalized_title VARCHAR,
   title_year INTEGER,
+  tmdb_id INTEGER,
+  imdb_id TEXT,
   content_languages TEXT[] DEFAULT ARRAY[]::TEXT[],
   quality_tags TEXT[] DEFAULT ARRAY[]::TEXT[],
   poster_url VARCHAR,
@@ -351,6 +355,21 @@ CREATE TABLE IF NOT EXISTS free_access_catalog (
 -- ─────────────────────────────────────────
 -- Incremental migrations (safe to re-run)
 -- ─────────────────────────────────────────
+ALTER TABLE user_provider_vod
+  ADD COLUMN IF NOT EXISTS tmdb_id INTEGER;
+ALTER TABLE user_provider_vod
+  ADD COLUMN IF NOT EXISTS imdb_id TEXT;
+ALTER TABLE network_vod
+  ADD COLUMN IF NOT EXISTS tmdb_id INTEGER;
+ALTER TABLE network_vod
+  ADD COLUMN IF NOT EXISTS imdb_id TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_upv_tmdb_id ON user_provider_vod(tmdb_id);
+CREATE INDEX IF NOT EXISTS idx_upv_imdb_id ON user_provider_vod(imdb_id);
+CREATE INDEX IF NOT EXISTS idx_network_vod_tmdb_id ON network_vod(tmdb_id);
+CREATE INDEX IF NOT EXISTS idx_network_vod_imdb_id ON network_vod(imdb_id);
+CREATE INDEX IF NOT EXISTS idx_user_providers_user_id_id ON user_providers(user_id, id);
+
 ALTER TABLE user_provider_vod
   ADD COLUMN IF NOT EXISTS container_extension VARCHAR DEFAULT 'mp4';
 ALTER TABLE user_provider_vod

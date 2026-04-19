@@ -48,7 +48,13 @@ async function migrate() {
       [schemaHash]
     );
     await client.query('COMMIT');
-    console.log('Migrations complete.');
+    console.log('Schema migrations complete.');
+
+    // Run performance backfill migration
+    const migratePerf = require('./migrate_perf_indexes');
+    await migratePerf();
+
+    console.log('All migrations complete.');
   } catch (err) {
     try {
       await client.query('ROLLBACK');
