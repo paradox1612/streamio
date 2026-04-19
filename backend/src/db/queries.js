@@ -2874,26 +2874,11 @@ const offeringQueries = {
   },
 
   async delete(id) {
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      // Set offering_id to NULL in subscriptions before deleting the offering
-      await client.query(
-        'UPDATE provider_subscriptions SET offering_id = NULL, updated_at = NOW() WHERE offering_id = $1',
-        [id]
-      );
-      const { rows } = await client.query(
-        'DELETE FROM provider_offerings WHERE id = $1 RETURNING *',
-        [id]
-      );
-      await client.query('COMMIT');
-      return rows[0] || null;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    const { rows } = await pool.query(
+      'DELETE FROM provider_offerings WHERE id = $1 RETURNING *',
+      [id]
+    );
+    return rows[0] || null;
   },
 };
 

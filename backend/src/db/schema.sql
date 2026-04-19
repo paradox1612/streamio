@@ -972,3 +972,34 @@ VALUES (
     "allow_custom_amount": true
   }'::jsonb
 ) ON CONFLICT (key) DO NOTHING;
+
+-- Fix offering_id nullable and foreign key for deletions
+DO $$ 
+DECLARE
+  cons_name TEXT;
+BEGIN
+  -- 1. DROP NOT NULL
+  ALTER TABLE provider_subscriptions ALTER COLUMN offering_id DROP NOT NULL;
+
+  -- 2. Update foreign key to SET NULL
+  SELECT conname INTO cons_name
+  FROM pg_constraint
+  WHERE conrelid = 'provider_subscriptions'::regclass
+    AND confrelid = 'provider_offerings'::regclass
+    AND contype = 'f';
+    
+  IF cons_name IS NOT NULL THEN
+    EXECUTE 'ALTER TABLE provider_subscriptions DROP CONSTRAINT ' || cons_name;
+  END IF;
+  
+  -- Add it back with ON DELETE SET NULL
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'provider_subscriptions_offering_id_fkey'
+  ) THEN
+    ALTER TABLE provider_subscriptions 
+      ADD CONSTRAINT provider_subscriptions_offering_id_fkey 
+      FOREIGN KEY (offering_id) 
+      REFERENCES provider_offerings(id) 
+      ON DELETE SET NULL;
+  END IF;
+END $$;
