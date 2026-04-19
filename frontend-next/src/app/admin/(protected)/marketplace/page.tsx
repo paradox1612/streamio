@@ -27,6 +27,7 @@ type PlanOption = {
   billing_interval_count: string
   trial_days: string
   max_connections: string
+  reseller_package_id: string
 }
 
 function formatCents(cents: number, currency = 'usd') {
@@ -61,6 +62,7 @@ function createBlankPlan(index = 1): PlanOption {
     billing_interval_count: '1',
     trial_days: '0',
     max_connections: '1',
+    reseller_package_id: '',
   }
 }
 
@@ -97,6 +99,8 @@ export default function AdminMarketplacePage() {
   const [saving, setSaving] = useState(false)
   const [loadingBouquets, setLoadingBouquets] = useState(false)
   const [bouquets, setBouquets] = useState<{ id: string; bouquet_name: string }[]>([])
+  const [packages, setPackages] = useState<{ id: string; name: string }[]>([])
+  const [loadingPackages, setLoadingPackages] = useState(false)
 
   async function load() {
     try {
@@ -120,6 +124,7 @@ export default function AdminMarketplacePage() {
     setEditingId(null)
     setForm({ ...EMPTY_FORM, plans: [createBlankPlan(1)] })
     setBouquets([])
+    setPackages([])
     setShowModal(true)
   }
 
@@ -138,6 +143,24 @@ export default function AdminMarketplacePage() {
       toast.error(err.response?.data?.error || 'Failed to load bouquets')
     } finally {
       setLoadingBouquets(false)
+    }
+  }
+
+  async function loadPackages(networkId: string, force = false) {
+    if (!networkId) {
+      setPackages([])
+      return
+    }
+    if (!force && networkId === form.provider_network_id && packages.length > 0) return
+    setLoadingPackages(true)
+    try {
+      const { data } = await adminAPI.getNetworkPackages(networkId)
+      setPackages(Array.isArray(data) ? data : [])
+    } catch {
+      // Adapter may not expose packages — silent.
+      setPackages([])
+    } finally {
+      setLoadingPackages(false)
     }
   }
 
@@ -182,6 +205,7 @@ export default function AdminMarketplacePage() {
         billing_interval_count: String(plan.billing_interval_count || 1),
         trial_days: String(plan.trial_days || 0),
         max_connections: String(plan.max_connections || offering.max_connections || 1),
+        reseller_package_id: String(plan.reseller_package_id || ''),
       })),
     })
 
@@ -189,8 +213,10 @@ export default function AdminMarketplacePage() {
 
     if (offering.provisioning_mode === 'reseller_line' && offering.provider_network_id) {
       void loadBouquets(offering.provider_network_id, true)
+      void loadPackages(offering.provider_network_id, true)
     } else {
       setBouquets([])
+      setPackages([])
     }
   }
 
@@ -225,6 +251,7 @@ export default function AdminMarketplacePage() {
         billing_interval_count: parseInt(plan.billing_interval_count, 10) || 1,
         trial_days: parseInt(plan.trial_days, 10) || 0,
         max_connections: parseInt(plan.max_connections, 10) || 1,
+        reseller_package_id: plan.reseller_package_id?.trim() || null,
       }))
       .filter((plan) => plan.name && Number.isFinite(plan.price_cents))
   ), [form.plans])
@@ -547,6 +574,29 @@ export default function AdminMarketplacePage() {
                       <Label>Conn.</Label>
                       <Input type="number" value={plan.max_connections} onChange={(e) => updatePlan(index, { max_connections: e.target.value })} />
                     </div>
+                    {form.provisioning_mode === 'reseller_line' && (
+                      <div className="col-span-12 md:col-span-6">
+                        <Label>Reseller Package {loadingPackages && <span className="text-xs text-slate-500">(loading…)</span>}</Label>
+                        {packages.length > 0 ? (
+                          <select
+                            className="w-full rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+                            value={plan.reseller_package_id}
+                            onChange={(e) => updatePlan(index, { reseller_package_id: e.target.value })}
+                          >
+                            <option value="">— Select package (required for non-trial) —</option>
+                            {packages.map((pkg) => (
+                              <option key={pkg.id} value={pkg.id}>{pkg.name} (id={pkg.id})</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <Input
+                            value={plan.reseller_package_id}
+                            onChange={(e) => updatePlan(index, { reseller_package_id: e.target.value })}
+                            placeholder={form.provider_network_id ? 'Package id (e.g. 3)' : 'Select a network first'}
+                          />
+                        )}
+                      </div>
+                    )}
                     <div className="col-span-12 flex justify-end">
                       <Button type="button" variant="ghost" size="sm" onClick={() => removePlan(index)} disabled={form.plans.length === 1}>
                         Remove
@@ -612,7 +662,10 @@ export default function AdminMarketplacePage() {
                     const nextMode = e.target.value
                     setForm({ ...form, provisioning_mode: nextMode })
                     if (nextMode === 'reseller_line' && form.provider_network_id) {
-                      await loadBouquets(form.provider_network_id, true)
+                      await Promise.all([
+                        loadBouquets(form.provider_network_id, true),
+                        loadPackages(form.provider_network_id, true),
+                      ])
                     }
                   }}
                 >
@@ -629,7 +682,10 @@ export default function AdminMarketplacePage() {
                     const provider_network_id = e.target.value
                     setForm({ ...form, provider_network_id })
                     if (form.provisioning_mode === 'reseller_line' && provider_network_id) {
-                      await loadBouquets(provider_network_id, true)
+                      await Promise.all([
+                        loadBouquets(provider_network_id, true),
+                        loadPackages(provider_network_id, true),
+                      ])
                     }
                   }}
                 >

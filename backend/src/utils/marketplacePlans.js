@@ -22,6 +22,7 @@ function buildDefaultPlan(offering = {}) {
     trial_days: normalizePositiveInt(offering.trial_days || 0, 0),
     max_connections: normalizePositiveInt(offering.max_connections || 1, 1),
     reseller_bouquet_ids: Array.isArray(offering.reseller_bouquet_ids) ? offering.reseller_bouquet_ids : [],
+    reseller_package_id: offering.reseller_package_id ? String(offering.reseller_package_id) : null,
     is_trial: normalizePositiveInt(offering.trial_days || 0, 0) > 0,
   };
 }
@@ -44,6 +45,7 @@ function normalizePlanOptions(offering = {}) {
     reseller_bouquet_ids: Array.isArray(plan.reseller_bouquet_ids)
       ? plan.reseller_bouquet_ids.map((value) => String(value))
       : basePlan.reseller_bouquet_ids,
+    reseller_package_id: plan.reseller_package_id ? String(plan.reseller_package_id) : basePlan.reseller_package_id,
     is_trial: plan.is_trial === true || normalizePositiveInt(plan.trial_days ?? 0, 0) > 0,
   })).filter((plan) => plan.code && plan.name && Number.isFinite(plan.price_cents));
 }

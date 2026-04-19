@@ -46,6 +46,37 @@ async function getNetworkAdapter(network) {
 }
 
 /**
+ * Roll back a failed provisioning attempt: mark the subscription cancelled
+ * and, for credit-paid subs, refund the spent credits so the user isn't
+ * charged for a line they never received.
+ */
+async function rollbackFailedProvisioning(subscriptionId, errorMessage) {
+  const sub = await subscriptionQueries.findById(subscriptionId);
+  if (!sub) return;
+
+  if (sub.payment_provider === 'credits' && Number(sub.selected_price_cents) > 0) {
+    try {
+      const creditService = require('./creditService');
+      await creditService.addCredits(sub.user_id, Number(sub.selected_price_cents), {
+        type: 'refund',
+        description: `Refund: ${sub.offering_name || 'Subscription'} provisioning failed`,
+        subscriptionId,
+      });
+      logger.info(`[SubscriptionService] Refunded ${sub.selected_price_cents}¢ to user ${sub.user_id} for failed sub ${subscriptionId}`);
+    } catch (refundErr) {
+      logger.error(`[SubscriptionService] Refund failed for sub ${subscriptionId}: ${refundErr.message}`);
+    }
+  }
+
+  if (sub.status !== 'cancelled') {
+    await subscriptionQueries.update(subscriptionId, {
+      status: 'cancelled',
+      cancelled_at: new Date(),
+    });
+  }
+}
+
+/**
  * Fire-and-forget wrapper around provisionCredentials.
  * Updates provisioning_status on the subscription so the frontend can poll.
  */
@@ -87,12 +118,15 @@ async function provisionInBackground(subscriptionId, userId, offering, opts) {
       }
       // ─────────────────────────────────────────────────────────────────────────
     } else {
-      await subscriptionQueries.updateProvisioningStatus(subscriptionId, 'failed', 'No credentials returned from provider');
+      const failureMsg = 'No credentials returned from provider';
+      await subscriptionQueries.updateProvisioningStatus(subscriptionId, 'failed', failureMsg);
       logger.warn(`[SubscriptionService] Provisioning returned null for sub ${subscriptionId}`);
+      await rollbackFailedProvisioning(subscriptionId, failureMsg);
     }
   } catch (err) {
     logger.error(`[SubscriptionService] Provisioning failed for sub ${subscriptionId}: ${err.message}`);
     await subscriptionQueries.updateProvisioningStatus(subscriptionId, 'failed', err.message);
+    await rollbackFailedProvisioning(subscriptionId, err.message);
   }
 }
 
@@ -270,6 +304,9 @@ async function provisionManagedResellerLine(userId, offering, { user = null, exp
   const isTrial = selectedPlan?.is_trial === true || (selectedPlan?.trial_days || 0) > 0;
 
   const adapter = await getNetworkAdapter(network);
+  const packageId = isTrial
+    ? null // scraper hardcodes '1' for trials
+    : (selectedPlan?.reseller_package_id || offering.reseller_package_id || null);
   const result = await adapter.createLine({
     username: lineUsername,
     password: linePassword,
@@ -278,6 +315,7 @@ async function provisionManagedResellerLine(userId, offering, { user = null, exp
     billingPeriod: selectedPlan?.billing_period || offering.billing_period,
     billingIntervalCount: selectedPlan?.billing_interval_count || offering.billing_interval_count,
     bouquetIds,
+    packageId,
     trial: isTrial,
     notes,
     autoGenerateCredentials: shouldAutoGenerateCredentials,

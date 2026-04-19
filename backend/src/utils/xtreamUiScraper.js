@@ -131,6 +131,37 @@ const xtreamUiScraper = {
   },
 
   /**
+   * Fetch the panel's available packages (e.g. "1 MONTH ( 1 CREDIT )", "3 MONTH ( 3 CREDIT )").
+   * Each package's id is what gets posted as the `package` form field when creating a line —
+   * it determines both the duration and the credit cost on the panel side.
+   */
+  async getPackages(host, phpsessid) {
+    const url = `${host}/user_reseller.php`;
+    const res = await fetch(url, {
+      headers: { ...BROWSER_HEADERS, 'Cookie': `PHPSESSID=${phpsessid}` },
+      timeout: 15000,
+    });
+    const body = await res.text();
+
+    const packages = [];
+    const seen = new Set();
+    const selectMatch = body.match(/<select[^>]+name=["']package["'][^>]*>([\s\S]*?)<\/select>/i);
+    if (!selectMatch) return packages;
+
+    const optRegex = /<option[^>]+value=["'](\d+)["'][^>]*>([^<]+)<\/option>/gi;
+    let m;
+    while ((m = optRegex.exec(selectMatch[1])) !== null) {
+      const id = String(m[1]).trim();
+      const name = String(m[2]).replace(/&nbsp;/g, ' ').trim();
+      if (!id || seen.has(id) || /select/i.test(name)) continue;
+      seen.add(id);
+      packages.push({ id, name });
+    }
+    logger.info(`[Scraper] Found ${packages.length} packages on ${host}`);
+    return packages;
+  },
+
+  /**
    * Fetch bouquets (packages) from the user_reseller.php page.
    * Tries to find packages and fetch their associated bouquets via API.
    */
@@ -290,6 +321,7 @@ const xtreamUiScraper = {
     formData.append('password', allowPanelGeneratedCredentials ? '' : requestedPassword);
     formData.append('member_id', memberId || '0');
     formData.append('package', packageId);
+    if (userData.expDate) formData.append('exp_date', String(userData.expDate));
     formData.append('mac_address_mag', '');
     formData.append('mac_address_e2', '');
     formData.append('reseller_notes', userData.notes || 'StreamBridge Automation');
@@ -316,8 +348,9 @@ const xtreamUiScraper = {
       if (resBodyLower.includes('already exists') || resBodyLower.includes('username taken')) {
         return { success: false, message: 'Username already exists' };
       }
-      if (resBodyLower.includes('error') || resBodyLower.includes('invalid') || resBodyLower.includes('failed')) {
-        return { success: false, message: 'Panel returned an error while creating the line' };
+      // Session expired mid-request — panel returns the login page (small body containing "login")
+      if (resBodyLower.includes('login.php') && resBody.length < 2000) {
+        return { success: false, message: 'Session expired during line creation' };
       }
 
       const credentials = this.extractCreatedCredentials(

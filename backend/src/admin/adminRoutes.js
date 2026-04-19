@@ -910,6 +910,27 @@ router.get('/networks/:id/bouquets', requireAdmin, async (req, res) => {
   }
 });
 
+// GET /admin/networks/:id/packages — fetch reseller packages (duration/credit cost combos)
+router.get('/networks/:id/packages', requireAdmin, async (req, res) => {
+  try {
+    const network = await providerNetworkQueries.findById(req.params.id);
+    if (!network) return res.status(404).json({ error: 'Network not found' });
+
+    const { panelHost } = await resolveManagedNetworkHosts(network);
+    if (!panelHost) {
+      return res.status(400).json({ error: 'No reseller portal URL or customer hosts configured for this network' });
+    }
+    const adapter = await getManagedNetworkAdapter(network, panelHost);
+    if (typeof adapter.getPackages !== 'function') {
+      return res.status(400).json({ error: 'This adapter does not expose packages' });
+    }
+    const packages = await adapter.getPackages();
+    res.json(packages);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /admin/networks/:id/create-line — create a new user line/trial
 router.post('/networks/:id/create-line', requireAdmin, async (req, res) => {
   try {

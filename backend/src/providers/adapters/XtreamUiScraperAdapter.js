@@ -62,6 +62,11 @@ class XtreamUiScraperAdapter extends ProviderAdapter {
     return xtreamUiScraper.getBouquets(this._panelHost, session);
   }
 
+  async getPackages() {
+    const session = await this.ensureSession();
+    return xtreamUiScraper.getPackages(this._panelHost, session);
+  }
+
   async createLine(opts) {
     const session = await this.ensureSession();
     return xtreamUiScraper.createLine(this._panelHost, session, opts);

@@ -34,6 +34,7 @@ function ProvisioningContent() {
   const [subscriptionId, setSubscriptionId] = useState<string | null>(directSubId)
   const [status, setStatus] = useState<ProvisionStatus>('pending')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [refunded, setRefunded] = useState(false)
   const [messageIdx, setMessageIdx] = useState(0)
   const [elapsed, setElapsed] = useState(0)
   const [timedOut, setTimedOut] = useState(false)
@@ -104,6 +105,7 @@ function ProvisioningContent() {
 
         if (s === 'failed') {
           setErrorMsg(data.provisioning_error || 'Provisioning failed. Our team has been notified.')
+          setRefunded(data.payment_provider === 'credits' && data.subscription_status === 'cancelled')
           return
         }
 
@@ -135,6 +137,11 @@ function ProvisioningContent() {
               ? 'Your subscription is saved. Your credentials will appear in your providers once setup completes — usually within a few minutes.'
               : (errorMsg || 'Something went wrong setting up your subscription.')}
           </p>
+          {refunded && (
+            <p className="mb-6 text-sm text-emerald-400">
+              Your credits have been refunded to your balance.
+            </p>
+          )}
           <button
             onClick={() => router.replace('/providers')}
             className="rounded-xl bg-white/10 px-6 py-2 text-sm font-medium text-white hover:bg-white/20 transition-colors"
