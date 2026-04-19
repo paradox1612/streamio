@@ -595,7 +595,7 @@ router.post('/credits/topup', requireAuth, async (req, res) => {
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
         link = await squareService.createPaymentLink(user, fakeOffering, {
           referenceId: squareReferenceId,
-          redirectUrl: `${frontendUrl}/dashboard/marketplace?topup=success`,
+          redirectUrl: `${frontendUrl}/marketplace?topup=success`,
         });
       } catch (err) {
         await pool.query(`UPDATE credit_transactions SET status = 'failed' WHERE id = $1`, [tx.id]);

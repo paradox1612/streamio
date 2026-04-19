@@ -6,9 +6,12 @@ import { Loader2, AlertCircle } from 'lucide-react'
 
 declare global {
   interface Window {
+    appendHelcimPayIframe?: (token: string, allowExit?: boolean) => void
     appendHelcimIframe?: (token: string, env?: string) => void
   }
 }
+
+const TOPUP_SESSION_KEY = 'pending_topup_tx'
 
 function HelcimCheckout() {
   const router = useRouter()
@@ -33,13 +36,18 @@ function HelcimCheckout() {
     scriptLoaded.current = true
 
     const script = document.createElement('script')
-    script.src = 'https://secure.myhelcim.com/js/version/2/'
+    script.src = 'https://secure.helcim.app/helcim-pay/services/start.js'
     script.async = true
     script.onload = () => {
       setStatus('ready')
-      if (typeof window.appendHelcimIframe === 'function') {
+      if (typeof window.appendHelcimPayIframe === 'function') {
+        window.appendHelcimPayIframe(token, true)
+      } else if (typeof window.appendHelcimIframe === 'function') {
         const env = process.env.NEXT_PUBLIC_HELCIM_ENV === 'test' ? 'test' : 'live'
         window.appendHelcimIframe(token, env)
+      } else {
+        setErrorMsg('Helcim payment form did not initialize correctly.')
+        setStatus('error')
       }
     }
     script.onerror = () => {
@@ -50,14 +58,21 @@ function HelcimCheckout() {
 
     const handleMessage = (event: MessageEvent) => {
       if (!event.data?.eventName) return
-      if (event.data.eventName === 'HELCIM_PAY_JS_SUCCESS') {
+
+      const isHelcimEvent = event.data.eventName === `helcim-pay-js-${token}`
+      const isLegacySuccess = event.data.eventName === 'HELCIM_PAY_JS_SUCCESS'
+      const isLegacyFailure = event.data.eventName === 'HELCIM_PAY_JS_FAILED'
+      const isSuccess = isLegacySuccess || (isHelcimEvent && event.data.eventStatus === 'SUCCESS')
+      const isFailure = isLegacyFailure || (isHelcimEvent && event.data.eventStatus === 'ABORTED')
+
+      if (isSuccess) {
         if (subscriptionId) {
           router.push(`/subscriptions/provisioning?subscription_id=${subscriptionId}`)
         } else {
-          // Credit top-up — go back to marketplace with success flag
-          router.push('/dashboard/marketplace?topup=success')
+          if (txId) sessionStorage.setItem(TOPUP_SESSION_KEY, txId)
+          router.push('/marketplace?topup=success')
         }
-      } else if (event.data.eventName === 'HELCIM_PAY_JS_FAILED') {
+      } else if (isFailure) {
         setErrorMsg('Payment was declined. Please try a different card or contact support.')
         setStatus('error')
       }
@@ -75,7 +90,7 @@ function HelcimCheckout() {
           <h2 className="text-lg font-bold text-white">Payment Error</h2>
           <p className="text-sm text-slate-400">{errorMsg}</p>
           <button
-            onClick={() => router.push('/dashboard/marketplace')}
+            onClick={() => router.push('/marketplace')}
             className="mt-2 rounded-xl border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-medium text-white hover:bg-white/10 transition-colors"
           >
             Back to Marketplace

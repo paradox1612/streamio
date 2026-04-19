@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   Check,
   ChevronRight,
@@ -31,6 +32,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import SkeletonCard from '@/components/SkeletonCard'
 import { cn } from '@/lib/utils'
+
+const TOPUP_SESSION_KEY = 'pending_topup_tx'
 
 interface Offering {
   id: string
@@ -535,11 +538,13 @@ function TopupModal({
       const { data } = await creditsAPI.topup(amountCents, provider)
 
       if (provider === 'helcim') {
-        window.location.href = `/checkout/helcim?token=${data.checkout_token}&tx_id=cred_${data.credit_transaction_id}`
+        sessionStorage.setItem(TOPUP_SESSION_KEY, data.credit_transaction_id)
+        window.location.href = `/checkout/helcim?token=${encodeURIComponent(data.checkout_token)}&tx_id=${encodeURIComponent(data.credit_transaction_id)}`
         return
       }
 
       if (provider === 'square') {
+        sessionStorage.setItem(TOPUP_SESSION_KEY, data.credit_transaction_id)
         window.location.href = data.checkout_url
         return
       }
@@ -679,6 +684,7 @@ function TopupModal({
 }
 
 export default function MarketplacePage() {
+  const router = useRouter()
   const { openTicketDialog } = useErrorReporting()
   const [offerings, setOfferings] = useState<Offering[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
@@ -720,6 +726,66 @@ export default function MarketplacePage() {
     }
     loadData()
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('topup') !== 'success') return
+
+    const txId = sessionStorage.getItem(TOPUP_SESSION_KEY)
+    let attempts = 0
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const clearState = () => {
+      if (typeof window !== 'undefined') sessionStorage.removeItem(TOPUP_SESSION_KEY)
+      router.replace('/marketplace')
+    }
+
+    const refreshCredits = async () => {
+      const [balRes, creditTxRes] = await Promise.all([
+        creditsAPI.getBalance(),
+        creditsAPI.getTransactions({ limit: 15 }),
+      ])
+      setCreditBalance(balRes.data.balance_cents)
+      setCreditTxs(creditTxRes.data)
+    }
+
+    const poll = async () => {
+      if (!txId) {
+        await refreshCredits().catch(() => {})
+        toast.success('Payment received. Your credit balance will update shortly.')
+        clearState()
+        return
+      }
+
+      attempts += 1
+
+      try {
+        const { data } = await creditsAPI.getTopupStatus(txId)
+        if (data.status === 'completed') {
+          await refreshCredits()
+          toast.success(`${formatPrice(data.amount_cents)} credits added!`)
+          clearState()
+          return
+        }
+      } catch {}
+
+      if (attempts >= 12) {
+        toast.success('Payment received. Credits are still being confirmed.')
+        clearState()
+        return
+      }
+
+      timer = setTimeout(poll, 3000)
+    }
+
+    poll()
+
+    return () => {
+      if (timer) clearTimeout(timer)
+    }
+  }, [router])
 
   const handleRequestTrial = useCallback((offering: Offering) => {
     openTicketDialog({

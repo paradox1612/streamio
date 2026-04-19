@@ -86,7 +86,7 @@ async function createCheckoutSession(user, offering) {
     mode: 'subscription',
     line_items: [lineItem],
     success_url: `${process.env.FRONTEND_URL}/subscriptions/provisioning?stripe_session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${process.env.FRONTEND_URL}/dashboard/marketplace`,
+    cancel_url: `${process.env.FRONTEND_URL}/marketplace`,
     metadata: {
       streamio_user_id: user.id,
       streamio_offering_id: offering.id,
@@ -124,7 +124,7 @@ async function createPortalSession(user) {
 
   const session = await stripe.billingPortal.sessions.create({
     customer: user.stripe_customer_id,
-    return_url: `${process.env.FRONTEND_URL}/dashboard/subscriptions`,
+    return_url: `${process.env.FRONTEND_URL}/subscriptions`,
   });
 
   return { url: session.url };
