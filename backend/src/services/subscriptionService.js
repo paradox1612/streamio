@@ -76,6 +76,28 @@ async function rollbackFailedProvisioning(subscriptionId, errorMessage) {
   }
 }
 
+function warmProvisionedProvider(subscriptionId, userId, userProvider) {
+  Promise.resolve().then(async () => {
+    try {
+      logger.info(`[SubscriptionService] Starting provider warm-up for sub ${subscriptionId}, provider ${userProvider.id}`);
+      const testResults = await providerService.testProvider(userProvider.id, userId);
+      const hasWorkingHost = Array.isArray(testResults) && testResults.some((result) => result.ok);
+      if (!hasWorkingHost) {
+        logger.warn(`[SubscriptionService] Provider warm-up skipped catalog refresh for sub ${subscriptionId}: no working host`);
+        return;
+      }
+
+      const catalogResult = await providerService.refreshCatalog(userProvider.id, userId);
+      logger.info(
+        `[SubscriptionService] Provider warm-up complete for sub ${subscriptionId}, provider ${userProvider.id}: ` +
+        `${catalogResult.total} titles (${catalogResult.movies} movies, ${catalogResult.series} series, ${catalogResult.live} live)`
+      );
+    } catch (err) {
+      logger.error(`[SubscriptionService] Provider warm-up failed for sub ${subscriptionId}, provider ${userProvider.id}: ${err.message}`);
+    }
+  });
+}
+
 /**
  * Fire-and-forget wrapper around provisionCredentials.
  * Updates provisioning_status on the subscription so the frontend can poll.
@@ -88,6 +110,7 @@ async function provisionInBackground(subscriptionId, userId, offering, opts) {
       await subscriptionQueries.update(subscriptionId, { user_provider_id: userProvider.id });
       await subscriptionQueries.updateProvisioningStatus(subscriptionId, 'active');
       logger.info(`[SubscriptionService] Provisioning complete for sub ${subscriptionId}, provider ${userProvider.id}`);
+      warmProvisionedProvider(subscriptionId, userId, userProvider);
 
       // ── Notification ──────────────────────────────────────────────────────────
       try {

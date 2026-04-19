@@ -19,6 +19,13 @@ function formatDuration(ms: number) {
   return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`
 }
 
+function formatDateLabel(value?: string | null) {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 function estimateRemainingMs(progressPct: number, elapsedMs: number) {
   if (!Number.isFinite(progressPct) || progressPct <= 0 || progressPct >= 100) return null
   const totalEstimate = elapsedMs / (progressPct / 100)
@@ -133,11 +140,14 @@ export default function ProviderDetailPage() {
   const [refreshNow, setRefreshNow] = useState(Date.now())
   const lastRefreshStatusRef = useRef<string | null>(null)
 
-  const load = async () => {
+  const load = async ({ refreshAccountInfo = false }: { refreshAccountInfo?: boolean } = {}) => {
     try {
       const [provRes, statsRes, healthRes] = await Promise.all([
         providerAPI.get(id),
-        providerAPI.getStats(id),
+        providerAPI.getStats(id, {
+          includeAccountInfo: true,
+          refreshAccountInfo,
+        }),
         providerAPI.getHealth(id),
       ])
       setProvider(provRes.data)
@@ -280,7 +290,7 @@ export default function ProviderDetailPage() {
       if (res.data.started) {
         toast.success('Health recheck started in background')
         setTimeout(() => {
-          load()
+          load({ refreshAccountInfo: true })
         }, 12000)
       } else {
         toast('Health recheck is already running', { icon: '⏳' })
@@ -309,6 +319,7 @@ export default function ProviderDetailPage() {
 
   const vodStats = stats?.vodStats || {}
   const matchStats = stats?.matchStats || {}
+  const accountInfo = stats?.accountInfo || null
   const matchRate = matchStats.total > 0 ? Math.round((matchStats.matched / matchStats.total) * 100) : 0
   const refreshMeta = refreshJob?.metadata || {}
   const refreshProgress = Math.max(0, Math.min(100, refreshMeta.progressPct || 0))
@@ -327,6 +338,10 @@ export default function ProviderDetailPage() {
   const standbyHealth = health.filter((entry) => entry.host_url !== activeHost)
   const appPortalConfig = normalizeAppPortalConfig(provider.app_portal_config)
   const configuredAppCount = appPortalConfig?.groups?.reduce((sum, group) => sum + group.apps.length, 0) || 0
+  const accountExpiry = accountInfo?.expiresAt ? new Date(accountInfo.expiresAt) : null
+  const daysUntilExpiry = accountExpiry && !Number.isNaN(accountExpiry.getTime())
+    ? Math.ceil((accountExpiry.getTime() - Date.now()) / 86400000)
+    : null
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -463,6 +478,53 @@ export default function ProviderDetailPage() {
           </div>
         </div>
       </section>
+
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {[
+          {
+            label: 'Account Status',
+            value: accountInfo?.status || provider.status || 'Unknown',
+            tone: 'text-white',
+          },
+          {
+            label: 'Expiry',
+            value: formatDateLabel(accountInfo?.expiresAt),
+            tone: daysUntilExpiry !== null && daysUntilExpiry <= 30 ? 'text-amber-300' : 'text-white',
+          },
+          {
+            label: 'Max Connections',
+            value: accountInfo?.maxConnections ?? '—',
+            tone: 'text-white',
+          },
+          {
+            label: 'Active Connections',
+            value: accountInfo?.activeConnections ?? '—',
+            tone: accountInfo?.maxConnections != null && accountInfo?.activeConnections >= accountInfo?.maxConnections
+              ? 'text-amber-300'
+              : 'text-white',
+          },
+        ].map((item) => (
+          <div key={item.label} className="panel-soft p-4 sm:p-5">
+            <p className="metric-label mb-2">{item.label}</p>
+            <p className={`text-3xl font-bold ${item.tone}`}>{item.value}</p>
+          </div>
+        ))}
+      </section>
+
+      {accountInfo && (
+        <section className="panel-soft p-5 sm:p-8">
+          <p className="eyebrow mb-2">Account Access</p>
+          <h2 className="section-title">Provider account health</h2>
+          <div className="mt-5 flex flex-wrap gap-4 text-sm text-slate-300/[0.78]">
+            <span>Status: {accountInfo.status || 'Unknown'}</span>
+            <span>Expiry: {formatDateLabel(accountInfo.expiresAt)}</span>
+            {accountInfo.maxConnections != null && (
+              <span>Connections: {accountInfo.activeConnections ?? 0} / {accountInfo.maxConnections} active</span>
+            )}
+            {accountInfo.isTrial && <span>Trial account</span>}
+          </div>
+        </section>
+      )}
 
       {appPortalConfig && configuredAppCount > 0 && (
         <section className="panel-soft p-5 sm:p-8">

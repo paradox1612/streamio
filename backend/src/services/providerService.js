@@ -6,7 +6,8 @@ const cache = require('../utils/cache');
 const { normalizeTitle, parseMovieTitle, parseReleaseTitle, parseSeriesTitle } = require('../utils/titleNormalization');
 const eventBus = require('../utils/eventBus');
 
-const FETCH_TIMEOUT = 20000; // 20s — some providers are slow
+const ACCOUNT_LOOKUP_TIMEOUT = 20000; // 20s for quick auth/health checks
+const CATALOG_FETCH_TIMEOUT = 120000; // 2 min for large VOD/series payloads
 const ACCOUNT_LOOKUP_SUCCESS_TTL_SECONDS = parseInt(process.env.ACCOUNT_LOOKUP_SUCCESS_TTL_SECONDS || '600', 10);
 const ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS = parseInt(process.env.ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS || '300', 10);
 
@@ -79,16 +80,16 @@ async function fetchAccountInfoForHost(host, username, password) {
 
   const url = `${host}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+  const timer = setTimeout(() => controller.abort(), ACCOUNT_LOOKUP_TIMEOUT);
   try {
     const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timer);
     if (!res.ok) {
       const result = { ok: false, error: `HTTP ${res.status}` };
       await cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
       return result;
     }
-    const data = await res.json();
+    const raw = await res.text();
+    const data = raw ? JSON.parse(raw) : null;
     if (data?.user_info?.auth === 0 || data?.user_info?.auth === '0' || data?.user_info?.auth === false) {
       const result = { ok: false, error: 'Invalid credentials' };
       await cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
@@ -103,10 +104,11 @@ async function fetchAccountInfoForHost(host, username, password) {
     await cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
     return result;
   } catch (err) {
-    clearTimeout(timer);
     const result = { ok: false, error: err.message };
     await cache.set('providerAccountInfo', cacheKey, result, ACCOUNT_LOOKUP_FAILURE_TTL_SECONDS);
     return result;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -154,12 +156,15 @@ async function xtreamRequest(host, username, password, action, extraParams = '')
   const maxRetries = 3;
   const backoffs = [1000, 2000, 4000];
 
+  const timeoutMs = action === 'get_vod_streams' || action === 'get_series'
+    ? CATALOG_FETCH_TIMEOUT
+    : ACCOUNT_LOOKUP_TIMEOUT;
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timer);
 
       if (res.status === 401 || res.status === 403) throw new Error(`HTTP ${res.status}`);
       if (!res.ok && res.status >= 500) {
@@ -172,16 +177,18 @@ async function xtreamRequest(host, username, password, action, extraParams = '')
       }
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const raw = await res.text();
+      const data = raw ? JSON.parse(raw) : null;
       return data;
     } catch (err) {
-      clearTimeout(timer);
       if (attempt < maxRetries - 1) {
         const delay = backoffs[attempt];
         await new Promise(r => setTimeout(r, delay));
         continue;
       }
       throw err;
+    } finally {
+      clearTimeout(timer);
     }
   }
 }

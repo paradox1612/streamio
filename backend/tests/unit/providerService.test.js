@@ -151,6 +151,32 @@ describe('providerService', () => {
       expect(result.error).toBeTruthy();
     });
 
+    it('aborts account lookups when the response body stalls', async () => {
+      jest.useFakeTimers();
+      try {
+        fetch.mockImplementation((url, options = {}) => Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () => new Promise((resolve, reject) => {
+            options.signal?.addEventListener('abort', () => {
+              reject(new Error('The operation was aborted.'));
+            }, { once: true });
+          }),
+        }));
+
+        const resultPromise = providerService.testConnection('http://host.com', 'user', 'pass');
+        await jest.advanceTimersByTimeAsync(20000);
+        const result = await resultPromise;
+
+        expect(result).toMatchObject({
+          ok: false,
+          error: 'The operation was aborted.',
+        });
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('returns ok:false when HTTP error response', async () => {
       fetch.mockResolvedValue(new Response('Unauthorized', { status: 401 }));
 
