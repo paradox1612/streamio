@@ -86,11 +86,45 @@ interface CreditTransaction {
   created_at: string
 }
 
+interface PaymentProviderRule {
+  minimum_amount_cents: number
+  promo_credit_percent: number
+}
+
 interface PaymentProviders {
   stripe: boolean
   paygate: boolean
   helcim: boolean
   square: boolean
+  provider_rules?: {
+    stripe: PaymentProviderRule
+    paygate: PaymentProviderRule
+    helcim: PaymentProviderRule
+    square: PaymentProviderRule
+  }
+}
+
+const DEFAULT_PROVIDER_RULE: PaymentProviderRule = {
+  minimum_amount_cents: 0,
+  promo_credit_percent: 0,
+}
+
+function getProviderRule(
+  rules: PaymentProviders['provider_rules'] | undefined,
+  provider: 'stripe' | 'paygate' | 'helcim' | 'square'
+) {
+  return rules?.[provider] || DEFAULT_PROVIDER_RULE
+}
+
+function getTopupMinimum(
+  config: { min_topup_cents: number; provider_rules?: Partial<Record<'paygate' | 'helcim' | 'square', PaymentProviderRule>> },
+  provider: 'paygate' | 'helcim' | 'square'
+) {
+  return Math.max(config.min_topup_cents || 0, config.provider_rules?.[provider]?.minimum_amount_cents || 0)
+}
+
+function getBonusCreditCents(amountCents: number, percent: number) {
+  return Math.round(amountCents * ((percent || 0) / 100))
 }
 
 function formatPrice(cents: number, currency = 'USD') {
@@ -133,6 +167,19 @@ function PaymentMethodModal({
   
   const selectedOffering = offerings.find((o) => o.id === selectedId) || offerings[0]
   const hasEnoughCredits = creditBalance >= selectedOffering.price_cents
+  const providerRules = providers.provider_rules
+  const isMethodEligible = (provider: 'stripe' | 'paygate' | 'helcim' | 'square') =>
+    selectedOffering.price_cents >= getProviderRule(providerRules, provider).minimum_amount_cents
+  const getMethodDescription = (
+    provider: 'stripe' | 'paygate' | 'helcim' | 'square',
+    defaultDescription: string
+  ) => {
+    const minimumAmountCents = getProviderRule(providerRules, provider).minimum_amount_cents
+    if (minimumAmountCents > 0 && selectedOffering.price_cents < minimumAmountCents) {
+      return `Available from ${formatPrice(minimumAmountCents)}`
+    }
+    return defaultDescription
+  }
 
   const handlePay = async (method: 'stripe' | 'paygate' | 'helcim' | 'square' | 'credits', confirmDuplicate = false) => {
     setLoading(method)
@@ -242,8 +289,8 @@ function PaymentMethodModal({
             {providers.stripe && (
               <button
                 onClick={() => handlePay('stripe')}
-                disabled={!!loading}
-                className="flex w-full items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 transition-all hover:border-brand-500/40 hover:bg-white/[0.06] disabled:opacity-50"
+                disabled={!!loading || !isMethodEligible('stripe')}
+                className="flex w-full items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 transition-all hover:border-brand-500/40 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-400">
@@ -251,7 +298,7 @@ function PaymentMethodModal({
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-semibold text-white">Stripe Checkout</p>
-                    <p className="text-[10px] text-slate-400">Secure credit card processing</p>
+                    <p className="text-[10px] text-slate-400">{getMethodDescription('stripe', 'Secure credit card processing')}</p>
                   </div>
                 </div>
                 {loading === 'stripe' ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
@@ -261,8 +308,8 @@ function PaymentMethodModal({
             {providers.paygate && (
               <button
                 onClick={() => handlePay('paygate')}
-                disabled={!!loading}
-                className="flex w-full items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 transition-all hover:border-emerald-500/40 hover:bg-white/[0.06] disabled:opacity-50"
+                disabled={!!loading || !isMethodEligible('paygate')}
+                className="flex w-full items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 transition-all hover:border-emerald-500/40 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
@@ -270,7 +317,7 @@ function PaymentMethodModal({
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-semibold text-white">PayGate (Crypto)</p>
-                    <p className="text-[10px] text-slate-400">Instant activation via BTC/ETH/LTC</p>
+                    <p className="text-[10px] text-slate-400">{getMethodDescription('paygate', 'Instant activation via BTC/ETH/LTC')}</p>
                   </div>
                 </div>
                 {loading === 'paygate' ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
@@ -280,8 +327,8 @@ function PaymentMethodModal({
             {providers.helcim && (
               <button
                 onClick={() => handlePay('helcim')}
-                disabled={!!loading}
-                className="flex w-full items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 transition-all hover:border-sky-500/40 hover:bg-white/[0.06] disabled:opacity-50"
+                disabled={!!loading || !isMethodEligible('helcim')}
+                className="flex w-full items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 transition-all hover:border-sky-500/40 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-400">
@@ -289,7 +336,7 @@ function PaymentMethodModal({
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-semibold text-white">Helcim</p>
-                    <p className="text-[10px] text-slate-400">Credit or debit card via Helcim</p>
+                    <p className="text-[10px] text-slate-400">{getMethodDescription('helcim', 'Credit or debit card via Helcim')}</p>
                   </div>
                 </div>
                 {loading === 'helcim' ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
@@ -299,8 +346,8 @@ function PaymentMethodModal({
             {providers.square && (
               <button
                 onClick={() => handlePay('square')}
-                disabled={!!loading}
-                className="flex w-full items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 transition-all hover:border-teal-500/40 hover:bg-white/[0.06] disabled:opacity-50"
+                disabled={!!loading || !isMethodEligible('square')}
+                className="flex w-full items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 transition-all hover:border-teal-500/40 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-500/10 text-teal-400">
@@ -308,7 +355,7 @@ function PaymentMethodModal({
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-semibold text-white">Square</p>
-                    <p className="text-[10px] text-slate-400">Credit or debit card via Square</p>
+                    <p className="text-[10px] text-slate-400">{getMethodDescription('square', 'Credit or debit card via Square')}</p>
                   </div>
                 </div>
                 {loading === 'square' ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
@@ -483,6 +530,11 @@ function TopupModal({
     max_topup_cents: number
     presets: { label: string; cents: number }[]
     allow_custom_amount: boolean
+    provider_rules?: {
+      paygate: PaymentProviderRule
+      helcim: PaymentProviderRule
+      square: PaymentProviderRule
+    }
   } | null>(null)
   const [selected, setSelected] = useState<number | 'custom'>(2500)
   const [customAmount, setCustomAmount] = useState<string>('')
@@ -529,7 +581,8 @@ function TopupModal({
     if (!amountCents) return toast.error('Enter a valid amount')
 
     if (config) {
-      if (amountCents < config.min_topup_cents) return toast.error(`Minimum top-up is ${formatPrice(config.min_topup_cents)}`)
+      const minimumTopupCents = getTopupMinimum(config, provider)
+      if (amountCents < minimumTopupCents) return toast.error(`${providerMeta[provider].label} requires at least ${formatPrice(minimumTopupCents)}`)
       if (amountCents > config.max_topup_cents) return toast.error(`Maximum top-up is ${formatPrice(config.max_topup_cents)}`)
     }
 
@@ -539,13 +592,13 @@ function TopupModal({
 
       if (provider === 'helcim') {
         sessionStorage.setItem(TOPUP_SESSION_KEY, data.credit_transaction_id)
-        window.location.href = `/checkout/helcim?token=${encodeURIComponent(data.checkout_token)}&tx_id=${encodeURIComponent(data.credit_transaction_id)}`
+        window.location.assign(`/checkout/helcim?token=${encodeURIComponent(data.checkout_token)}&tx_id=${encodeURIComponent(data.credit_transaction_id)}`)
         return
       }
 
       if (provider === 'square') {
         sessionStorage.setItem(TOPUP_SESSION_KEY, data.credit_transaction_id)
-        window.location.href = data.checkout_url
+        window.location.assign(data.checkout_url)
         return
       }
 
@@ -561,16 +614,6 @@ function TopupModal({
     }
   }
 
-  const activeProviders = (
-    ['paygate', 'helcim', 'square'] as const
-  ).filter((p) => providers[p])
-
-  const providerMeta = {
-    paygate: { label: 'PayGate', color: 'bg-emerald-600 hover:bg-emerald-500', icon: <Wallet className="h-4 w-4" /> },
-    helcim: { label: 'Helcim', color: 'bg-sky-600 hover:bg-sky-500', icon: <CreditCard className="h-4 w-4" /> },
-    square: { label: 'Square', color: 'bg-teal-600 hover:bg-teal-500', icon: <CreditCard className="h-4 w-4" /> },
-  }
-
   if (!config) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
@@ -579,6 +622,31 @@ function TopupModal({
         </div>
       </div>
     )
+  }
+
+  const activeProviders = (
+    ['paygate', 'helcim', 'square'] as const
+  ).filter((p) => providers[p])
+  const selectedAmountCents = getAmountCents()
+
+  const providerMeta = {
+    paygate: { label: 'PayGate', color: 'bg-emerald-600 hover:bg-emerald-500', icon: <Wallet className="h-4 w-4" /> },
+    helcim: { label: 'Helcim', color: 'bg-sky-600 hover:bg-sky-500', icon: <CreditCard className="h-4 w-4" /> },
+    square: { label: 'Square', color: 'bg-teal-600 hover:bg-teal-500', icon: <CreditCard className="h-4 w-4" /> },
+  }
+  const getProviderSummary = (provider: 'paygate' | 'helcim' | 'square') => {
+    const minimumTopupCents = getTopupMinimum(config, provider)
+    const promoCreditPercent = config.provider_rules?.[provider]?.promo_credit_percent || 0
+    const bonusCreditCents = selectedAmountCents ? getBonusCreditCents(selectedAmountCents, promoCreditPercent) : 0
+    const creditedAmountCents = selectedAmountCents ? selectedAmountCents + bonusCreditCents : null
+
+    return {
+      minimumTopupCents,
+      promoCreditPercent,
+      bonusCreditCents,
+      creditedAmountCents,
+      isEligible: !!selectedAmountCents && selectedAmountCents >= minimumTopupCents,
+    }
   }
 
   return (
@@ -611,7 +679,7 @@ function TopupModal({
                   }`}
                 >
                   <p className="text-xl font-bold">{preset.label}</p>
-                  <p className="text-xs opacity-70">{preset.cents} credits</p>
+                  <p className="text-xs opacity-70">Base amount</p>
                 </button>
               ))}
 
@@ -652,28 +720,51 @@ function TopupModal({
             {activeProviders.length === 0 ? (
               <p className="mt-6 text-center text-sm text-slate-500">No payment methods available.</p>
             ) : activeProviders.length === 1 ? (
-              <button
-                onClick={() => handleTopup(activeProviders[0])}
-                disabled={!!loading}
-                className={`mt-6 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-semibold text-white transition-colors disabled:opacity-60 ${providerMeta[activeProviders[0]].color}`}
-              >
-                {loading === activeProviders[0] ? <Loader2 className="h-5 w-5 animate-spin" /> : providerMeta[activeProviders[0]].icon}
-                Pay {selected === 'custom' ? (customAmount ? `$${customAmount}` : '...') : formatPrice(selected)} via {providerMeta[activeProviders[0]].label}
-              </button>
+              (() => {
+                const provider = activeProviders[0]
+                const summary = getProviderSummary(provider)
+                return (
+                  <button
+                    onClick={() => handleTopup(provider)}
+                    disabled={!!loading || !summary.isEligible}
+                    className={`mt-6 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-semibold text-white transition-colors disabled:opacity-60 ${providerMeta[provider].color}`}
+                  >
+                    {loading === provider ? <Loader2 className="h-5 w-5 animate-spin" /> : providerMeta[provider].icon}
+                    <span>
+                      Pay {selected === 'custom' ? (customAmount ? `$${customAmount}` : '...') : formatPrice(selected)} via {providerMeta[provider].label}
+                      <span className="ml-2 text-[11px] font-medium text-white/75">
+                        {summary.promoCreditPercent > 0
+                          ? `+${summary.promoCreditPercent}% bonus${summary.creditedAmountCents ? ` (${formatPrice(summary.creditedAmountCents)} credits)` : ''}`
+                          : `Min ${formatPrice(summary.minimumTopupCents)}`}
+                      </span>
+                    </span>
+                  </button>
+                )
+              })()
             ) : (
               <div className="mt-6 flex flex-col gap-2">
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Pay via</p>
-                {activeProviders.map((p) => (
+                {activeProviders.map((p) => {
+                  const summary = getProviderSummary(p)
+                  return (
                   <button
                     key={p}
                     onClick={() => handleTopup(p)}
-                    disabled={!!loading}
+                    disabled={!!loading || !summary.isEligible}
                     className={`flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-semibold text-white transition-colors disabled:opacity-60 ${providerMeta[p].color}`}
                   >
                     {loading === p ? <Loader2 className="h-4 w-4 animate-spin" /> : providerMeta[p].icon}
-                    {providerMeta[p].label} — {selected === 'custom' ? (customAmount ? `$${customAmount}` : '...') : formatPrice(selected)}
+                    <span>
+                      {providerMeta[p].label} — {selected === 'custom' ? (customAmount ? `$${customAmount}` : '...') : formatPrice(selected)}
+                      <span className="ml-2 text-[11px] font-medium text-white/75">
+                        {summary.promoCreditPercent > 0
+                          ? `+${summary.promoCreditPercent}% bonus${summary.creditedAmountCents ? ` (${formatPrice(summary.creditedAmountCents)} credits)` : ''}`
+                          : `Min ${formatPrice(summary.minimumTopupCents)}`}
+                      </span>
+                    </span>
                   </button>
-                ))}
+                  )
+                })}
               </div>
             )}
           </>

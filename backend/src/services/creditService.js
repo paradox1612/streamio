@@ -114,7 +114,7 @@ async function spendCredits(userId, amountCents, { description, subscriptionId }
  * Create a PENDING top-up record before the payment is confirmed.
  * Call confirmTopup() once payment is verified.
  */
-async function createPendingTopup(userId, amountCents, { referenceId, type = 'topup_paygate' } = {}) {
+async function createPendingTopup(userId, amountCents, { referenceId, type = 'topup_paygate', description } = {}) {
   const { rows } = await pool.query(
     `INSERT INTO credit_transactions
        (user_id, amount_cents, type, description, reference_id, status)
@@ -124,7 +124,7 @@ async function createPendingTopup(userId, amountCents, { referenceId, type = 'to
       userId,
       amountCents,
       type,
-      `Credit top-up: $${(amountCents / 100).toFixed(2)}`,
+      description || `Credit top-up: $${(amountCents / 100).toFixed(2)}`,
       referenceId || null,
     ]
   );

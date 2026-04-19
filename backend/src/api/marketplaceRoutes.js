@@ -18,6 +18,63 @@ const subscriptionService = require('../services/subscriptionService');
 const logger = require('../utils/logger');
 const { resolveSelectedPlan } = require('../utils/marketplacePlans');
 
+const DEFAULT_CREDITS_CONFIG = {
+  min_topup_cents: 500,
+  max_topup_cents: 100000,
+  presets: [
+    { label: '$10', cents: 1000 },
+    { label: '$25', cents: 2500 },
+    { label: '$50', cents: 5000 },
+    { label: '$100', cents: 10000 },
+  ],
+  allow_custom_amount: true,
+};
+
+async function getCreditsConfig() {
+  const config = await systemSettingQueries.get('credits_config');
+  return config || DEFAULT_CREDITS_CONFIG;
+}
+
+async function getProviderRules() {
+  const [stripe, paygate, helcim, square] = await Promise.all([
+    paymentProviderConfigService.getProvider('stripe'),
+    paymentProviderConfigService.getProvider('paygate'),
+    paymentProviderConfigService.getProvider('helcim'),
+    paymentProviderConfigService.getProvider('square'),
+  ]);
+
+  return {
+    stripe: {
+      minimum_amount_cents: stripe.minimum_amount_cents || 0,
+      promo_credit_percent: stripe.promo_credit_percent || 0,
+    },
+    paygate: {
+      minimum_amount_cents: paygate.minimum_amount_cents || 0,
+      promo_credit_percent: paygate.promo_credit_percent || 0,
+    },
+    helcim: {
+      minimum_amount_cents: helcim.minimum_amount_cents || 0,
+      promo_credit_percent: helcim.promo_credit_percent || 0,
+    },
+    square: {
+      minimum_amount_cents: square.minimum_amount_cents || 0,
+      promo_credit_percent: square.promo_credit_percent || 0,
+    },
+  };
+}
+
+function getMinimumAmountError(providerLabel, minimumAmountCents, amountCents) {
+  return `${providerLabel} requires a minimum payment of $${(minimumAmountCents / 100).toFixed(2)}. Current amount is $${(amountCents / 100).toFixed(2)}.`;
+}
+
+function getTopupCreditAmounts(amountCents, promoCreditPercent) {
+  const bonusCreditCents = Math.round(amountCents * (promoCreditPercent / 100));
+  return {
+    creditedAmountCents: amountCents + bonusCreditCents,
+    bonusCreditCents,
+  };
+}
+
 // ─── Provider Offerings (catalog) ────────────────────────────────────────────
 
 // GET /api/marketplace/offerings — public listing
@@ -46,7 +103,11 @@ router.get('/marketplace/offerings/:id', async (req, res) => {
 // GET /api/marketplace/payment-providers — list enabled payment methods (DB visibility + env keys)
 router.get('/marketplace/payment-providers', requireAuth, async (req, res) => {
   try {
-    const cfg = await paymentProviderConfigService.getAll();
+    const [cfg, providerRules, squareEnabled] = await Promise.all([
+      paymentProviderConfigService.getAll(),
+      getProviderRules(),
+      squareService.isEnabled(),
+    ]);
 
     const isVisible = (provider, envEnabled) => {
       const dbCfg = cfg[provider] || {};
@@ -60,13 +121,12 @@ router.get('/marketplace/payment-providers', requireAuth, async (req, res) => {
       return envEnabled;
     };
 
-    const squareEnabled = await squareService.isEnabled();
-
     res.json({
       stripe:  isVisible('stripe',  stripeService.isEnabled),
       paygate: isVisible('paygate', paygateService.isEnabled),
       helcim:  isVisible('helcim',  helcimService.isEnabled),
       square:  isVisible('square',  squareEnabled),
+      provider_rules: providerRules,
     });
   } catch (err) {
     logger.error('GET /marketplace/payment-providers:', err.message);
@@ -76,6 +136,12 @@ router.get('/marketplace/payment-providers', requireAuth, async (req, res) => {
       paygate: paygateService.isEnabled,
       helcim:  helcimService.isEnabled,
       square:  false,
+      provider_rules: {
+        stripe: { minimum_amount_cents: 0, promo_credit_percent: 0 },
+        paygate: { minimum_amount_cents: 0, promo_credit_percent: 0 },
+        helcim: { minimum_amount_cents: 0, promo_credit_percent: 0 },
+        square: { minimum_amount_cents: 0, promo_credit_percent: 0 },
+      },
     });
   }
 });
@@ -108,6 +174,23 @@ router.post('/marketplace/checkout', requireAuth, async (req, res) => {
     const selectedPlan = resolveSelectedPlan(offering, plan_code);
     const effectiveAutoRenew = payment_provider === 'stripe' ? auto_renew !== false : false;
     const checkoutOffering = { ...offering, selected_plan: selectedPlan, auto_renew: effectiveAutoRenew };
+    const providerRules = await getProviderRules();
+
+    if (['stripe', 'paygate', 'helcim', 'square'].includes(payment_provider)) {
+      const providerRule = providerRules[payment_provider];
+      const minimumAmountCents = providerRule?.minimum_amount_cents || 0;
+      if (selectedPlan.price_cents < minimumAmountCents) {
+        const providerLabels = {
+          stripe: 'Stripe',
+          paygate: 'PayGate',
+          helcim: 'Helcim',
+          square: 'Square',
+        };
+        return res.status(400).json({
+          error: getMinimumAmountError(providerLabels[payment_provider], minimumAmountCents, selectedPlan.price_cents),
+        });
+      }
+    }
 
     // ── Stripe checkout ──
     if (payment_provider === 'stripe') {
@@ -462,17 +545,17 @@ router.get('/credits/transactions', requireAuth, async (req, res) => {
 // GET /api/credits/config — get top-up limits and presets
 router.get('/credits/config', requireAuth, async (req, res) => {
   try {
-    const config = await systemSettingQueries.get('credits_config');
-    res.json(config || {
-      min_topup_cents: 500,
-      max_topup_cents: 100000,
-      presets: [
-        { label: '$10', cents: 1000 },
-        { label: '$25', cents: 2500 },
-        { label: '$50', cents: 5000 },
-        { label: '$100', cents: 10000 },
-      ],
-      allow_custom_amount: true,
+    const [config, providerRules] = await Promise.all([
+      getCreditsConfig(),
+      getProviderRules(),
+    ]);
+    res.json({
+      ...config,
+      provider_rules: {
+        paygate: providerRules.paygate,
+        helcim: providerRules.helcim,
+        square: providerRules.square,
+      },
     });
   } catch (err) {
     logger.error('GET /credits/config:', err.message);
@@ -486,14 +569,24 @@ router.post('/credits/topup', requireAuth, async (req, res) => {
   try {
     const { amount_cents, payment_provider = 'paygate' } = req.body;
 
-    const config = (await systemSettingQueries.get('credits_config')) || {
-      min_topup_cents: 500,
-      max_topup_cents: 100000,
+    const config = await getCreditsConfig();
+    const providerRules = await getProviderRules();
+    const providerRule = providerRules[payment_provider];
+    const providerLabels = {
+      paygate: 'PayGate',
+      helcim: 'Helcim',
+      square: 'Square',
     };
 
-    if (!amount_cents || amount_cents < config.min_topup_cents) {
+    if (!providerRule || !providerLabels[payment_provider]) {
+      return res.status(400).json({ error: `Unknown payment_provider: ${payment_provider}` });
+    }
+
+    const effectiveMinimumCents = Math.max(config.min_topup_cents || 0, providerRule.minimum_amount_cents || 0);
+
+    if (!amount_cents || amount_cents < effectiveMinimumCents) {
       return res.status(400).json({
-        error: `Minimum top-up is $${(config.min_topup_cents / 100).toFixed(2)}`,
+        error: getMinimumAmountError(providerLabels[payment_provider], effectiveMinimumCents, amount_cents || 0),
       });
     }
     if (amount_cents > config.max_topup_cents) {
@@ -504,6 +597,12 @@ router.post('/credits/topup', requireAuth, async (req, res) => {
 
     const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
     const user = rows[0];
+    const { creditedAmountCents, bonusCreditCents } = getTopupCreditAmounts(amount_cents, providerRule.promo_credit_percent || 0);
+    const creditedAmountLabel = `$${(creditedAmountCents / 100).toFixed(2)}`;
+    const paidAmountLabel = `$${(amount_cents / 100).toFixed(2)}`;
+    const topupDescription = bonusCreditCents > 0
+      ? `Credit top-up via ${providerLabels[payment_provider]}: paid ${paidAmountLabel}, credited ${creditedAmountLabel} (${providerRule.promo_credit_percent}% bonus)`
+      : `Credit top-up via ${providerLabels[payment_provider]}: ${creditedAmountLabel}`;
 
     // ── PayGate topup ──
     if (payment_provider === 'paygate') {
@@ -511,7 +610,10 @@ router.post('/credits/topup', requireAuth, async (req, res) => {
         return res.status(503).json({ error: 'PayGate is not configured' });
       }
 
-      const tx = await creditService.createPendingTopup(user.id, amount_cents, { type: 'topup_paygate' });
+      const tx = await creditService.createPendingTopup(user.id, creditedAmountCents, {
+        type: 'topup_paygate',
+        description: topupDescription,
+      });
       const invoiceId = `cred_${tx.id}`;
       const callbackBase = `${process.env.API_BASE_URL || process.env.BASE_URL || 'http://localhost:3001'}/webhooks/paygate`;
 
@@ -535,7 +637,10 @@ router.post('/credits/topup', requireAuth, async (req, res) => {
         }),
         address_in: session.addressIn,
         credit_transaction_id: tx.id,
-        amount_cents,
+        amount_cents: creditedAmountCents,
+        paid_amount_cents: amount_cents,
+        bonus_credit_cents: bonusCreditCents,
+        promo_credit_percent: providerRule.promo_credit_percent || 0,
       });
     }
 
@@ -545,7 +650,10 @@ router.post('/credits/topup', requireAuth, async (req, res) => {
         return res.status(503).json({ error: 'Helcim is not configured' });
       }
 
-      const tx = await creditService.createPendingTopup(user.id, amount_cents, { type: 'topup_helcim' });
+      const tx = await creditService.createPendingTopup(user.id, creditedAmountCents, {
+        type: 'topup_helcim',
+        description: topupDescription,
+      });
       const invoiceId = `cred_${tx.id}`;
       await pool.query(`UPDATE credit_transactions SET reference_id = $1 WHERE id = $2`, [invoiceId, tx.id]);
 
@@ -567,7 +675,10 @@ router.post('/credits/topup', requireAuth, async (req, res) => {
         payment_provider: 'helcim',
         checkout_token: session.checkoutToken,
         credit_transaction_id: tx.id,
-        amount_cents,
+        amount_cents: creditedAmountCents,
+        paid_amount_cents: amount_cents,
+        bonus_credit_cents: bonusCreditCents,
+        promo_credit_percent: providerRule.promo_credit_percent || 0,
       });
     }
 
@@ -578,7 +689,10 @@ router.post('/credits/topup', requireAuth, async (req, res) => {
         return res.status(503).json({ error: 'Square is not configured' });
       }
 
-      const tx = await creditService.createPendingTopup(user.id, amount_cents, { type: 'topup_square' });
+      const tx = await creditService.createPendingTopup(user.id, creditedAmountCents, {
+        type: 'topup_square',
+        description: topupDescription,
+      });
       const invoiceId = `cred_${tx.id}`;
       const squareReferenceId = `cred_${tx.id.replace(/-/g, '')}`;
       await pool.query(`UPDATE credit_transactions SET reference_id = $1 WHERE id = $2`, [invoiceId, tx.id]);
@@ -613,11 +727,12 @@ router.post('/credits/topup', requireAuth, async (req, res) => {
         payment_provider: 'square',
         checkout_url: link.url,
         credit_transaction_id: tx.id,
-        amount_cents,
+        amount_cents: creditedAmountCents,
+        paid_amount_cents: amount_cents,
+        bonus_credit_cents: bonusCreditCents,
+        promo_credit_percent: providerRule.promo_credit_percent || 0,
       });
     }
-
-    return res.status(400).json({ error: `Unknown payment_provider: ${payment_provider}` });
   } catch (err) {
     logger.error('POST /credits/topup:', err.message);
     res.status(500).json({ error: 'Failed to initiate credit top-up' });

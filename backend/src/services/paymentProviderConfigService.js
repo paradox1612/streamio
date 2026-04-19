@@ -8,6 +8,16 @@ let _cache = null;
 let _cacheTs = 0;
 
 const PROVIDERS = ['stripe', 'paygate', 'helcim', 'square'];
+const CHECKOUT_FIELD_DEFAULTS = {
+  minimum_amount_cents: 0,
+  promo_credit_percent: 0,
+};
+
+function normalizeNonNegativeInteger(value, fallback = 0) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return parsed;
+}
 
 /**
  * Load all provider configs from DB (with short-lived cache).
@@ -32,7 +42,12 @@ async function getAll() {
  */
 async function getProvider(name) {
   const all = await getAll();
-  return all[name] || {};
+  const cfg = all[name] || {};
+  return {
+    ...cfg,
+    minimum_amount_cents: normalizeNonNegativeInteger(cfg.minimum_amount_cents, CHECKOUT_FIELD_DEFAULTS.minimum_amount_cents),
+    promo_credit_percent: normalizeNonNegativeInteger(cfg.promo_credit_percent, CHECKOUT_FIELD_DEFAULTS.promo_credit_percent),
+  };
 }
 
 /**
@@ -133,4 +148,6 @@ module.exports = {
   invalidateCache,
   redactConfig,
   PROVIDERS,
+  CHECKOUT_FIELD_DEFAULTS,
+  normalizeNonNegativeInteger,
 };

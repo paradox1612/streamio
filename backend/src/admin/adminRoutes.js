@@ -1233,10 +1233,10 @@ router.put('/settings/payment-providers', requireAdmin, async (req, res) => {
   try {
     const ALLOWED_PROVIDERS = ['stripe', 'paygate', 'helcim', 'square'];
     const ALLOWED_FIELDS = {
-      stripe:  ['enabled', 'visible', 'secret_key', 'webhook_secret', 'publishable_key'],
-      paygate: ['enabled', 'visible', 'wallet_address', 'api_key'],
-      helcim:  ['enabled', 'visible', 'api_token', 'webhook_secret', 'company_name'],
-      square:  ['enabled', 'visible', 'access_token', 'location_id', 'webhook_signature_key', 'environment'],
+      stripe:  ['enabled', 'visible', 'secret_key', 'webhook_secret', 'publishable_key', 'minimum_amount_cents', 'promo_credit_percent'],
+      paygate: ['enabled', 'visible', 'wallet_address', 'api_key', 'minimum_amount_cents', 'promo_credit_percent'],
+      helcim:  ['enabled', 'visible', 'api_token', 'webhook_secret', 'company_name', 'minimum_amount_cents', 'promo_credit_percent'],
+      square:  ['enabled', 'visible', 'access_token', 'location_id', 'webhook_signature_key', 'environment', 'minimum_amount_cents', 'promo_credit_percent'],
     };
 
     const updates = {};
@@ -1245,6 +1245,12 @@ router.put('/settings/payment-providers', requireAdmin, async (req, res) => {
       updates[provider] = {};
       for (const field of ALLOWED_FIELDS[provider]) {
         if (field in req.body[provider]) {
+          if (
+            (field === 'minimum_amount_cents' || field === 'promo_credit_percent') &&
+            (!Number.isInteger(req.body[provider][field]) || req.body[provider][field] < 0)
+          ) {
+            return res.status(400).json({ error: `Invalid ${field} for ${provider}` });
+          }
           updates[provider][field] = req.body[provider][field];
         }
       }

@@ -32,6 +32,8 @@ interface StripeConfig {
   secret_key: string
   webhook_secret: string
   publishable_key: string
+  minimum_amount_cents: number
+  promo_credit_percent: number
   has_secret_key?: boolean
   has_webhook_secret?: boolean
 }
@@ -41,6 +43,8 @@ interface PaygateConfig {
   visible: boolean
   wallet_address: string
   api_key: string
+  minimum_amount_cents: number
+  promo_credit_percent: number
   has_api_key?: boolean
 }
 
@@ -50,6 +54,8 @@ interface HelcimConfig {
   api_token: string
   webhook_secret: string
   company_name: string
+  minimum_amount_cents: number
+  promo_credit_percent: number
   has_api_token?: boolean
   has_webhook_secret?: boolean
 }
@@ -61,6 +67,8 @@ interface SquareConfig {
   location_id: string
   webhook_signature_key: string
   environment: 'production' | 'sandbox'
+  minimum_amount_cents: number
+  promo_credit_percent: number
   has_access_token?: boolean
   has_webhook_signature_key?: boolean
 }
@@ -120,6 +128,35 @@ function KeyField({
           {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
         </button>
       </div>
+      {hint && <p className="text-[10px] text-slate-600 italic">{hint}</p>}
+    </div>
+  )
+}
+
+function NumberField({
+  label,
+  value,
+  placeholder,
+  onChange,
+  hint,
+}: {
+  label: string
+  value: number
+  placeholder?: string
+  onChange: (value: number) => void
+  hint?: string
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs text-slate-400">{label}</Label>
+      <Input
+        type="number"
+        min="0"
+        value={value}
+        onChange={(e) => onChange(parseInt(e.target.value, 10) || 0)}
+        placeholder={placeholder}
+        className="text-xs bg-black/30 border-white/10 text-white placeholder:text-slate-600"
+      />
       {hint && <p className="text-[10px] text-slate-600 italic">{hint}</p>}
     </div>
   )
@@ -197,10 +234,10 @@ function ProviderCard({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const DEFAULTS: ProvidersConfig = {
-  stripe:  { enabled: false, visible: false, secret_key: '', webhook_secret: '', publishable_key: '' },
-  paygate: { enabled: false, visible: false, wallet_address: '', api_key: '' },
-  helcim:  { enabled: false, visible: false, api_token: '', webhook_secret: '', company_name: '' },
-  square:  { enabled: false, visible: false, access_token: '', location_id: '', webhook_signature_key: '', environment: 'production' },
+  stripe:  { enabled: false, visible: false, secret_key: '', webhook_secret: '', publishable_key: '', minimum_amount_cents: 0, promo_credit_percent: 0 },
+  paygate: { enabled: false, visible: false, wallet_address: '', api_key: '', minimum_amount_cents: 0, promo_credit_percent: 0 },
+  helcim:  { enabled: false, visible: false, api_token: '', webhook_secret: '', company_name: '', minimum_amount_cents: 0, promo_credit_percent: 0 },
+  square:  { enabled: false, visible: false, access_token: '', location_id: '', webhook_signature_key: '', environment: 'production', minimum_amount_cents: 0, promo_credit_percent: 0 },
 }
 
 export default function PaymentProvidersSettingsPage() {
@@ -339,6 +376,20 @@ export default function PaymentProvidersSettingsPage() {
               className="font-mono text-xs bg-black/30 border-white/10 text-white placeholder:text-slate-600"
             />
           </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <NumberField
+              label="Minimum Amount (cents)"
+              value={s.minimum_amount_cents}
+              onChange={(v) => patch('stripe')({ minimum_amount_cents: v })}
+              hint="Hide low-value Stripe checkouts below this amount."
+            />
+            <NumberField
+              label="Promo Credits %"
+              value={s.promo_credit_percent}
+              onChange={(v) => patch('stripe')({ promo_credit_percent: v })}
+              hint="Bonus credits added on wallet top-ups paid with Stripe."
+            />
+          </div>
         </ProviderCard>
 
         {/* ── PayGate ── */}
@@ -370,6 +421,20 @@ export default function PaymentProvidersSettingsPage() {
             onChange={(v) => patch('paygate')({ api_key: v })}
             hint="Webhook endpoint: /webhooks/paygate"
           />
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <NumberField
+              label="Minimum Amount (cents)"
+              value={pg.minimum_amount_cents}
+              onChange={(v) => patch('paygate')({ minimum_amount_cents: v })}
+              hint="Lowest order or top-up amount allowed through PayGate."
+            />
+            <NumberField
+              label="Promo Credits %"
+              value={pg.promo_credit_percent}
+              onChange={(v) => patch('paygate')({ promo_credit_percent: v })}
+              hint="Bonus credits added after PayGate top-up confirmation."
+            />
+          </div>
         </ProviderCard>
 
         {/* ── Helcim ── */}
@@ -406,6 +471,20 @@ export default function PaymentProvidersSettingsPage() {
               onChange={(e) => patch('helcim')({ company_name: e.target.value })}
               placeholder="Your Company"
               className="text-xs bg-black/30 border-white/10 text-white placeholder:text-slate-600"
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <NumberField
+              label="Minimum Amount (cents)"
+              value={h.minimum_amount_cents}
+              onChange={(v) => patch('helcim')({ minimum_amount_cents: v })}
+              hint="Lowest order or top-up amount allowed through Helcim."
+            />
+            <NumberField
+              label="Promo Credits %"
+              value={h.promo_credit_percent}
+              onChange={(v) => patch('helcim')({ promo_credit_percent: v })}
+              hint="Bonus credits added after Helcim top-up confirmation."
             />
           </div>
         </ProviderCard>
@@ -466,6 +545,20 @@ export default function PaymentProvidersSettingsPage() {
                 </button>
               ))}
             </div>
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <NumberField
+              label="Minimum Amount (cents)"
+              value={sq.minimum_amount_cents}
+              onChange={(v) => patch('square')({ minimum_amount_cents: v })}
+              hint="Lowest order or top-up amount allowed through Square."
+            />
+            <NumberField
+              label="Promo Credits %"
+              value={sq.promo_credit_percent}
+              onChange={(v) => patch('square')({ promo_credit_percent: v })}
+              hint="Bonus credits added after Square top-up confirmation."
+            />
           </div>
         </ProviderCard>
 
