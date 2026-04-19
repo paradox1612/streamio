@@ -297,13 +297,13 @@ export default function AdminMarketplacePage() {
   }
 
   async function handleDelete(offering: any) {
-    if (!confirm(`Deactivate "${offering.name}"? It will no longer appear in the marketplace.`)) return
+    if (!confirm(`Permanently delete "${offering.name}"? This cannot be undone. If it has active subscriptions, delete will fail and you should deactivate it instead.`)) return
     try {
       await adminAPI.deleteOffering(offering.id)
-      toast.success('Offering deactivated')
+      toast.success('Offering deleted successfully')
       load()
-    } catch {
-      toast.error('Failed to deactivate offering')
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to delete offering')
     }
   }
 
@@ -445,7 +445,7 @@ export default function AdminMarketplacePage() {
                             <button onClick={() => handleToggleActive(offering)} className="rounded p-1 text-slate-400 hover:bg-white/5 hover:text-white" title={offering.is_active ? 'Deactivate' : 'Activate'}>
                               {offering.is_active ? <ToggleRight className="h-4 w-4 text-green-400" /> : <ToggleLeft className="h-4 w-4" />}
                             </button>
-                            <button onClick={() => handleDelete(offering)} className="rounded p-1 text-slate-400 hover:bg-white/5 hover:text-red-400" title="Deactivate">
+                            <button onClick={() => handleDelete(offering)} className="rounded p-1 text-slate-400 hover:bg-white/5 hover:text-red-400" title="Delete permanently">
                               <Trash2 className="h-4 w-4" />
                             </button>
                           </div>

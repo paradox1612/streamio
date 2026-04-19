@@ -258,8 +258,9 @@ async function provisionManagedResellerLine(userId, offering, { user = null, exp
     throw new Error('No provider hosts configured for marketplace provisioning');
   }
 
-  const lineUsername = buildMarketplaceLineUsername(purchaser, offering);
-  const linePassword = buildMarketplaceLinePassword();
+  const shouldAutoGenerateCredentials = network.xtream_ui_scraped || network.adapter_type === 'xtream_ui_scraper';
+  const lineUsername = shouldAutoGenerateCredentials ? '' : buildMarketplaceLineUsername(purchaser, offering);
+  const linePassword = shouldAutoGenerateCredentials ? '' : buildMarketplaceLinePassword();
   const unixExpiry = expiresAt ? Math.floor(new Date(expiresAt).getTime() / 1000) : null;
   const bouquetIds = Array.isArray(selectedPlan?.reseller_bouquet_ids)
     ? selectedPlan.reseller_bouquet_ids
@@ -279,6 +280,7 @@ async function provisionManagedResellerLine(userId, offering, { user = null, exp
     bouquetIds,
     trial: isTrial,
     notes,
+    autoGenerateCredentials: shouldAutoGenerateCredentials,
   });
   if (!result?.success) {
     throw new Error(result?.message || 'Failed to create reseller line');
@@ -286,6 +288,9 @@ async function provisionManagedResellerLine(userId, offering, { user = null, exp
 
   const provisionedUsername = result.username || lineUsername;
   const provisionedPassword = result.password || linePassword;
+  if (!provisionedUsername || !provisionedPassword) {
+    throw new Error('Provider did not return created credentials');
+  }
   const resolvedHostUrls = result.host
     ? [result.host, ...hostUrls.filter((host) => host !== result.host)]
     : hostUrls;

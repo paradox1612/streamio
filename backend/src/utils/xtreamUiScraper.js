@@ -210,6 +210,47 @@ const xtreamUiScraper = {
     }
   },
 
+  extractCreatedCredentials(responseBody, requestedUsername = '', requestedPassword = '') {
+    const body = String(responseBody || '');
+    const usernamePatterns = [
+      /username[^a-z0-9]{0,20}<[^>]*>\s*([a-z0-9._-]{3,64})\s*</i,
+      /username[^a-z0-9]{0,20}(?:value=|:)\s*["']?([a-z0-9._-]{3,64})["']?/i,
+      /user(?:name)?\s*[:=]\s*["']?([a-z0-9._-]{3,64})["']?/i,
+    ];
+    const passwordPatterns = [
+      /password[^a-z0-9]{0,20}<[^>]*>\s*([a-z0-9._@#%+=:-]{3,64})\s*</i,
+      /password[^a-z0-9]{0,20}(?:value=|:)\s*["']?([a-z0-9._@#%+=:-]{3,64})["']?/i,
+      /pass(?:word)?\s*[:=]\s*["']?([a-z0-9._@#%+=:-]{3,64})["']?/i,
+    ];
+
+    let username = null;
+    let password = null;
+
+    for (const pattern of usernamePatterns) {
+      const match = body.match(pattern);
+      if (match?.[1]) {
+        username = String(match[1]).trim();
+        break;
+      }
+    }
+
+    for (const pattern of passwordPatterns) {
+      const match = body.match(pattern);
+      if (match?.[1]) {
+        password = String(match[1]).trim();
+        break;
+      }
+    }
+
+    if (!username && requestedUsername) username = requestedUsername;
+    if (!password && requestedPassword) password = requestedPassword;
+
+    return {
+      username: username || null,
+      password: password || null,
+    };
+  },
+
   /**
    * Create a new line/trial by posting to user_reseller.php.
    */
@@ -238,12 +279,15 @@ const xtreamUiScraper = {
     const packageId = userData.trial ? '1' : (userData.packageId || '');
 
     const bouquetIds = Array.isArray(userData.bouquetIds) ? userData.bouquetIds : [];
+    const requestedUsername = String(userData.username || '').trim();
+    const requestedPassword = String(userData.password || '').trim();
+    const allowPanelGeneratedCredentials = userData.autoGenerateCredentials === true;
 
     const formData = new URLSearchParams();
     formData.append('trial', userData.trial ? '1' : '0');
     formData.append('bouquets_selected', JSON.stringify(bouquetIds.map(Number)));
-    formData.append('username', userData.username || '');
-    formData.append('password', userData.password || '');
+    formData.append('username', allowPanelGeneratedCredentials ? '' : requestedUsername);
+    formData.append('password', allowPanelGeneratedCredentials ? '' : requestedPassword);
     formData.append('member_id', memberId || '0');
     formData.append('package', packageId);
     formData.append('mac_address_mag', '');
@@ -272,7 +316,29 @@ const xtreamUiScraper = {
       if (resBodyLower.includes('already exists') || resBodyLower.includes('username taken')) {
         return { success: false, message: 'Username already exists' };
       }
-      return { success: true, message: 'Line created successfully' };
+      if (resBodyLower.includes('error') || resBodyLower.includes('invalid') || resBodyLower.includes('failed')) {
+        return { success: false, message: 'Panel returned an error while creating the line' };
+      }
+
+      const credentials = this.extractCreatedCredentials(
+        resBody,
+        allowPanelGeneratedCredentials ? '' : requestedUsername,
+        allowPanelGeneratedCredentials ? '' : requestedPassword
+      );
+
+      if (!credentials.username || !credentials.password) {
+        return {
+          success: false,
+          message: 'Panel did not return usable credentials for the created line',
+        };
+      }
+
+      return {
+        success: true,
+        message: 'Line created successfully',
+        username: credentials.username,
+        password: credentials.password,
+      };
     }
 
     return { success: false, message: `Panel returned HTTP ${status}` };

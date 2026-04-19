@@ -811,14 +811,17 @@ router.patch('/marketplace/:id', requireAdmin, async (req, res) => {
   }
 });
 
-// DELETE /api/admin/marketplace/:id — soft-deactivate
+// DELETE /api/admin/marketplace/:id — permanently delete
 router.delete('/marketplace/:id', requireAdmin, async (req, res) => {
   try {
-    const updated = await offeringQueries.deactivate(req.params.id);
+    const updated = await offeringQueries.delete(req.params.id);
     if (!updated) return res.status(404).json({ error: 'Offering not found' });
-    res.json({ message: 'Offering deactivated', offering: updated });
+    res.json({ message: 'Offering deleted', offering: updated });
   } catch (err) {
     logger.error('DELETE /admin/marketplace/:id:', err.message);
+    if (err.code === '23503') {
+      return res.status(409).json({ error: 'Offering cannot be deleted because it has active subscriptions. Deactivate it instead.' });
+    }
     res.status(500).json({ error: err.message });
   }
 });

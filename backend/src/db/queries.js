@@ -2872,6 +2872,14 @@ const offeringQueries = {
     );
     return rows[0] || null;
   },
+
+  async delete(id) {
+    const { rows } = await pool.query(
+      `DELETE FROM provider_offerings WHERE id = $1 RETURNING *`,
+      [id]
+    );
+    return rows[0] || null;
+  },
 };
 
 // ─── Marketplace: Provider Subscriptions ─────────────────────────────────────
