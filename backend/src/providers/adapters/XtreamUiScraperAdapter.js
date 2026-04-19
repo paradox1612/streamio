@@ -16,6 +16,34 @@ const ProviderAdapter = require('../ProviderAdapter');
 const xtreamUiScraper = require('../../utils/xtreamUiScraper');
 const logger = require('../../utils/logger');
 
+function buildValidationError(message) {
+  const err = new Error(message);
+  err.statusCode = 400;
+  return err;
+}
+
+function parsePackageBilling(name = '') {
+  const normalized = String(name).trim();
+  const match = normalized.match(/(\d+)\s*(day|days|month|months|year|years)\b/i);
+  if (!match) return null;
+
+  const count = parseInt(match[1], 10);
+  const unit = match[2].toLowerCase();
+  if (!Number.isFinite(count) || count <= 0) return null;
+
+  if (unit.startsWith('day')) {
+    return { billing_period: 'day', billing_interval_count: count };
+  }
+  if (unit.startsWith('month')) {
+    return { billing_period: 'month', billing_interval_count: count };
+  }
+  if (unit.startsWith('year')) {
+    return { billing_period: 'year', billing_interval_count: count };
+  }
+
+  return null;
+}
+
 class XtreamUiScraperAdapter extends ProviderAdapter {
   constructor(network) {
     super(network);
@@ -64,7 +92,50 @@ class XtreamUiScraperAdapter extends ProviderAdapter {
 
   async getPackages() {
     const session = await this.ensureSession();
-    return xtreamUiScraper.getPackages(this._panelHost, session);
+    const packages = await xtreamUiScraper.getPackages(this._panelHost, session);
+    return packages.map((pkg) => ({
+      ...pkg,
+      ...parsePackageBilling(pkg.name),
+      is_trial: /\btrial\b/i.test(String(pkg.name || '')),
+    }));
+  }
+
+  async validateOfferingPlans(planOptions = []) {
+    if (!Array.isArray(planOptions) || planOptions.length === 0) return;
+
+    const packages = await this.getPackages();
+    const packageMap = new Map(packages.map((pkg) => [String(pkg.id), pkg]));
+
+    planOptions.forEach((plan, index) => {
+      const planLabel = `Plan "${plan?.name || plan?.code || `#${index + 1}`}"`;
+      const isTrial = plan?.is_trial === true || Number(plan?.trial_days || 0) > 0;
+      const packageId = plan?.reseller_package_id ? String(plan.reseller_package_id) : '';
+
+      if (isTrial) return;
+      if (!packageId) {
+        throw buildValidationError(`${planLabel} requires a reseller package for scraper-based providers.`);
+      }
+
+      const selectedPackage = packageMap.get(packageId);
+      if (!selectedPackage) {
+        throw buildValidationError(`${planLabel} references unknown reseller package "${packageId}".`);
+      }
+
+      if (selectedPackage.billing_period && String(plan.billing_period) !== String(selectedPackage.billing_period)) {
+        throw buildValidationError(
+          `${planLabel} billing period "${plan.billing_period}" does not match reseller package "${selectedPackage.name}". Expected "${selectedPackage.billing_period}".`
+        );
+      }
+
+      if (
+        selectedPackage.billing_interval_count
+        && String(plan.billing_interval_count) !== String(selectedPackage.billing_interval_count)
+      ) {
+        throw buildValidationError(
+          `${planLabel} billing interval count "${plan.billing_interval_count}" does not match reseller package "${selectedPackage.name}". Expected "${selectedPackage.billing_interval_count}".`
+        );
+      }
+    });
   }
 
   async createLine(opts) {

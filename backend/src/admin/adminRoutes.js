@@ -33,6 +33,7 @@ const { jobs } = require('../jobs/scheduler');
 const logger = require('../utils/logger');
 const { getRuntimeInfo } = require('../utils/runtimeInfo');
 const { normalizePlanOptions, resolveSelectedPlan } = require('../utils/marketplacePlans');
+const { validateOfferingPlanConstraints } = require('../utils/providerOfferingConstraints');
 
 function slugify(value = '') {
   return String(value)
@@ -153,6 +154,53 @@ async function getManagedNetworkAdapter(network, panelHost = null) {
     }
   }
   return adapter;
+}
+
+function withOfferingPlanConstraints(network) {
+  if (!network) return network;
+  return {
+    ...network,
+    offering_plan_constraints: ProviderAdapterFactory.getOfferingPlanConstraints(network),
+  };
+}
+
+async function resolveOfferingNetwork(providerNetworkId) {
+  if (!providerNetworkId) return null;
+
+  const network = await providerNetworkQueries.findById(providerNetworkId);
+  if (network) return network;
+
+  const err = new Error('Selected provider network was not found');
+  err.statusCode = 400;
+  throw err;
+}
+
+async function validateOfferingPlansForNetwork(providerNetworkId, normalizedPlans) {
+  const network = await resolveOfferingNetwork(providerNetworkId);
+  const constraints = network
+    ? ProviderAdapterFactory.getOfferingPlanConstraints(network)
+    : null;
+
+  validateOfferingPlanConstraints(normalizedPlans, constraints);
+
+  if (!network) return;
+
+  const AdapterClass = ProviderAdapterFactory.getAdapterClass(network);
+  const hasCustomValidator = AdapterClass
+    && AdapterClass.prototype.validateOfferingPlans !== undefined
+    && AdapterClass.prototype.validateOfferingPlans !== Object.getPrototypeOf(AdapterClass.prototype).validateOfferingPlans;
+
+  if (!hasCustomValidator) return;
+
+  const { panelHost } = await resolveManagedNetworkHosts(network);
+  if (!panelHost) {
+    const err = new Error('No reseller portal URL or customer hosts configured for this network');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const adapter = await getManagedNetworkAdapter(network, panelHost);
+  await adapter.validateOfferingPlans(normalizedPlans);
 }
 
 // ─── Admin Auth ───────────────────────────────────────────────────────────────
@@ -722,6 +770,8 @@ router.post('/marketplace', requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'provider_network_id is required for reseller line provisioning' });
     }
 
+    await validateOfferingPlansForNetwork(provider_network_id, normalizedPlans);
+
     // Create in DB first (without Stripe IDs)
     let offering = await offeringQueries.create({
       name,
@@ -761,7 +811,7 @@ router.post('/marketplace', requireAdmin, async (req, res) => {
     res.status(201).json(offering);
   } catch (err) {
     logger.error('POST /admin/marketplace:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 
@@ -793,6 +843,8 @@ router.patch('/marketplace/:id', requireAdmin, async (req, res) => {
       req.body.max_connections = primaryPlan.max_connections;
     }
 
+    await validateOfferingPlansForNetwork(nextProviderNetworkId, req.body.plan_options ?? existing.plan_options);
+
     let updated = await offeringQueries.update(req.params.id, req.body);
     if (!updated) return res.status(404).json({ error: 'Offering not found' });
 
@@ -808,7 +860,7 @@ router.patch('/marketplace/:id', requireAdmin, async (req, res) => {
     res.json(updated);
   } catch (err) {
     logger.error('PATCH /admin/marketplace/:id:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 
@@ -830,7 +882,7 @@ router.delete('/marketplace/:id', requireAdmin, async (req, res) => {
 router.get('/networks', requireAdmin, async (req, res) => {
   try {
     const networks = await providerNetworkQueries.listAll();
-    res.json(networks);
+    res.json(networks.map(withOfferingPlanConstraints));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -866,7 +918,7 @@ router.get('/networks/:id', requireAdmin, async (req, res) => {
     const network = await providerNetworkQueries.findById(req.params.id);
     if (!network) return res.status(404).json({ error: 'Network not found' });
     const hosts = await providerNetworkQueries.listHosts(req.params.id);
-    res.json({ network, hosts });
+    res.json({ network: withOfferingPlanConstraints(network), hosts });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

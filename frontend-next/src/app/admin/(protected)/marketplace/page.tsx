@@ -30,6 +30,32 @@ type PlanOption = {
   reseller_package_id: string
 }
 
+type PlanConstraintRule = {
+  allowed_values?: Array<string | number>
+  locked?: boolean
+  input?: 'number' | 'select'
+}
+
+type OfferingPlanConstraints = {
+  billing_period?: PlanConstraintRule
+  billing_interval_count?: PlanConstraintRule
+} | null
+
+type Network = {
+  id: string
+  name: string
+  adapter_type?: string
+  offering_plan_constraints?: OfferingPlanConstraints
+}
+
+type ResellerPackage = {
+  id: string
+  name: string
+  billing_period?: PlanOption['billing_period']
+  billing_interval_count?: number
+  is_trial?: boolean
+}
+
 function formatCents(cents: number, currency = 'usd') {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(cents / 100)
 }
@@ -66,6 +92,38 @@ function createBlankPlan(index = 1): PlanOption {
   }
 }
 
+function normalizePlanWithConstraints(plan: PlanOption, constraints: OfferingPlanConstraints): PlanOption {
+  if (!constraints) return plan
+
+  let nextPlan = plan
+  const allowedPeriods = constraints.billing_period?.allowed_values?.map((value) => String(value) as PlanOption['billing_period']) || []
+  const allowedCounts = constraints.billing_interval_count?.allowed_values?.map((value) => String(value)) || []
+
+  if (allowedPeriods.length > 0 && !allowedPeriods.includes(nextPlan.billing_period)) {
+    nextPlan = { ...nextPlan, billing_period: allowedPeriods[0] }
+  }
+
+  if (allowedCounts.length > 0 && !allowedCounts.includes(nextPlan.billing_interval_count)) {
+    nextPlan = { ...nextPlan, billing_interval_count: allowedCounts[0] }
+  }
+
+  return nextPlan
+}
+
+function normalizePlanForPackage(plan: PlanOption, pkg?: ResellerPackage | null): PlanOption {
+  if (!pkg?.billing_period || !pkg?.billing_interval_count) return plan
+
+  return {
+    ...plan,
+    billing_period: pkg.billing_period,
+    billing_interval_count: String(pkg.billing_interval_count),
+  }
+}
+
+function findPackage(packages: ResellerPackage[], packageId: string) {
+  return packages.find((pkg) => pkg.id === packageId) || null
+}
+
 const EMPTY_FORM = {
   name: '',
   description: '',
@@ -90,7 +148,7 @@ const EMPTY_FORM = {
 
 export default function AdminMarketplacePage() {
   const [offerings, setOfferings] = useState<any[]>([])
-  const [networks, setNetworks] = useState<any[]>([])
+  const [networks, setNetworks] = useState<Network[]>([])
   const [analytics, setAnalytics] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -99,7 +157,7 @@ export default function AdminMarketplacePage() {
   const [saving, setSaving] = useState(false)
   const [loadingBouquets, setLoadingBouquets] = useState(false)
   const [bouquets, setBouquets] = useState<{ id: string; bouquet_name: string }[]>([])
-  const [packages, setPackages] = useState<{ id: string; name: string }[]>([])
+  const [packages, setPackages] = useState<ResellerPackage[]>([])
   const [loadingPackages, setLoadingPackages] = useState(false)
 
   async function load() {
@@ -119,6 +177,41 @@ export default function AdminMarketplacePage() {
   }
 
   useEffect(() => { load() }, [])
+
+  const selectedNetwork = useMemo(
+    () => networks.find((network) => network.id === form.provider_network_id) || null,
+    [form.provider_network_id, networks],
+  )
+
+  const selectedPlanConstraints = selectedNetwork?.offering_plan_constraints || null
+
+  useEffect(() => {
+    if (!selectedPlanConstraints) return
+
+    setForm((current) => {
+      const nextPlans = current.plans.map((plan) => normalizePlanWithConstraints(plan, selectedPlanConstraints))
+      const changed = nextPlans.some((plan, index) => (
+        plan.billing_period !== current.plans[index]?.billing_period
+        || plan.billing_interval_count !== current.plans[index]?.billing_interval_count
+      ))
+
+      return changed ? { ...current, plans: nextPlans } : current
+    })
+  }, [selectedPlanConstraints])
+
+  useEffect(() => {
+    if (packages.length === 0) return
+
+    setForm((current) => {
+      const nextPlans = current.plans.map((plan) => normalizePlanForPackage(plan, findPackage(packages, plan.reseller_package_id)))
+      const changed = nextPlans.some((plan, index) => (
+        plan.billing_period !== current.plans[index]?.billing_period
+        || plan.billing_interval_count !== current.plans[index]?.billing_interval_count
+      ))
+
+      return changed ? { ...current, plans: nextPlans } : current
+    })
+  }, [packages])
 
   function openCreate() {
     setEditingId(null)
@@ -223,14 +316,18 @@ export default function AdminMarketplacePage() {
   function updatePlan(index: number, patch: Partial<PlanOption>) {
     setForm((current) => ({
       ...current,
-      plans: current.plans.map((plan, planIndex) => planIndex === index ? { ...plan, ...patch } : plan),
+      plans: current.plans.map((plan, planIndex) => {
+        if (planIndex !== index) return plan
+        const nextPlan = normalizePlanWithConstraints({ ...plan, ...patch }, selectedPlanConstraints)
+        return normalizePlanForPackage(nextPlan, findPackage(packages, nextPlan.reseller_package_id))
+      }),
     }))
   }
 
   function addPlan() {
     setForm((current) => ({
       ...current,
-      plans: [...current.plans, createBlankPlan(current.plans.length + 1)],
+      plans: [...current.plans, normalizePlanWithConstraints(createBlankPlan(current.plans.length + 1), selectedPlanConstraints)],
     }))
   }
 
@@ -533,6 +630,11 @@ export default function AdminMarketplacePage() {
                 <div>
                   <h3 className="font-semibold text-white">Plan Options</h3>
                   <p className="text-sm text-slate-400">User-facing plans like 1 day trial, 1 month, 3 months, 6 months, or 1 year.</p>
+                  {selectedPlanConstraints && (
+                    <p className="mt-2 text-xs text-amber-300/80">
+                      This provider network defines billing rules. Plan period/count fields are constrained automatically.
+                    </p>
+                  )}
                 </div>
                 <Button type="button" variant="outline" size="sm" onClick={addPlan} className="gap-2">
                   <Plus className="h-4 w-4" /> Add plan
@@ -542,6 +644,28 @@ export default function AdminMarketplacePage() {
               <div className="mt-4 space-y-4">
                 {form.plans.map((plan, index) => (
                   <div key={`${plan.code}-${index}`} className="grid grid-cols-12 gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                    {(() => {
+                      const selectedPackage = findPackage(packages, plan.reseller_package_id)
+                      const packageConstraints: OfferingPlanConstraints = selectedPackage?.billing_period && selectedPackage?.billing_interval_count
+                        ? {
+                          billing_period: {
+                            allowed_values: [selectedPackage.billing_period],
+                            locked: true,
+                          },
+                          billing_interval_count: {
+                            allowed_values: [selectedPackage.billing_interval_count],
+                            input: 'select',
+                          },
+                        }
+                        : null
+                      const effectiveConstraints = packageConstraints || selectedPlanConstraints
+                      const allowedPeriods = effectiveConstraints?.billing_period?.allowed_values?.map((value) => String(value) as PlanOption['billing_period']) || ['day', 'month', 'year']
+                      const allowedCounts = effectiveConstraints?.billing_interval_count?.allowed_values?.map((value) => String(value)) || []
+                      const lockPeriod = effectiveConstraints?.billing_period?.locked || allowedPeriods.length === 1
+                      const countInputMode = effectiveConstraints?.billing_interval_count?.input || (allowedCounts.length > 0 ? 'select' : 'number')
+
+                      return (
+                        <>
                     <div className="col-span-12 md:col-span-2">
                       <Label>Code</Label>
                       <Input value={plan.code} onChange={(e) => updatePlan(index, { code: e.target.value })} placeholder="1m" />
@@ -556,15 +680,32 @@ export default function AdminMarketplacePage() {
                     </div>
                     <div className="col-span-6 md:col-span-2">
                       <Label>Period</Label>
-                      <select className="w-full rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" value={plan.billing_period} onChange={(e) => updatePlan(index, { billing_period: e.target.value as 'day' | 'month' | 'year' })}>
-                        <option value="day">Day</option>
-                        <option value="month">Month</option>
-                        <option value="year">Year</option>
+                      <select
+                        className="w-full rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-70"
+                        value={plan.billing_period}
+                        onChange={(e) => updatePlan(index, { billing_period: e.target.value as 'day' | 'month' | 'year' })}
+                        disabled={lockPeriod}
+                      >
+                        {allowedPeriods.map((period) => (
+                          <option key={period} value={period}>{period.charAt(0).toUpperCase() + period.slice(1)}</option>
+                        ))}
                       </select>
                     </div>
                     <div className="col-span-4 md:col-span-1">
                       <Label>Count</Label>
-                      <Input type="number" value={plan.billing_interval_count} onChange={(e) => updatePlan(index, { billing_interval_count: e.target.value })} />
+                      {countInputMode === 'select' ? (
+                        <select
+                          className="w-full rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+                          value={plan.billing_interval_count}
+                          onChange={(e) => updatePlan(index, { billing_interval_count: e.target.value })}
+                        >
+                          {allowedCounts.map((count) => (
+                            <option key={count} value={count}>{count}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <Input type="number" value={plan.billing_interval_count} onChange={(e) => updatePlan(index, { billing_interval_count: e.target.value })} />
+                      )}
                     </div>
                     <div className="col-span-4 md:col-span-1">
                       <Label>Trial</Label>
@@ -602,6 +743,9 @@ export default function AdminMarketplacePage() {
                         Remove
                       </Button>
                     </div>
+                        </>
+                      )
+                    })()}
                   </div>
                 ))}
               </div>

@@ -25,6 +25,19 @@ const ADAPTERS = {
 };
 
 const ProviderAdapterFactory = {
+  getAdapterClass(networkOrAdapterType) {
+    const adapterType = typeof networkOrAdapterType === 'string'
+      ? networkOrAdapterType
+      : this.resolveAdapterType(networkOrAdapterType || {});
+
+    return ADAPTERS[adapterType] || null;
+  },
+
+  resolveAdapterType(network = {}) {
+    return network.adapter_type
+      || (network.xtream_ui_scraped ? 'xtream_ui_scraper' : 'xtream_api');
+  },
+
   /**
    * @param {object} network  Row from provider_networks.
    * @returns {ProviderAdapter}
@@ -32,10 +45,9 @@ const ProviderAdapterFactory = {
   create(network) {
     // Legacy fallback: if xtream_ui_scraped flag is set but adapter_type isn't,
     // treat it as a scraper network so existing rows work without migration.
-    const adapterType = network.adapter_type
-      || (network.xtream_ui_scraped ? 'xtream_ui_scraper' : 'xtream_api');
+    const adapterType = this.resolveAdapterType(network);
 
-    const AdapterClass = ADAPTERS[adapterType];
+    const AdapterClass = this.getAdapterClass(adapterType);
     if (!AdapterClass) {
       throw new Error(
         `Unknown adapter_type "${adapterType}" for network "${network.name}". ` +
@@ -43,6 +55,19 @@ const ProviderAdapterFactory = {
       );
     }
     return new AdapterClass(network);
+  },
+
+  getOfferingPlanConstraints(networkOrAdapterType) {
+    const adapterType = typeof networkOrAdapterType === 'string'
+      ? networkOrAdapterType
+      : this.resolveAdapterType(networkOrAdapterType || {});
+
+    const AdapterClass = this.getAdapterClass(adapterType);
+    if (!AdapterClass || typeof AdapterClass.getOfferingPlanConstraints !== 'function') {
+      return null;
+    }
+
+    return AdapterClass.getOfferingPlanConstraints();
   },
 
   /** Returns all registered adapter type keys (useful for admin UI dropdowns). */

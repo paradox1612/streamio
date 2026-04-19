@@ -42,6 +42,19 @@ function parsePlaylistCredentials(playlistUrl) {
 }
 
 class GoldPanelApiAdapter extends ProviderAdapter {
+  static getOfferingPlanConstraints() {
+    return {
+      billing_period: {
+        allowed_values: ['month'],
+        locked: true,
+      },
+      billing_interval_count: {
+        allowed_values: SUPPORTED_SUBSCRIPTION_MONTHS,
+        input: 'select',
+      },
+    };
+  }
+
   constructor(network) {
     super(network);
     this._apiUrl = network.reseller_portal_url;

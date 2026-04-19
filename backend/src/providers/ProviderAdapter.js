@@ -12,6 +12,10 @@
  *   3. Set adapter_type = 'your_type' on the provider_networks row.
  */
 class ProviderAdapter {
+  static getOfferingPlanConstraints() {
+    return null;
+  }
+
   /**
    * @param {object} network  Row from provider_networks (includes adapter_type,
    *                          reseller_portal_url, reseller_username, reseller_password,
@@ -22,6 +26,14 @@ class ProviderAdapter {
       throw new Error('ProviderAdapter is abstract — use a concrete subclass');
     }
     this.network = network;
+  }
+
+  getOfferingPlanConstraints() {
+    return this.constructor.getOfferingPlanConstraints();
+  }
+
+  async validateOfferingPlans() {
+    return null;
   }
 
   /**
