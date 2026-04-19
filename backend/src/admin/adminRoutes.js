@@ -250,7 +250,8 @@ router.get('/users/:id', requireAdmin, async (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
   const providers = await providerQueries.findByUser(req.params.id);
   const freeAccess = await freeAccessQueries.findLatestAssignmentForUser(req.params.id);
-  res.json({ user, providers, freeAccess });
+  const subscriptions = await subscriptionQueries.findByUserId(req.params.id);
+  res.json({ user, providers, freeAccess, subscriptions });
 });
 
 // DELETE /admin/users/:id
@@ -819,9 +820,6 @@ router.delete('/marketplace/:id', requireAdmin, async (req, res) => {
     res.json({ message: 'Offering deleted', offering: updated });
   } catch (err) {
     logger.error('DELETE /admin/marketplace/:id:', err.message);
-    if (err.code === '23503') {
-      return res.status(409).json({ error: 'Offering cannot be deleted because it has active subscriptions. Deactivate it instead.' });
-    }
     res.status(500).json({ error: err.message });
   }
 });

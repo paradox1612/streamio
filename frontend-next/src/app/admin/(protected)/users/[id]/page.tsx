@@ -61,6 +61,7 @@ export default function AdminUserDetailPage() {
 
   const user = data?.user ?? data
   const providers: any[] = data?.providers ?? []
+  const subscriptions: any[] = data?.subscriptions ?? []
 
   const handleSuspend = async () => {
     if (!user) return
@@ -278,6 +279,68 @@ export default function AdminUserDetailPage() {
               <div className="rounded-[16px] border border-white/[0.07] bg-white/[0.02] px-4 py-6 text-center">
                 <UserRoundX className="mx-auto mb-2 h-6 w-6 text-slate-400/50" />
                 <p className="text-sm text-slate-400/60">No providers linked</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden lg:col-span-2">
+          <CardHeader className="border-b border-white/[0.08] pb-4">
+            <CardTitle>Marketplace Subscriptions ({subscriptions.length})</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {subscriptions.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-white/5 bg-white/[0.02] text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      <th className="px-5 py-3">Offering</th>
+                      <th className="px-5 py-3">Status</th>
+                      <th className="px-5 py-3">Plan</th>
+                      <th className="px-5 py-3 text-right">Price</th>
+                      <th className="px-5 py-3">Current Period</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {subscriptions.map((sub: any) => (
+                      <tr key={sub.id} className="hover:bg-white/[0.02]">
+                        <td className="px-5 py-4">
+                          <div className="font-semibold text-white">{sub.offering_name || 'Marketplace Item'}</div>
+                          <div className="mt-0.5 font-mono text-[10px] text-slate-500">{sub.id}</div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <Badge
+                            variant={
+                              sub.status === 'active' ? 'success' :
+                              sub.status === 'trialing' ? 'brand' :
+                              sub.status === 'past_due' ? 'warning' : 'outline'
+                            }
+                            className="capitalize"
+                          >
+                            {sub.status}
+                          </Badge>
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="text-slate-200">{sub.selected_plan_name || 'Standard'}</div>
+                          <div className="text-[11px] text-slate-500 uppercase tracking-tight">
+                            {sub.selected_billing_period} · interval {sub.selected_interval_count}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 text-right font-medium text-white">
+                          {formatCurrencyFromCents(sub.selected_price_cents)}
+                        </td>
+                        <td className="px-5 py-4 text-xs text-slate-400">
+                          <div>Starts: {formatDate(sub.current_period_start)}</div>
+                          <div className="mt-1 font-medium text-slate-300">Ends: {formatDate(sub.current_period_end)}</div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="p-8 text-center text-slate-500">
+                No marketplace subscriptions found for this user.
               </div>
             )}
           </CardContent>

@@ -824,7 +824,7 @@ ALTER TABLE provider_offerings
 CREATE TABLE IF NOT EXISTS provider_subscriptions (
   id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id                 UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  offering_id             UUID NOT NULL REFERENCES provider_offerings(id),
+  offering_id             UUID REFERENCES provider_offerings(id) ON DELETE SET NULL,
   user_provider_id        UUID REFERENCES user_providers(id) ON DELETE SET NULL,
   stripe_customer_id      TEXT NOT NULL,
   stripe_subscription_id  TEXT UNIQUE NOT NULL,

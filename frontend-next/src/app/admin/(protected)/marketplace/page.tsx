@@ -297,7 +297,7 @@ export default function AdminMarketplacePage() {
   }
 
   async function handleDelete(offering: any) {
-    if (!confirm(`Permanently delete "${offering.name}"? This cannot be undone. If it has active subscriptions, delete will fail and you should deactivate it instead.`)) return
+    if (!confirm(`Permanently delete "${offering.name}"? This cannot be undone. Subscription history will be preserved, but the offering will be removed from the catalog.`)) return
     try {
       await adminAPI.deleteOffering(offering.id)
       toast.success('Offering deleted successfully')

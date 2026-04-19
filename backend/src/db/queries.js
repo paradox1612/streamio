@@ -3028,9 +3028,8 @@ const subscriptionQueries = {
               po.price_cents, po.currency, po.billing_period, po.billing_interval_count, po.features,
               po.plan_options, po.catalog_tags, po.country_codes, po.provider_stats
        FROM provider_subscriptions ps
-       JOIN provider_offerings po ON po.id = ps.offering_id
+       LEFT JOIN provider_offerings po ON po.id = ps.offering_id
        WHERE ps.user_id = $1
-         AND ps.status NOT IN ('cancelled')
        ORDER BY ps.created_at DESC`,
       [user_id]
     );
@@ -3041,7 +3040,7 @@ const subscriptionQueries = {
     const { rows } = await pool.query(
       `SELECT ps.*, po.name AS offering_name, po.provider_network_id, u.email AS user_email, u.twenty_person_id
        FROM provider_subscriptions ps
-       JOIN provider_offerings po ON po.id = ps.offering_id
+       LEFT JOIN provider_offerings po ON po.id = ps.offering_id
        JOIN users u ON u.id = ps.user_id
        WHERE ps.id = $1`,
       [id]
@@ -3066,7 +3065,7 @@ const subscriptionQueries = {
          COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled_count,
          SUM(COALESCE(ps.selected_price_cents, po.price_cents)) FILTER (WHERE ps.status IN ('active','trialing')) AS mrr_cents
        FROM provider_subscriptions ps
-       JOIN provider_offerings po ON po.id = ps.offering_id`
+       LEFT JOIN provider_offerings po ON po.id = ps.offering_id`
     );
     return rows[0];
   },
