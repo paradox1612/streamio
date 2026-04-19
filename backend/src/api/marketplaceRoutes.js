@@ -580,6 +580,7 @@ router.post('/credits/topup', requireAuth, async (req, res) => {
 
       const tx = await creditService.createPendingTopup(user.id, amount_cents, { type: 'topup_square' });
       const invoiceId = `cred_${tx.id}`;
+      const squareReferenceId = `cred_${tx.id.replace(/-/g, '')}`;
       await pool.query(`UPDATE credit_transactions SET reference_id = $1 WHERE id = $2`, [invoiceId, tx.id]);
 
       const fakeOffering = {
@@ -593,7 +594,7 @@ router.post('/credits/topup', requireAuth, async (req, res) => {
       try {
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
         link = await squareService.createPaymentLink(user, fakeOffering, {
-          referenceId: invoiceId,
+          referenceId: squareReferenceId,
           redirectUrl: `${frontendUrl}/dashboard/marketplace?topup=success`,
         });
       } catch (err) {
