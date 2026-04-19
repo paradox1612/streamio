@@ -4,6 +4,7 @@ const fetch = require('node-fetch');
 const { tmdbQueries, matchQueries, vodQueries, jobQueries } = require('../db/queries');
 const logger = require('../utils/logger');
 const { cleanTitle, normalizeTitle, parseMovieTitle, parseSeriesTitle } = require('../utils/titleNormalization');
+const { parseRelease, normalizeTitle: normalizeTitleStrict } = require('../utils/releaseParser');
 const { waitForAddonCapacity, getActiveAddonRequests } = require('../utils/loadManager');
 const { getJobRunnerMetadata } = require('../utils/runtimeInfo');
 
@@ -14,6 +15,11 @@ try { ptn = require('parse-torrent-title'); } catch (_) { ptn = null; }
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const TMDB_POSTER_BASE = 'https://image.tmdb.org/t/p/w500';
 const CONFIDENCE_THRESHOLD = 0.6;
+// Matcher v2 is strict: exact normalized_title + type + year. Fuzzy scoring is
+// the thing that caused "The Pitt" to be linked to tt31938062 ("The Regime").
+// Leave MATCHER_FUZZY_FALLBACK=true only to fall back to the legacy loose
+// matcher when v2 returns no result — never to override a v2 rejection.
+const MATCHER_FUZZY_FALLBACK = process.env.MATCHER_FUZZY_FALLBACK === 'true';
 const MATCH_CONCURRENCY = parseInt(process.env.TMDB_MATCH_CONCURRENCY || '2', 10);
 const MATCH_BATCH_SIZE = parseInt(process.env.TMDB_MATCH_BATCH_SIZE || '1000', 10);
 const MATCH_BATCH_PAUSE_MS = parseInt(process.env.TMDB_MATCH_BATCH_PAUSE_MS || '250', 10);
@@ -119,25 +125,67 @@ async function fetchImdbIdFromApi(tmdbType, tmdbId, fallbackImdbId = null) {
   }
 }
 
+/**
+ * Strict matcher (v2):
+ *   1. Parse raw title with the Sonarr-style release parser.
+ *   2. Require a non-empty normalized title.
+ *   3. Try exact match on tmdb_movies/tmdb_series with type + year locked.
+ *   4. If miss and we had a year, try alias table (localized / scene names).
+ *   5. If still miss, try exact match with year dropped but mark lower
+ *      confidence so downstream can reject if needed.
+ *   6. No fuzzy. Ambiguous (>1 candidate) is treated as unmatched.
+ *
+ * This is what prevents "The Pitt" from resolving to "The Regime": both would
+ * have to normalize to the same string AND share a year window AND be the
+ * same type AND be the only candidate at that intersection. If any of those
+ * fail, we return null and leave the row unmatched instead of guessing.
+ */
 async function findBestMatch(rawTitle, vodType) {
-  const parsed = vodType === 'series'
-    ? parseSeriesTitle(extractCleanTitle(rawTitle))
-    : parseMovieTitle(extractCleanTitle(rawTitle));
-  const normalized = parsed.canonicalNormalizedTitle || normalizeTitle(parsed.canonicalTitle || rawTitle);
+  const parsed = parseRelease(rawTitle);
+  const normalized = parsed.normalizedTitle || normalizeTitleStrict(rawTitle);
   const year = parsed.year || extractYear(rawTitle);
+  const resolvedType = vodType === 'series' ? 'series' : 'movie';
 
   if (!normalized) return null;
 
-  const exactMatch = vodType === 'series'
-    ? tmdbQueries.exactMatchSeries.bind(tmdbQueries)
-    : tmdbQueries.exactMatchMovie.bind(tmdbQueries);
+  // Parser should agree on type where it can. If parser detected episodes but
+  // caller says movie (or vice versa), trust the parser — that's a signal the
+  // row was miscategorized at ingest.
+  const parserType = parsed.type !== 'unknown' ? parsed.type : null;
+  const effectiveType = parserType || resolvedType;
 
-  const exact = await exactMatch(normalized, year);
-  if (exact) return exact;
+  const strictFn = effectiveType === 'series'
+    ? tmdbQueries.strictMatchSeries.bind(tmdbQueries)
+    : tmdbQueries.strictMatchMovie.bind(tmdbQueries);
 
+  // 1. Strict exact match (type + year + unique candidate)
+  const strict = await strictFn(normalized, year);
+  if (strict) return { ...strict, match_source: 'strict_exact' };
+
+  // 2. Alias match (localized / AKA / scene)
+  const alias = await tmdbQueries.aliasMatch(normalized, effectiveType, year);
+  if (alias) return { ...alias, match_source: 'alias' };
+
+  // 3. Retry without year if we had one — lower implicit confidence.
+  //    Still requires uniqueness, so won't mass-collide.
   if (year) {
-    const exactWithoutYear = await exactMatch(normalized, null);
-    if (exactWithoutYear) return exactWithoutYear;
+    const noYear = await strictFn(normalized, null);
+    if (noYear) return { ...noYear, score: 0.85, match_source: 'strict_no_year' };
+  }
+
+  // 4. Optional legacy fuzzy fallback — OFF by default. Only here for a
+  //    controlled rollout window; flip the flag to catch regressions.
+  if (MATCHER_FUZZY_FALLBACK) {
+    const legacyParsed = effectiveType === 'series'
+      ? parseSeriesTitle(extractCleanTitle(rawTitle))
+      : parseMovieTitle(extractCleanTitle(rawTitle));
+    const legacyNormalized = legacyParsed.canonicalNormalizedTitle
+      || normalizeTitle(legacyParsed.canonicalTitle || rawTitle);
+    const legacyExact = effectiveType === 'series'
+      ? tmdbQueries.exactMatchSeries.bind(tmdbQueries)
+      : tmdbQueries.exactMatchMovie.bind(tmdbQueries);
+    const legacy = await legacyExact(legacyNormalized, year) || await legacyExact(legacyNormalized, null);
+    if (legacy) return { ...legacy, score: 0.7, match_source: 'legacy_fallback' };
   }
 
   return null;

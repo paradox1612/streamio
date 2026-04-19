@@ -54,6 +54,10 @@ async function migrate() {
     const migratePerf = require('./migrate_perf_indexes');
     await migratePerf();
 
+    // Matcher v2: aliases + manual overrides + match_status
+    const migrateMatcherV2 = require('./migrate_matcher_v2');
+    await migrateMatcherV2();
+
     console.log('All migrations complete.');
   } catch (err) {
     try {

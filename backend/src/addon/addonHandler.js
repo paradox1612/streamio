@@ -8,6 +8,7 @@ const cache = require('../utils/cache');
 const logger = require('../utils/logger');
 const { touchUserLastSeen } = require('../utils/userActivity');
 const { normalizeTitle, extractContentLanguages, parseMovieTitle, parseReleaseTitle, parseSeriesTitle } = require('../utils/titleNormalization');
+const { extractLanguages: extractLanguagesStrict } = require('../utils/releaseParser');
 const { beginAddonRequest, endAddonRequest } = require('../utils/loadManager');
 
 const TMDB_POSTER_BASE = 'https://image.tmdb.org/t/p/w500';
@@ -388,16 +389,23 @@ function applyLanguagePreferences(vodItems, user) {
   if (!preferred.length && !excluded.length) return vodItems;
 
   return vodItems.filter((item) => {
-    const languages = Array.isArray(item.content_languages) && item.content_languages.length
+    // Prefer the structured column populated at ingest. Fall back to the
+    // strict bracket-bounded extractor — NOT the legacy substring one, which
+    // mis-tags "Spanish Inquisition" and similar.
+    const structured = Array.isArray(item.content_languages) && item.content_languages.length
       ? item.content_languages
-      : extractContentLanguages(item.raw_title);
+      : null;
+    const languages = structured || extractLanguagesStrict(item.raw_title || '');
 
+    // Preferred list acts as a positive filter: only items with at least one
+    // matching detected language pass. Items with no detected languages are
+    // dropped — matches the pre-existing contract callers depend on.
     if (preferred.length) {
-      return languages.some(language => preferred.includes(language));
+      return languages.some((language) => preferred.includes(language));
     }
 
     if (excluded.length) {
-      return !languages.some(language => excluded.includes(language));
+      return !languages.some((language) => excluded.includes(language));
     }
 
     return true;

@@ -1058,56 +1058,95 @@ const vodQueries = {
   },
 
   async resolveByExternalIdForUser(userId, externalId, { single = true, onlyOnline = false } = {}) {
-    const externalField = externalId.startsWith('tt') ? 'imdb_id' : 'tmdb_id';
-    const normalizedValue = externalId.startsWith('tmdb:') ? parseInt(externalId.slice(5), 10) : externalId;
+    const isImdb = typeof externalId === 'string' && externalId.startsWith('tt');
+    const externalField = isImdb ? 'imdb_id' : 'tmdb_id';
+    let normalizedValue = externalId;
+    if (typeof externalId === 'string' && externalId.startsWith('tmdb:')) {
+      normalizedValue = parseInt(externalId.slice(5), 10);
+    } else if (!isImdb && typeof externalId === 'string' && /^\d+$/.test(externalId)) {
+      normalizedValue = parseInt(externalId, 10);
+    }
     const limitClause = single ? 'LIMIT 1' : '';
-    const onlineClause = onlyOnline ? `AND p.status = 'online'` : '';
-    const { rows } = await pool.query(
-      `SELECT
-         COALESCE(nv.id, v.id) AS id,
-         COALESCE(nv.stream_id, v.stream_id) AS stream_id,
-         COALESCE(nv.raw_title, v.raw_title) AS raw_title,
-         COALESCE(nv.normalized_title, v.normalized_title) AS normalized_title,
-         COALESCE(nv.canonical_title, v.canonical_title) AS canonical_title,
-         COALESCE(nv.canonical_normalized_title, v.canonical_normalized_title) AS canonical_normalized_title,
-         COALESCE(nv.title_year, v.title_year) AS title_year,
-         COALESCE(nv.content_languages, v.content_languages) AS content_languages,
-         COALESCE(nv.quality_tags, v.quality_tags) AS quality_tags,
-         COALESCE(nv.poster_url, v.poster_url) AS poster_url,
-         COALESCE(nv.category, v.category) AS category,
-         COALESCE(nv.vod_type, v.vod_type) AS vod_type,
-         COALESCE(nv.container_extension, v.container_extension) AS container_extension,
-         COALESCE(nv.epg_channel_id, v.epg_channel_id) AS epg_channel_id,
-         p.id AS provider_id,
-         p.network_id,
-         p.catalog_variant,
-         p.active_host,
-         p.username,
-         p.password,
-         COALESCE(cc.tmdb_id, m.tmdb_id) AS tmdb_id,
-         COALESCE(cc.imdb_id, m.imdb_id) AS imdb_id,
-         COALESCE(cc.confidence_score, m.confidence_score) AS confidence_score
-       FROM user_providers p
-       LEFT JOIN network_vod nv
-         ON nv.provider_network_id = p.network_id
-        AND p.catalog_variant = false
-       LEFT JOIN user_provider_vod v
-         ON v.provider_id = p.id
-        AND (p.catalog_variant = true OR p.network_id IS NULL)
-       LEFT JOIN canonical_content cc
-         ON cc.id = COALESCE(nv.canonical_content_id, v.canonical_content_id)
-       LEFT JOIN matched_content m
-         ON m.raw_title = COALESCE(nv.raw_title, v.raw_title)
-       WHERE p.user_id = $1
-         ${onlineClause}
-         AND (
-           cc.${externalField} = $2
-           OR m.${externalField} = $2
-         )
-       ORDER BY COALESCE(nv.raw_title, v.raw_title) ASC, p.id ASC
-       ${limitClause}`,
-      [userId, normalizedValue]
-    );
+    const onlineClauseA = onlyOnline ? `AND p.status = 'online'` : '';
+    const onlineClauseB = onlyOnline ? `AND p.status = 'online'` : '';
+
+    // Two tight queries UNION'd. Each filters directly on the indexed
+    // v.imdb_id / nv.imdb_id column BEFORE any joins, turning a seq-scan
+    // over hundreds of thousands of rows into an index lookup returning
+    // the ~handful of rows that actually match the requested IMDb/TMDb ID.
+    // The canonical_content join is only used to enrich the narrowed rows.
+    const sql = `
+      SELECT * FROM (
+        SELECT
+          v.id,
+          v.stream_id,
+          v.raw_title,
+          v.normalized_title,
+          v.canonical_title,
+          v.canonical_normalized_title,
+          v.title_year,
+          v.content_languages,
+          v.quality_tags,
+          v.poster_url,
+          v.category,
+          v.vod_type,
+          v.container_extension,
+          v.epg_channel_id,
+          p.id AS provider_id,
+          p.network_id,
+          p.catalog_variant,
+          p.active_host,
+          p.username,
+          p.password,
+          COALESCE(v.tmdb_id, cc.tmdb_id) AS tmdb_id,
+          COALESCE(v.imdb_id, cc.imdb_id) AS imdb_id,
+          cc.confidence_score AS confidence_score
+        FROM user_provider_vod v
+        JOIN user_providers p ON p.id = v.provider_id
+        LEFT JOIN canonical_content cc ON cc.id = v.canonical_content_id
+        WHERE p.user_id = $1
+          AND v.${externalField} = $2
+          AND (p.catalog_variant = true OR p.network_id IS NULL)
+          ${onlineClauseA}
+
+        UNION ALL
+
+        SELECT
+          nv.id,
+          nv.stream_id,
+          nv.raw_title,
+          nv.normalized_title,
+          nv.canonical_title,
+          nv.canonical_normalized_title,
+          nv.title_year,
+          nv.content_languages,
+          nv.quality_tags,
+          nv.poster_url,
+          nv.category,
+          nv.vod_type,
+          nv.container_extension,
+          nv.epg_channel_id,
+          p.id AS provider_id,
+          p.network_id,
+          p.catalog_variant,
+          p.active_host,
+          p.username,
+          p.password,
+          COALESCE(nv.tmdb_id, cc.tmdb_id) AS tmdb_id,
+          COALESCE(nv.imdb_id, cc.imdb_id) AS imdb_id,
+          cc.confidence_score AS confidence_score
+        FROM network_vod nv
+        JOIN user_providers p ON p.network_id = nv.provider_network_id
+        LEFT JOIN canonical_content cc ON cc.id = nv.canonical_content_id
+        WHERE p.user_id = $1
+          AND nv.${externalField} = $2
+          AND p.catalog_variant = false
+          ${onlineClauseB}
+      ) matches
+      ORDER BY raw_title ASC, provider_id ASC
+      ${limitClause}
+    `;
+    const { rows } = await pool.query(sql, [userId, normalizedValue]);
     return single ? (rows[0] || null) : rows;
   },
 
@@ -1771,6 +1810,75 @@ const tmdbQueries = {
     }
     query += ` ORDER BY popularity DESC LIMIT 1`;
     const { rows } = await pool.query(query, params);
+    return rows[0];
+  },
+
+  // Strict exact match: requires year within ±1 when provided; returns 0 or 1
+  // candidates. No fuzzy, no similarity scoring — matcher v2 guarantees this
+  // is only ever called with a normalized title from the release parser.
+  async strictMatchMovie(normalizedTitle, year) {
+    if (!normalizedTitle) return null;
+    let query = `
+      SELECT id, original_title, imdb_id, popularity, release_year, 1 AS score
+      FROM tmdb_movies
+      WHERE normalized_title = $1
+    `;
+    const params = [normalizedTitle];
+    if (year) {
+      query += ` AND release_year IS NOT NULL AND ABS(release_year - $2) <= 1`;
+      params.push(year);
+    }
+    query += ` ORDER BY popularity DESC LIMIT 2`;
+    const { rows } = await pool.query(query, params);
+    // Ambiguous: >1 candidate at the same normalized title / year window.
+    // Return null so the caller treats it as unmatched rather than guessing.
+    if (rows.length !== 1) return null;
+    return rows[0];
+  },
+
+  async strictMatchSeries(normalizedTitle, year) {
+    if (!normalizedTitle) return null;
+    let query = `
+      SELECT id, original_title, popularity, first_air_year, 1 AS score
+      FROM tmdb_series
+      WHERE normalized_title = $1
+    `;
+    const params = [normalizedTitle];
+    if (year) {
+      query += ` AND first_air_year IS NOT NULL AND ABS(first_air_year - $2) <= 1`;
+      params.push(year);
+    }
+    query += ` ORDER BY popularity DESC LIMIT 2`;
+    const { rows } = await pool.query(query, params);
+    if (rows.length !== 1) return null;
+    return rows[0];
+  },
+
+  // Alias match — resolves localized titles and scene-name remappings via the
+  // content_aliases table. Returns the canonical_content row with the
+  // tmdb_id/imdb_id already resolved.
+  async aliasMatch(normalizedTitle, vodType, year) {
+    if (!normalizedTitle) return null;
+    let query = `
+      SELECT cc.id AS canonical_id,
+             cc.canonical_title AS original_title,
+             cc.tmdb_id AS id,
+             cc.imdb_id,
+             cc.title_year AS year,
+             1 AS score
+      FROM content_aliases a
+      JOIN canonical_content cc ON cc.id = a.canonical_content_id
+      WHERE a.normalized_alias = $1
+        AND cc.vod_type = $2
+    `;
+    const params = [normalizedTitle, vodType === 'series' ? 'series' : 'movie'];
+    if (year) {
+      query += ` AND (cc.title_year IS NULL OR ABS(cc.title_year - $3) <= 1)`;
+      params.push(year);
+    }
+    query += ` ORDER BY cc.confidence_score DESC NULLS LAST LIMIT 2`;
+    const { rows } = await pool.query(query, params);
+    if (rows.length !== 1) return null;
     return rows[0];
   },
 
