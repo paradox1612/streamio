@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { providerAPI } from '@/utils/api'
-import { ArrowLeft, RefreshCw, PenSquare, Signal, Copy, Check, ExternalLink, AlertCircle, ChevronDown } from 'lucide-react'
+import { ArrowLeft, RefreshCw, PenSquare, Signal, Copy, Check, ExternalLink, AlertCircle, ChevronDown, Download, Smartphone } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge'
 import ProgressBar from '@/components/ProgressBar'
 import toast from 'react-hot-toast'
@@ -36,6 +36,78 @@ function splitHosts(hosts: string[] = [], activeHost?: string) {
 }
 
 const MAX_PROVIDER_HOSTS = 30
+
+type ProviderAppPortalItem = {
+  id: string
+  name: string
+  badge: string
+  note: string
+  platform: string
+  activationCode: string
+  downloadUrl: string
+}
+
+type ProviderAppPortalGroup = {
+  id: string
+  name: string
+  platform: string
+  note: string
+  apps: ProviderAppPortalItem[]
+}
+
+type ProviderAppPortalConfig = {
+  title: string
+  description: string
+  groups: ProviderAppPortalGroup[]
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function normalizeAppPortalConfig(config: unknown): ProviderAppPortalConfig | null {
+  if (!isRecord(config) || !Array.isArray(config.groups)) return null
+
+  const groups = config.groups
+    .map((group, groupIndex): ProviderAppPortalGroup | null => {
+      if (!isRecord(group)) return null
+      const name = String(group.name || '').trim()
+      if (!name) return null
+
+      const apps = (Array.isArray(group.apps) ? group.apps : [])
+        .map((app, appIndex): ProviderAppPortalItem | null => {
+          if (!isRecord(app)) return null
+          const appName = String(app.name || '').trim()
+          if (!appName) return null
+
+          return {
+            id: String(app.id || `${groupIndex}-${appIndex}`),
+            name: appName,
+            badge: String(app.badge || '').trim(),
+            note: String(app.note || '').trim(),
+            platform: String(app.platform || '').trim(),
+            activationCode: String(app.activationCode || '').trim(),
+            downloadUrl: String(app.downloadUrl || '').trim(),
+          }
+        })
+        .filter((app): app is ProviderAppPortalItem => Boolean(app))
+
+      return {
+        id: String(group.id || `group-${groupIndex + 1}`),
+        name,
+        platform: String(group.platform || '').trim(),
+        note: String(group.note || '').trim(),
+        apps,
+      }
+    })
+    .filter((group): group is ProviderAppPortalGroup => Boolean(group))
+
+  return {
+    title: String(config.title || 'Server Apps').trim() || 'Server Apps',
+    description: String(config.description || 'Download apps for your devices.').trim() || 'Download apps for your devices.',
+    groups,
+  }
+}
 
 export default function ProviderDetailPage() {
   const params = useParams()
@@ -253,6 +325,8 @@ export default function ProviderDetailPage() {
   const m3uUrl = activeHost ? `${activeHost}/get.php?username=${encodeURIComponent(provider.username)}&password=${encodeURIComponent(provider.password || '')}&type=m3u_plus&output=ts` : ''
   const activeHealth = health.find((entry) => entry.host_url === activeHost) || null
   const standbyHealth = health.filter((entry) => entry.host_url !== activeHost)
+  const appPortalConfig = normalizeAppPortalConfig(provider.app_portal_config)
+  const configuredAppCount = appPortalConfig?.groups?.reduce((sum, group) => sum + group.apps.length, 0) || 0
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -389,6 +463,94 @@ export default function ProviderDetailPage() {
           </div>
         </div>
       </section>
+
+      {appPortalConfig && configuredAppCount > 0 && (
+        <section className="panel-soft p-5 sm:p-8">
+          <div className="flex items-center gap-2 text-emerald-400 mb-2">
+            <Smartphone className="h-4 w-4" />
+            <p className="eyebrow !mb-0">Device Apps</p>
+          </div>
+          <h2 className="section-title">{appPortalConfig.title}</h2>
+          <p className="mt-2 text-sm text-slate-400">{appPortalConfig.description}</p>
+
+          <div className="mt-6 space-y-4">
+            {appPortalConfig.groups.map((group, index) => (
+              <details
+                key={group.id}
+                open={index === 0}
+                className="group overflow-hidden rounded-3xl border border-white/[0.08] bg-surface-950/40"
+              >
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h3 className="text-lg font-semibold text-white">{group.name}</h3>
+                      <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-300/75">
+                        {group.apps.length} app{group.apps.length === 1 ? '' : 's'}
+                      </span>
+                    </div>
+                    {(group.platform || group.note) && (
+                      <p className="mt-2 text-sm text-slate-400">
+                        {[group.platform, group.note].filter(Boolean).join(' • ')}
+                      </p>
+                    )}
+                  </div>
+                  <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+                </summary>
+
+                <div className="border-t border-white/[0.07] px-5 py-5">
+                  <div className="grid gap-4 xl:grid-cols-3">
+                    {group.apps.map((app) => (
+                      <div key={app.id} className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="text-base font-semibold text-white">{app.name}</h4>
+                              {app.badge && (
+                                <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-300">
+                                  {app.badge}
+                                </span>
+                              )}
+                            </div>
+                            {(app.platform || app.note) && (
+                              <p className="mt-2 text-sm text-slate-400">
+                                {[app.platform, app.note].filter(Boolean).join(' • ')}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap items-center gap-3">
+                          {app.downloadUrl && (
+                            <a
+                              href={app.downloadUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-medium text-slate-100 transition hover:bg-white/[0.08]"
+                            >
+                              <Download className="h-4 w-4" />
+                              Download
+                            </a>
+                          )}
+                          {app.activationCode && (
+                            <button
+                              type="button"
+                              onClick={() => handleCopy(app.activationCode, `${app.name} code`)}
+                              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-white/[0.06]"
+                            >
+                              {copying === `${app.name} code` ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+                              Code: {app.activationCode}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </details>
+            ))}
+          </div>
+        </section>
+      )}
 
       {(refreshJob?.active || refreshJob?.status === 'failed') && (
         <section className="panel-soft p-5 sm:p-8">

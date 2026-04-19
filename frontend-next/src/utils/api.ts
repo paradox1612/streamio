@@ -191,6 +191,7 @@ export const adminAPI = {
     api.post(`/api/admin/users/${id}/credits-adjust`, data),
   listProviders: (params?: Record<string, unknown>) => api.get('/api/admin/providers', { params }),
   getProvider: (id: string) => api.get(`/api/admin/providers/${id}`),
+  updateProvider: (id: string, data: Record<string, unknown>) => api.patch(`/api/admin/providers/${id}`, data),
   deleteProvider: (id: string) => api.delete(`/api/admin/providers/${id}`),
   refreshProvider: (id: string) => api.post(`/api/admin/providers/${id}/refresh`),
   getOverview: () => api.get('/api/admin/stats/overview'),

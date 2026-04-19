@@ -2,12 +2,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, Database, Link2Off, RefreshCw, Server } from 'lucide-react'
+import { Activity, Database, Link2Off, RefreshCw, Server, Smartphone } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { adminAPI } from '@/utils/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import DataTableFilter from '@/components/ui/data-table-filter'
 import AdminDataTable from '@/components/AdminDataTable'
 
@@ -49,12 +50,50 @@ function MetricCard({
   )
 }
 
+const APP_PORTAL_TEMPLATE = {
+  title: 'Server Apps',
+  description: 'Each server may have its own dedicated app. These apps only work with that specific server.',
+  groups: [
+    {
+      id: 'strong8k',
+      name: 'STRONG8K',
+      platform: 'Android',
+      note: 'Dedicated Android apps for this server.',
+      apps: [
+        {
+          id: '4k-strong',
+          name: '4K STRONG',
+          badge: 'FREE',
+          downloadUrl: 'https://example.com/download.apk',
+          activationCode: '733893',
+        },
+      ],
+    },
+  ],
+}
+
+function prettyPrintAppPortalConfig(config: any) {
+  return JSON.stringify(config || APP_PORTAL_TEMPLATE, null, 2)
+}
+
+function countConfiguredApps(config: any) {
+  if (!config || typeof config !== 'object' || !Array.isArray(config.groups)) return 0
+  return config.groups.reduce((sum: number, group: any) => {
+    const apps = Array.isArray(group?.apps) ? group.apps.length : 0
+    return sum + apps
+  }, 0)
+}
+
 export default function AdminProvidersPage() {
   const [providers, setProviders] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string[]>([])
   const [hostFilter, setHostFilter] = useState<string[]>([])
+  const [showAppsModal, setShowAppsModal] = useState(false)
+  const [appsDraft, setAppsDraft] = useState('')
+  const [selectedProvider, setSelectedProvider] = useState<any>(null)
+  const [savingApps, setSavingApps] = useState(false)
 
   const load = async (isInitialLoad = false) => {
     if (isInitialLoad) setLoading(true)
@@ -115,6 +154,41 @@ export default function AdminProvidersPage() {
     }
   }
 
+  const handleOpenAppsModal = (provider: any) => {
+    setSelectedProvider(provider)
+    setAppsDraft(prettyPrintAppPortalConfig(provider.app_portal_config))
+    setShowAppsModal(true)
+  }
+
+  const handleSaveApps = async () => {
+    if (!selectedProvider) return
+
+    let parsedConfig: any
+    try {
+      parsedConfig = JSON.parse(appsDraft)
+    } catch {
+      toast.error('App portal config must be valid JSON')
+      return
+    }
+
+    setSavingApps(true)
+    try {
+      const { data } = await adminAPI.updateProvider(selectedProvider.id, { app_portal_config: parsedConfig })
+      setProviders((current) => current.map((provider) => (
+        provider.id === selectedProvider.id
+          ? { ...provider, app_portal_config: data.app_portal_config }
+          : provider
+      )))
+      setSelectedProvider((current: any) => current ? { ...current, app_portal_config: data.app_portal_config } : current)
+      setShowAppsModal(false)
+      toast.success('App portal config saved')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to save app portal config')
+    } finally {
+      setSavingApps(false)
+    }
+  }
+
   const columns = [
     {
       key: 'provider',
@@ -160,6 +234,21 @@ export default function AdminProvidersPage() {
       ),
     },
     {
+      key: 'apps',
+      header: 'App Portal',
+      render: (provider: any) => {
+        const appCount = countConfiguredApps(provider.app_portal_config)
+        return (
+          <div>
+            <div className="text-lg font-semibold text-white">{appCount}</div>
+            <div className="text-xs text-slate-400/70">
+              {appCount > 0 ? 'install cards configured' : 'not configured'}
+            </div>
+          </div>
+        )
+      },
+    },
+    {
       key: 'updated',
       header: 'Last Sync',
       render: (provider: any) => (
@@ -175,6 +264,10 @@ export default function AdminProvidersPage() {
       cellClassName: 'min-w-[14rem]',
       render: (provider: any) => (
         <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => handleOpenAppsModal(provider)}>
+            <Smartphone className="h-3.5 w-3.5" />
+            Apps
+          </Button>
           <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => handleRefresh(provider.id)}>
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh
@@ -264,6 +357,51 @@ export default function AdminProvidersPage() {
         emptyMessage="No providers match the current filters."
         rowKey={(provider: any) => provider.id}
       />
+
+      <Dialog open={showAppsModal} onOpenChange={setShowAppsModal}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Provider app portal config</DialogTitle>
+            <DialogDescription>
+              Manage the grouped app cards shown to customers for {selectedProvider?.name || 'this provider'}. This is stored per provider and rendered dynamically on the customer dashboard.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400/80">Expected shape</p>
+              <p className="mt-2 text-sm leading-6 text-slate-300/70">
+                Use a root object with `title`, `description`, and `groups`. Each group can include `name`, `platform`,
+                `note`, and `apps`. Each app can include `name`, `badge`, `downloadUrl`, `activationCode`, `platform`,
+                and `note`.
+              </p>
+            </div>
+
+            <textarea
+              value={appsDraft}
+              onChange={(event) => setAppsDraft(event.target.value)}
+              spellCheck={false}
+              className="min-h-[420px] w-full rounded-2xl border border-white/10 bg-slate-950/80 p-4 font-mono text-sm text-slate-100 outline-none transition focus:border-brand-400/50 focus:ring-2 focus:ring-brand-500/30"
+            />
+
+            <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/40 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400/80">Starter example</p>
+              <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-words text-xs leading-6 text-slate-300/70">
+                {JSON.stringify(APP_PORTAL_TEMPLATE, null, 2)}
+              </pre>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setShowAppsModal(false)} disabled={savingApps}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleSaveApps} disabled={savingApps}>
+              {savingApps ? 'Saving...' : 'Save config'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

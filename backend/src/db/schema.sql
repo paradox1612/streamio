@@ -94,7 +94,8 @@ CREATE TABLE IF NOT EXISTS user_providers (
   active_host VARCHAR,
   status VARCHAR DEFAULT 'unknown',
   last_checked TIMESTAMP,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMP DEFAULT NOW(),
+  app_portal_config JSONB
 );
 
 CREATE TABLE IF NOT EXISTS provider_networks (
@@ -408,6 +409,8 @@ ALTER TABLE user_providers
   ADD COLUMN IF NOT EXISTS account_active_connections INTEGER;
 ALTER TABLE user_providers
   ADD COLUMN IF NOT EXISTS account_last_synced_at TIMESTAMP;
+ALTER TABLE user_providers
+  ADD COLUMN IF NOT EXISTS app_portal_config JSONB;
 ALTER TABLE tmdb_movies
   ADD COLUMN IF NOT EXISTS normalized_title VARCHAR;
 ALTER TABLE tmdb_series

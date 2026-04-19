@@ -43,6 +43,64 @@ function slugify(value = '') {
     .replace(/-+/g, '-');
 }
 
+function normalizeAppPortalConfig(input) {
+  if (input == null) return null;
+  if (typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('App portal config must be an object.');
+  }
+
+  const title = typeof input.title === 'string' && input.title.trim()
+    ? input.title.trim()
+    : 'Server Apps';
+  const description = typeof input.description === 'string' && input.description.trim()
+    ? input.description.trim()
+    : 'Download apps for your devices.';
+  const groups = Array.isArray(input.groups) ? input.groups : [];
+
+  return {
+    title,
+    description,
+    groups: groups
+      .map((group, groupIndex) => {
+        if (!group || typeof group !== 'object' || Array.isArray(group)) return null;
+        const name = String(group.name || '').trim();
+        if (!name) return null;
+
+        const platform = typeof group.platform === 'string' ? group.platform.trim() : '';
+        const note = typeof group.note === 'string' ? group.note.trim() : '';
+        const apps = Array.isArray(group.apps) ? group.apps : [];
+
+        return {
+          id: typeof group.id === 'string' && group.id.trim()
+            ? group.id.trim()
+            : slugify(name) || `group-${groupIndex + 1}`,
+          name,
+          platform,
+          note,
+          apps: apps
+            .map((app, appIndex) => {
+              if (!app || typeof app !== 'object' || Array.isArray(app)) return null;
+              const appName = String(app.name || '').trim();
+              if (!appName) return null;
+              return {
+                id: typeof app.id === 'string' && app.id.trim()
+                  ? app.id.trim()
+                  : slugify(appName) || `app-${appIndex + 1}`,
+                name: appName,
+                badge: typeof app.badge === 'string' ? app.badge.trim() : '',
+                note: typeof app.note === 'string' ? app.note.trim() : '',
+                platform: typeof app.platform === 'string' ? app.platform.trim() : '',
+                activationCode: typeof app.activationCode === 'string' ? app.activationCode.trim() : '',
+                downloadUrl: typeof app.downloadUrl === 'string' ? app.downloadUrl.trim() : '',
+              };
+            })
+            .filter(Boolean),
+        };
+      })
+      .filter(Boolean),
+  };
+}
+
 async function resolveManagedNetworkHosts(network) {
   const networkHosts = await providerNetworkQueries.listHosts(network.id);
   const activeCustomerHost = networkHosts.find((host) => host.is_active)?.host_url || networkHosts[0]?.host_url || null;
@@ -281,6 +339,22 @@ router.get('/providers/:id', requireAdmin, async (req, res) => {
     hostHealthQueries.getByProvider(provider.id),
   ]);
   res.json({ provider, vodStats, matchStats, health });
+});
+
+// PATCH /admin/providers/:id
+router.patch('/providers/:id', requireAdmin, async (req, res) => {
+  try {
+    const payload = { ...req.body };
+    if ('app_portal_config' in payload) {
+      payload.app_portal_config = normalizeAppPortalConfig(payload.app_portal_config);
+    }
+
+    const updated = await providerQueries.updateByAdmin(req.params.id, payload);
+    if (!updated) return res.status(404).json({ error: 'Provider not found' });
+    res.json(updated);
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Failed to update provider' });
+  }
 });
 
 // DELETE /admin/providers/:id

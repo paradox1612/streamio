@@ -47,6 +47,7 @@ const PROVIDER_COLS = `
   p.network_id,
   p.catalog_variant,
   p.network_attached_at,
+  p.app_portal_config,
   p.twenty_provider_access_id,
   p.account_status,
   p.account_expires_at,
@@ -684,6 +685,40 @@ const providerQueries = {
       values
     );
     return rows[0];
+  },
+
+  async updateByAdmin(id, fields) {
+    const allowed = [
+      'name',
+      'hosts',
+      'username',
+      'password',
+      'catalog_variant',
+      'incremental_sync',
+      'app_portal_config',
+    ];
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    for (const [key, val] of Object.entries(fields)) {
+      if (allowed.includes(key)) {
+        updates.push(`${key} = $${idx++}`);
+        values.push(val);
+      }
+    }
+
+    if (!updates.length) return null;
+
+    values.push(id);
+    const { rows } = await pool.query(
+      `UPDATE user_providers
+       SET ${updates.join(', ')}
+       WHERE id = $${idx}
+       RETURNING *`,
+      values
+    );
+    return rows[0] || null;
   },
 
   async updateSyncWatermark(id, userId, watermark) {
