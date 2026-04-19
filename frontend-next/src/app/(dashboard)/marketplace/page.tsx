@@ -56,6 +56,26 @@ interface Offering {
   network_name?: string
   trial_ticket_enabled?: boolean
   trial_ticket_message?: string | null
+  offering_id?: string
+  plan_code?: string
+  plan_options?: Array<{
+    code?: string
+    name?: string
+    price_cents?: number
+    currency?: string
+    billing_period?: 'day' | 'month' | 'year'
+    billing_interval_count?: number
+    trial_days?: number
+    max_connections?: number
+    is_trial?: boolean
+  }>
+  catalog_tags?: string[] | null
+  country_codes?: string[] | null
+  provider_stats?: {
+    live?: number
+    vod?: number
+    series?: number
+  } | null
 }
 
 interface Subscription {
@@ -169,6 +189,59 @@ function getDurationLabel(offering: Offering) {
   return `${count} ${offering.billing_period}${count > 1 ? 's' : ''}`
 }
 
+function getDurationSortValue(offering: Offering) {
+  const count = offering.billing_interval_count || 1
+  if (offering.is_trial) return offering.trial_days || count
+  if (offering.billing_period === 'day') return count
+  if (offering.billing_period === 'month') return count * 30
+  if (offering.billing_period === 'year') return count * 365
+  return count
+}
+
+function expandOfferingPlans(offering: Offering): Offering[] {
+  const planOptions = Array.isArray(offering.plan_options) && offering.plan_options.length > 0
+    ? offering.plan_options
+    : [{
+      code: 'default',
+      name: offering.name,
+      price_cents: offering.price_cents,
+      currency: offering.currency,
+      billing_period: offering.billing_period,
+      billing_interval_count: offering.billing_interval_count || 1,
+      trial_days: offering.trial_days || 0,
+      max_connections: 1,
+      is_trial: offering.is_trial,
+    }]
+
+  return planOptions.map((plan, index) => {
+    const trialDays = Number(plan.trial_days ?? 0)
+    const billingIntervalCount = Number(plan.billing_interval_count ?? offering.billing_interval_count ?? 1)
+    const billingPeriod = (plan.billing_period || offering.billing_period || 'month') as 'day' | 'month' | 'year'
+    const isTrial = plan.is_trial === true || trialDays > 0
+
+    return {
+      ...offering,
+      id: `${offering.id}::${plan.code || `plan_${index + 1}`}`,
+      offering_id: offering.id,
+      plan_code: plan.code || `plan_${index + 1}`,
+      price_cents: Number(plan.price_cents ?? offering.price_cents),
+      currency: String(plan.currency || offering.currency || 'usd'),
+      billing_period: billingPeriod,
+      billing_interval_count: billingIntervalCount,
+      trial_days: trialDays,
+      is_trial: isTrial,
+      countries: Array.isArray(offering.country_codes) ? offering.country_codes : offering.countries,
+      tags: Array.isArray(offering.catalog_tags) ? offering.catalog_tags : offering.tags,
+      live_count: Number(offering.live_count ?? offering.provider_stats?.live ?? 0),
+      vod_count: Number(offering.vod_count ?? offering.provider_stats?.vod ?? 0),
+    }
+  }).sort((a, b) => {
+    const durationDelta = getDurationSortValue(a) - getDurationSortValue(b)
+    if (durationDelta !== 0) return durationDelta
+    return a.price_cents - b.price_cents
+  })
+}
+
 function PaymentMethodModal({
   offerings, // Grouped offerings
   providers,
@@ -204,8 +277,8 @@ function PaymentMethodModal({
   const handlePay = async (method: string, confirmDuplicate = false) => {
     setLoading(method)
     try {
-      const { data } = await marketplaceAPI.createCheckout(selectedOffering.id, method as any, confirmDuplicate, {
-        plan_code: selectedOffering.id, // we don't have explicit plan_code field on offering, we use id if grouping
+      const { data } = await marketplaceAPI.createCheckout(selectedOffering.offering_id || selectedOffering.id, method as any, confirmDuplicate, {
+        plan_code: selectedOffering.plan_code,
         auto_renew: autoRenew,
       })
 
@@ -764,7 +837,11 @@ export default function MarketplacePage() {
           creditsAPI.getTransactions({ limit: 15 }),
           marketplaceAPI.getPaymentProviders(),
         ])
-        setOfferings(offeringRes.data)
+        setOfferings(
+          Array.isArray(offeringRes.data)
+            ? offeringRes.data.flatMap((offering: Offering) => expandOfferingPlans(offering))
+            : []
+        )
         setSubscriptions(subRes.data)
         setPayments(historyRes.data)
         setCreditBalance(balRes.data.balance_cents)
@@ -894,11 +971,17 @@ export default function MarketplacePage() {
   const groupedOfferings = useMemo(() => {
     const groups: Record<string, Offering[]> = {}
     offerings.filter(o => o.is_active).forEach((o) => {
-      const gId = o.group_id || o.id
+      const gId = o.group_id || o.offering_id || o.id
       if (!groups[gId]) groups[gId] = []
       groups[gId].push(o)
     })
-    return Object.values(groups)
+    return Object.values(groups).map((group) => (
+      [...group].sort((a, b) => {
+        const durationDelta = getDurationSortValue(a) - getDurationSortValue(b)
+        if (durationDelta !== 0) return durationDelta
+        return a.price_cents - b.price_cents
+      })
+    ))
   }, [offerings])
 
   const combinedHistory = useMemo(() => {

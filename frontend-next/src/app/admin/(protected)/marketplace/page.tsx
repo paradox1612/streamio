@@ -185,12 +185,13 @@ export default function AdminMarketplacePage() {
       })),
     })
 
+    setShowModal(true)
+
     if (offering.provisioning_mode === 'reseller_line' && offering.provider_network_id) {
-      await loadBouquets(offering.provider_network_id, true)
+      void loadBouquets(offering.provider_network_id, true)
     } else {
       setBouquets([])
     }
-    setShowModal(true)
   }
 
   function updatePlan(index: number, patch: Partial<PlanOption>) {
