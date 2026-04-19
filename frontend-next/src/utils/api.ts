@@ -96,7 +96,7 @@ export const marketplaceAPI = {
   getPaymentProviders: () => api.get('/api/marketplace/payment-providers'),
   createCheckout: (
     offeringId: string,
-    paymentProvider: 'stripe' | 'paygate' | 'credits' | 'helcim' | 'square' = 'stripe',
+    paymentProvider: string = 'stripe',
     confirmDuplicate = false,
     options?: { plan_code?: string; auto_renew?: boolean }
   ) =>
@@ -124,7 +124,7 @@ export const creditsAPI = {
   getTransactions: (params?: { limit?: number; offset?: number }) =>
     api.get('/api/credits/transactions', { params }),
   getCreditsConfig: () => api.get('/api/credits/config'),
-  topup: (amountCents: number, paymentProvider: 'paygate' | 'helcim' | 'square' = 'paygate') =>
+  topup: (amountCents: number, paymentProvider: string = 'paygate') =>
     api.post('/api/credits/topup', { amount_cents: amountCents, payment_provider: paymentProvider }),
   getTopupStatus: (creditTxId: string) => api.get(`/api/credits/topup/status/${creditTxId}`),
 }

@@ -1,5 +1,6 @@
 const { systemSettingQueries } = require('../db/queries');
 const logger = require('../utils/logger');
+const paymentProviderRegistry = require('./paymentProviderRegistry');
 
 const SETTING_KEY = 'payment_providers_config';
 const CACHE_TTL_MS = 30_000; // 30 seconds
@@ -7,11 +8,11 @@ const CACHE_TTL_MS = 30_000; // 30 seconds
 let _cache = null;
 let _cacheTs = 0;
 
-const PROVIDERS = ['stripe', 'paygate', 'helcim', 'square'];
 const CHECKOUT_FIELD_DEFAULTS = {
   minimum_amount_cents: 0,
   promo_credit_percent: 0,
 };
+const PROVIDERS = paymentProviderRegistry.getProviderIds();
 
 function normalizeNonNegativeInteger(value, fallback = 0) {
   const parsed = Number.parseInt(value, 10);
@@ -42,8 +43,11 @@ async function getAll() {
  */
 async function getProvider(name) {
   const all = await getAll();
+  const definition = paymentProviderRegistry.getProvider(name);
+  const defaults = definition?.defaults || {};
   const cfg = all[name] || {};
   return {
+    ...defaults,
     ...cfg,
     minimum_amount_cents: normalizeNonNegativeInteger(cfg.minimum_amount_cents, CHECKOUT_FIELD_DEFAULTS.minimum_amount_cents),
     promo_credit_percent: normalizeNonNegativeInteger(cfg.promo_credit_percent, CHECKOUT_FIELD_DEFAULTS.promo_credit_percent),
@@ -85,16 +89,25 @@ async function saveAll(updates) {
   const merged = { ...existing };
 
   for (const provider of PROVIDERS) {
-    if (!updates[provider]) continue;
+    const definition = paymentProviderRegistry.getProvider(provider);
+    if (!updates[provider] || !definition) continue;
     const prev = existing[provider] || {};
     const next = updates[provider];
+    const allowedFields = new Set(['enabled', 'visible', ...definition.fields.map((field) => field.key)]);
 
     // For each field: if value is '' or undefined, keep existing
     const resolved = {};
     for (const [key, val] of Object.entries(next)) {
+      if (!allowedFields.has(key)) continue;
+      const field = definition.fields.find((item) => item.key === key);
+      if (field?.kind === 'number' && val !== '' && val !== undefined) {
+        const normalized = normalizeNonNegativeInteger(val, 0);
+        resolved[key] = normalized;
+        continue;
+      }
       resolved[key] = (val === '' || val === undefined) ? prev[key] : val;
     }
-    merged[provider] = { ...prev, ...resolved };
+    merged[provider] = { ...definition.defaults, ...prev, ...resolved };
   }
 
   await systemSettingQueries.set(SETTING_KEY, merged);
@@ -113,17 +126,11 @@ function invalidateCache() {
  * sensitive key fields are redacted to show only last 4 chars (or masked).
  */
 function redactConfig(config) {
-  const SENSITIVE = {
-    stripe: ['secret_key', 'webhook_secret'],
-    paygate: ['api_key'],
-    helcim: ['api_token', 'webhook_secret'],
-    square: ['access_token', 'webhook_signature_key'],
-  };
-
   const out = {};
   for (const provider of PROVIDERS) {
     const cfg = config[provider] || {};
-    const sensitiveFields = SENSITIVE[provider] || [];
+    const definition = paymentProviderRegistry.getProvider(provider);
+    const sensitiveFields = (definition?.fields || []).filter((field) => field.sensitive).map((field) => field.key);
     out[provider] = { ...cfg };
     for (const field of sensitiveFields) {
       if (cfg[field]) {

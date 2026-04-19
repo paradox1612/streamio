@@ -27,6 +27,7 @@ const hostHealthService = require('../services/hostHealthService');
 const freeAccessService = require('../services/freeAccessService');
 const creditService = require('../services/creditService');
 const paymentProviderConfigService = require('../services/paymentProviderConfigService');
+const paymentProviderRegistry = require('../services/paymentProviderRegistry');
 const ProviderAdapterFactory = require('../providers/ProviderAdapterFactory');
 const { jobs } = require('../jobs/scheduler');
 const logger = require('../utils/logger');
@@ -1220,7 +1221,24 @@ router.put('/settings/credits', requireAdmin, async (req, res) => {
 router.get('/settings/payment-providers', requireAdmin, async (req, res) => {
   try {
     const config = await paymentProviderConfigService.getAll();
-    res.json(paymentProviderConfigService.redactConfig(config));
+    const redacted = paymentProviderConfigService.redactConfig(config);
+    res.json({
+      ...redacted,
+      providers: paymentProviderRegistry.listProviders().map((provider) => ({
+        id: provider.id,
+        label: provider.label,
+        admin_description: provider.admin_description,
+        customer_subtitle: provider.customer_subtitle,
+        icon: provider.icon,
+        accent_color: provider.accent_color,
+        supports: provider.supports,
+        fields: provider.fields,
+        config: {
+          ...provider.defaults,
+          ...(redacted[provider.id] || {}),
+        },
+      })),
+    });
   } catch (err) {
     logger.error('GET /admin/settings/payment-providers:', err.message);
     res.status(500).json({ error: err.message });
@@ -1231,33 +1249,35 @@ router.get('/settings/payment-providers', requireAdmin, async (req, res) => {
 // Empty string for a key field = keep existing value
 router.put('/settings/payment-providers', requireAdmin, async (req, res) => {
   try {
-    const ALLOWED_PROVIDERS = ['stripe', 'paygate', 'helcim', 'square'];
-    const ALLOWED_FIELDS = {
-      stripe:  ['enabled', 'visible', 'secret_key', 'webhook_secret', 'publishable_key', 'minimum_amount_cents', 'promo_credit_percent'],
-      paygate: ['enabled', 'visible', 'wallet_address', 'api_key', 'minimum_amount_cents', 'promo_credit_percent'],
-      helcim:  ['enabled', 'visible', 'api_token', 'webhook_secret', 'company_name', 'minimum_amount_cents', 'promo_credit_percent'],
-      square:  ['enabled', 'visible', 'access_token', 'location_id', 'webhook_signature_key', 'environment', 'minimum_amount_cents', 'promo_credit_percent'],
-    };
-
     const updates = {};
-    for (const provider of ALLOWED_PROVIDERS) {
-      if (!req.body[provider]) continue;
-      updates[provider] = {};
-      for (const field of ALLOWED_FIELDS[provider]) {
-        if (field in req.body[provider]) {
-          if (
-            (field === 'minimum_amount_cents' || field === 'promo_credit_percent') &&
-            (!Number.isInteger(req.body[provider][field]) || req.body[provider][field] < 0)
-          ) {
-            return res.status(400).json({ error: `Invalid ${field} for ${provider}` });
-          }
-          updates[provider][field] = req.body[provider][field];
-        }
+    if (Array.isArray(req.body.providers)) {
+      for (const item of req.body.providers) {
+        if (!item?.id || !item?.config) continue;
+        updates[item.id] = item.config;
       }
+    } else {
+      Object.assign(updates, req.body);
     }
 
     const saved = await paymentProviderConfigService.saveAll(updates);
-    res.json(paymentProviderConfigService.redactConfig(saved));
+    const redacted = paymentProviderConfigService.redactConfig(saved);
+    res.json({
+      ...redacted,
+      providers: paymentProviderRegistry.listProviders().map((provider) => ({
+        id: provider.id,
+        label: provider.label,
+        admin_description: provider.admin_description,
+        customer_subtitle: provider.customer_subtitle,
+        icon: provider.icon,
+        accent_color: provider.accent_color,
+        supports: provider.supports,
+        fields: provider.fields,
+        config: {
+          ...provider.defaults,
+          ...(redacted[provider.id] || {}),
+        },
+      })),
+    });
   } catch (err) {
     logger.error('PUT /admin/settings/payment-providers:', err.message);
     res.status(500).json({ error: err.message });

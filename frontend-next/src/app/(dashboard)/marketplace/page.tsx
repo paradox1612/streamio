@@ -86,41 +86,64 @@ interface CreditTransaction {
   created_at: string
 }
 
-interface PaymentProviderRule {
+interface PaymentProvider {
+  id: string
+  label: string
+  customer_description: string
+  customer_subtitle: string
+  icon: string
+  accent_color: string
+  supports: {
+    subscription: boolean
+    topup: boolean
+    recurring: boolean
+  }
   minimum_amount_cents: number
   promo_credit_percent: number
+  visible: boolean
+  enabled: boolean
 }
 
-interface PaymentProviders {
-  stripe: boolean
-  paygate: boolean
-  helcim: boolean
-  square: boolean
-  provider_rules?: {
-    stripe: PaymentProviderRule
-    paygate: PaymentProviderRule
-    helcim: PaymentProviderRule
-    square: PaymentProviderRule
+function getProviderIcon(icon: string, className = 'h-5 w-5') {
+  if (icon === 'wallet') return <Wallet className={className} />
+  if (icon === 'shopping-cart') return <ShoppingCart className={className} />
+  return <CreditCard className={className} />
+}
+
+function getProviderAccent(accentColor: string) {
+  if (accentColor === 'emerald') {
+    return {
+      chip: 'bg-emerald-500/10 text-emerald-400',
+      button: 'hover:border-emerald-500/40',
+      solid: 'bg-emerald-600 hover:bg-emerald-500',
+    }
+  }
+  if (accentColor === 'sky') {
+    return {
+      chip: 'bg-sky-500/10 text-sky-400',
+      button: 'hover:border-sky-500/40',
+      solid: 'bg-sky-600 hover:bg-sky-500',
+    }
+  }
+  if (accentColor === 'teal') {
+    return {
+      chip: 'bg-teal-500/10 text-teal-400',
+      button: 'hover:border-teal-500/40',
+      solid: 'bg-teal-600 hover:bg-teal-500',
+    }
+  }
+  return {
+    chip: 'bg-indigo-500/10 text-indigo-400',
+    button: 'hover:border-brand-500/40',
+    solid: 'bg-indigo-600 hover:bg-indigo-500',
   }
 }
 
-const DEFAULT_PROVIDER_RULE: PaymentProviderRule = {
-  minimum_amount_cents: 0,
-  promo_credit_percent: 0,
-}
-
-function getProviderRule(
-  rules: PaymentProviders['provider_rules'] | undefined,
-  provider: 'stripe' | 'paygate' | 'helcim' | 'square'
-) {
-  return rules?.[provider] || DEFAULT_PROVIDER_RULE
-}
-
 function getTopupMinimum(
-  config: { min_topup_cents: number; provider_rules?: Partial<Record<'paygate' | 'helcim' | 'square', PaymentProviderRule>> },
-  provider: 'paygate' | 'helcim' | 'square'
+  config: { min_topup_cents: number },
+  provider: PaymentProvider
 ) {
-  return Math.max(config.min_topup_cents || 0, config.provider_rules?.[provider]?.minimum_amount_cents || 0)
+  return Math.max(config.min_topup_cents || 0, provider.minimum_amount_cents || 0)
 }
 
 function getBonusCreditCents(amountCents: number, percent: number) {
@@ -155,7 +178,7 @@ function PaymentMethodModal({
   onTopup,
 }: {
   offerings: Offering[]
-  providers: PaymentProviders
+  providers: PaymentProvider[]
   creditBalance: number
   onClose: () => void
   onSuccess: () => void
@@ -167,54 +190,51 @@ function PaymentMethodModal({
   
   const selectedOffering = offerings.find((o) => o.id === selectedId) || offerings[0]
   const hasEnoughCredits = creditBalance >= selectedOffering.price_cents
-  const providerRules = providers.provider_rules
-  const isMethodEligible = (provider: 'stripe' | 'paygate' | 'helcim' | 'square') =>
-    selectedOffering.price_cents >= getProviderRule(providerRules, provider).minimum_amount_cents
-  const getMethodDescription = (
-    provider: 'stripe' | 'paygate' | 'helcim' | 'square',
-    defaultDescription: string
-  ) => {
-    const minimumAmountCents = getProviderRule(providerRules, provider).minimum_amount_cents
-    if (minimumAmountCents > 0 && selectedOffering.price_cents < minimumAmountCents) {
+  const subscriptionProviders = providers.filter((provider) => provider.visible && provider.supports.subscription)
+  const isMethodEligible = (provider: PaymentProvider) =>
+    selectedOffering.price_cents >= provider.minimum_amount_cents
+  const getMethodDescription = (provider: PaymentProvider) => {
+    if (provider.minimum_amount_cents > 0 && selectedOffering.price_cents < provider.minimum_amount_cents) {
+      const minimumAmountCents = provider.minimum_amount_cents
       return `Available from ${formatPrice(minimumAmountCents)}`
     }
-    return defaultDescription
+    return provider.customer_description
   }
 
-  const handlePay = async (method: 'stripe' | 'paygate' | 'helcim' | 'square' | 'credits', confirmDuplicate = false) => {
+  const handlePay = async (method: string, confirmDuplicate = false) => {
     setLoading(method)
     try {
-      const { data } = await marketplaceAPI.createCheckout(selectedOffering.id, method, confirmDuplicate, {
+      const { data } = await marketplaceAPI.createCheckout(selectedOffering.id, method as any, confirmDuplicate, {
         plan_code: selectedOffering.id, // we don't have explicit plan_code field on offering, we use id if grouping
         auto_renew: autoRenew,
       })
 
       if (method === 'stripe' && data.checkout_url) {
-        window.location.href = data.checkout_url
+        window.location.assign(data.checkout_url)
         return
       }
 
       if (method === 'paygate' && data.checkout_url) {
         sessionStorage.setItem('pg_pending_address', data.address_in)
         sessionStorage.setItem('pg_pending_sub_id', data.subscription_id)
-        window.location.href = data.checkout_url
+        window.location.assign(data.checkout_url)
         return
       }
 
       if (method === 'helcim' && data.checkout_token) {
-        window.location.href = `/checkout/helcim?token=${encodeURIComponent(data.checkout_token)}&sub_id=${encodeURIComponent(data.subscription_id)}`
+        window.location.assign(`/checkout/helcim?token=${encodeURIComponent(data.checkout_token)}&sub_id=${encodeURIComponent(data.subscription_id)}`)
         return
       }
 
       if (method === 'square' && data.checkout_url) {
-        window.location.href = data.checkout_url
+        window.location.assign(data.checkout_url)
         return
       }
 
       if (method === 'credits') {
         // Credits are instant — go to provisioning page to show live status
         if (data.subscription_id) {
-          window.location.href = `/subscriptions/provisioning?subscription_id=${data.subscription_id}`
+          window.location.assign(`/subscriptions/provisioning?subscription_id=${data.subscription_id}`)
         } else {
           toast.success('Subscription activated with credits!')
           onSuccess()
@@ -285,82 +305,32 @@ function PaymentMethodModal({
 
           <div className="space-y-2">
             <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 block">Payment Method</label>
-            
-            {providers.stripe && (
-              <button
-                onClick={() => handlePay('stripe')}
-                disabled={!!loading || !isMethodEligible('stripe')}
-                className="flex w-full items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 transition-all hover:border-brand-500/40 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-400">
-                    <CreditCard className="h-5 w-5" />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm font-semibold text-white">Stripe Checkout</p>
-                    <p className="text-[10px] text-slate-400">{getMethodDescription('stripe', 'Secure credit card processing')}</p>
-                  </div>
-                </div>
-                {loading === 'stripe' ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
-              </button>
-            )}
 
-            {providers.paygate && (
-              <button
-                onClick={() => handlePay('paygate')}
-                disabled={!!loading || !isMethodEligible('paygate')}
-                className="flex w-full items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 transition-all hover:border-emerald-500/40 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
-                    <Wallet className="h-5 w-5" />
+            {subscriptionProviders.map((provider) => {
+              const accent = getProviderAccent(provider.accent_color)
+              return (
+                <button
+                  key={provider.id}
+                  onClick={() => handlePay(provider.id)}
+                  disabled={!!loading || !isMethodEligible(provider)}
+                  className={cn(
+                    'flex w-full items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 transition-all hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50',
+                    accent.button
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={cn('flex h-10 w-10 items-center justify-center rounded-xl', accent.chip)}>
+                      {getProviderIcon(provider.icon)}
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-white">{provider.label}</p>
+                      <p className="text-[10px] text-slate-400">{getMethodDescription(provider)}</p>
+                    </div>
                   </div>
-                  <div className="text-left">
-                    <p className="text-sm font-semibold text-white">PayGate (Crypto)</p>
-                    <p className="text-[10px] text-slate-400">{getMethodDescription('paygate', 'Instant activation via BTC/ETH/LTC')}</p>
-                  </div>
-                </div>
-                {loading === 'paygate' ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
-              </button>
-            )}
-
-            {providers.helcim && (
-              <button
-                onClick={() => handlePay('helcim')}
-                disabled={!!loading || !isMethodEligible('helcim')}
-                className="flex w-full items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 transition-all hover:border-sky-500/40 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-400">
-                    <CreditCard className="h-5 w-5" />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm font-semibold text-white">Helcim</p>
-                    <p className="text-[10px] text-slate-400">{getMethodDescription('helcim', 'Credit or debit card via Helcim')}</p>
-                  </div>
-                </div>
-                {loading === 'helcim' ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
-              </button>
-            )}
-
-            {providers.square && (
-              <button
-                onClick={() => handlePay('square')}
-                disabled={!!loading || !isMethodEligible('square')}
-                className="flex w-full items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 transition-all hover:border-teal-500/40 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-500/10 text-teal-400">
-                    <ShoppingCart className="h-5 w-5" />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm font-semibold text-white">Square</p>
-                    <p className="text-[10px] text-slate-400">{getMethodDescription('square', 'Credit or debit card via Square')}</p>
-                  </div>
-                </div>
-                {loading === 'square' ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
-              </button>
-            )}
+                  {loading === provider.id ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                </button>
+              )
+            })}
 
             <button
               onClick={() => handlePay('credits')}
@@ -523,18 +493,14 @@ function TopupModal({
 }: {
   onClose: () => void
   onSuccess: (newBalance: number) => void
-  providers: PaymentProviders
+  providers: PaymentProvider[]
 }) {
   const [config, setConfig] = useState<{
     min_topup_cents: number
     max_topup_cents: number
     presets: { label: string; cents: number }[]
     allow_custom_amount: boolean
-    provider_rules?: {
-      paygate: PaymentProviderRule
-      helcim: PaymentProviderRule
-      square: PaymentProviderRule
-    }
+    topup_providers?: PaymentProvider[]
   } | null>(null)
   const [selected, setSelected] = useState<number | 'custom'>(2500)
   const [customAmount, setCustomAmount] = useState<string>('')
@@ -576,27 +542,27 @@ function TopupModal({
     return selected
   }
 
-  const handleTopup = async (provider: 'paygate' | 'helcim' | 'square') => {
+  const handleTopup = async (provider: PaymentProvider) => {
     const amountCents = getAmountCents()
     if (!amountCents) return toast.error('Enter a valid amount')
 
     if (config) {
       const minimumTopupCents = getTopupMinimum(config, provider)
-      if (amountCents < minimumTopupCents) return toast.error(`${providerMeta[provider].label} requires at least ${formatPrice(minimumTopupCents)}`)
+      if (amountCents < minimumTopupCents) return toast.error(`${provider.label} requires at least ${formatPrice(minimumTopupCents)}`)
       if (amountCents > config.max_topup_cents) return toast.error(`Maximum top-up is ${formatPrice(config.max_topup_cents)}`)
     }
 
-    setLoading(provider)
+    setLoading(provider.id)
     try {
-      const { data } = await creditsAPI.topup(amountCents, provider)
+      const { data } = await creditsAPI.topup(amountCents, provider.id as any)
 
-      if (provider === 'helcim') {
+      if (provider.id === 'helcim') {
         sessionStorage.setItem(TOPUP_SESSION_KEY, data.credit_transaction_id)
         window.location.assign(`/checkout/helcim?token=${encodeURIComponent(data.checkout_token)}&tx_id=${encodeURIComponent(data.credit_transaction_id)}`)
         return
       }
 
-      if (provider === 'square') {
+      if (provider.id === 'square') {
         sessionStorage.setItem(TOPUP_SESSION_KEY, data.credit_transaction_id)
         window.location.assign(data.checkout_url)
         return
@@ -624,19 +590,12 @@ function TopupModal({
     )
   }
 
-  const activeProviders = (
-    ['paygate', 'helcim', 'square'] as const
-  ).filter((p) => providers[p])
+  const activeProviders = (config.topup_providers || providers).filter((provider) => provider.visible && provider.supports.topup)
   const selectedAmountCents = getAmountCents()
 
-  const providerMeta = {
-    paygate: { label: 'PayGate', color: 'bg-emerald-600 hover:bg-emerald-500', icon: <Wallet className="h-4 w-4" /> },
-    helcim: { label: 'Helcim', color: 'bg-sky-600 hover:bg-sky-500', icon: <CreditCard className="h-4 w-4" /> },
-    square: { label: 'Square', color: 'bg-teal-600 hover:bg-teal-500', icon: <CreditCard className="h-4 w-4" /> },
-  }
-  const getProviderSummary = (provider: 'paygate' | 'helcim' | 'square') => {
+  const getProviderSummary = (provider: PaymentProvider) => {
     const minimumTopupCents = getTopupMinimum(config, provider)
-    const promoCreditPercent = config.provider_rules?.[provider]?.promo_credit_percent || 0
+    const promoCreditPercent = provider.promo_credit_percent || 0
     const bonusCreditCents = selectedAmountCents ? getBonusCreditCents(selectedAmountCents, promoCreditPercent) : 0
     const creditedAmountCents = selectedAmountCents ? selectedAmountCents + bonusCreditCents : null
 
@@ -723,15 +682,16 @@ function TopupModal({
               (() => {
                 const provider = activeProviders[0]
                 const summary = getProviderSummary(provider)
+                const accent = getProviderAccent(provider.accent_color)
                 return (
                   <button
                     onClick={() => handleTopup(provider)}
                     disabled={!!loading || !summary.isEligible}
-                    className={`mt-6 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-semibold text-white transition-colors disabled:opacity-60 ${providerMeta[provider].color}`}
+                    className={cn('mt-6 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-semibold text-white transition-colors disabled:opacity-60', accent.solid)}
                   >
-                    {loading === provider ? <Loader2 className="h-5 w-5 animate-spin" /> : providerMeta[provider].icon}
+                    {loading === provider.id ? <Loader2 className="h-5 w-5 animate-spin" /> : getProviderIcon(provider.icon, 'h-4 w-4')}
                     <span>
-                      Pay {selected === 'custom' ? (customAmount ? `$${customAmount}` : '...') : formatPrice(selected)} via {providerMeta[provider].label}
+                      Pay {selected === 'custom' ? (customAmount ? `$${customAmount}` : '...') : formatPrice(selected)} via {provider.label}
                       <span className="ml-2 text-[11px] font-medium text-white/75">
                         {summary.promoCreditPercent > 0
                           ? `+${summary.promoCreditPercent}% bonus${summary.creditedAmountCents ? ` (${formatPrice(summary.creditedAmountCents)} credits)` : ''}`
@@ -746,16 +706,17 @@ function TopupModal({
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Pay via</p>
                 {activeProviders.map((p) => {
                   const summary = getProviderSummary(p)
+                  const accent = getProviderAccent(p.accent_color)
                   return (
                   <button
-                    key={p}
+                    key={p.id}
                     onClick={() => handleTopup(p)}
                     disabled={!!loading || !summary.isEligible}
-                    className={`flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-semibold text-white transition-colors disabled:opacity-60 ${providerMeta[p].color}`}
+                    className={cn('flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-semibold text-white transition-colors disabled:opacity-60', accent.solid)}
                   >
-                    {loading === p ? <Loader2 className="h-4 w-4 animate-spin" /> : providerMeta[p].icon}
+                    {loading === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : getProviderIcon(p.icon, 'h-4 w-4')}
                     <span>
-                      {providerMeta[p].label} — {selected === 'custom' ? (customAmount ? `$${customAmount}` : '...') : formatPrice(selected)}
+                      {p.label} — {selected === 'custom' ? (customAmount ? `$${customAmount}` : '...') : formatPrice(selected)}
                       <span className="ml-2 text-[11px] font-medium text-white/75">
                         {summary.promoCreditPercent > 0
                           ? `+${summary.promoCreditPercent}% bonus${summary.creditedAmountCents ? ` (${formatPrice(summary.creditedAmountCents)} credits)` : ''}`
@@ -782,7 +743,7 @@ export default function MarketplacePage() {
   const [payments, setPayments] = useState<PaymentTransaction[]>([])
   const [creditBalance, setCreditBalance] = useState(0)
   const [creditTxs, setCreditTxs] = useState<CreditTransaction[]>([])
-  const [providers, setProviders] = useState<PaymentProviders>({ stripe: true, paygate: false, helcim: false, square: false })
+  const [providers, setProviders] = useState<PaymentProvider[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'browse' | 'subscriptions' | 'history'>('browse')
   const [checkoutGroup, setCheckoutGroup] = useState<Offering[] | null>(null)
@@ -808,7 +769,7 @@ export default function MarketplacePage() {
         setPayments(historyRes.data)
         setCreditBalance(balRes.data.balance_cents)
         setCreditTxs(creditTxRes.data)
-        setProviders(provRes.data)
+        setProviders(provRes.data.providers || [])
       } catch {
         toast.error('Failed to load marketplace data')
       } finally {
@@ -924,7 +885,7 @@ export default function MarketplacePage() {
   const handlePortal = async () => {
     try {
       const { data } = await marketplaceAPI.getPortalUrl()
-      window.location.href = data.portal_url
+      window.location.assign(data.portal_url)
     } catch {
       toast.error('Could not open billing portal')
     }
