@@ -11,7 +11,7 @@ jest.mock('../../src/db/pool', () => {
 });
 
 const pool = require('../../src/db/pool');
-const { tmdbQueries, vodQueries, matchQueries } = require('../../src/db/queries');
+const { tmdbQueries, vodQueries, matchQueries, canonicalContentQueries } = require('../../src/db/queries');
 
 // Mock pg-copy-streams and stream/promises
 jest.mock('pg-copy-streams', () => ({
@@ -165,3 +165,75 @@ describe('subscriptionQueries provisioning status', () => {
   });
 });
 
+
+describe('canonicalContentQueries.resolveEntries', () => {
+  it('correctly builds the INSERT statement for canonical_content with matching columns and values', async () => {
+    pool.query.mockResolvedValueOnce({ 
+      rows: [
+        { id: 'uuid-1', vod_type: 'movie', canonical_normalized_title: 'movie title', title_year: 2024 }
+      ] 
+    });
+
+    const entries = [
+      {
+        vodType: 'movie',
+        rawTitle: 'Movie Title',
+        normalizedTitle: 'movie title',
+        titleYear: 2024
+      }
+    ];
+
+    await canonicalContentQueries.resolveEntries(entries, {});
+
+    const canonicalInsertCall = pool.query.mock.calls.find(call => 
+      typeof call[0] === 'string' && call[0].includes('INSERT INTO canonical_content')
+    );
+
+    expect(canonicalInsertCall).toBeDefined();
+    const [query, params] = canonicalInsertCall;
+
+    const columnsMatch = query.match(/INSERT INTO canonical_content \((.*?)\)/);
+    const columns = columnsMatch[1].split(',').map(s => s.trim());
+    
+    const valuesMatch = query.match(/VALUES \((.*?)\)/);
+    const values = valuesMatch[1].split(',').map(s => s.trim());
+
+    expect(columns.length).toBe(values.length);
+    expect(params.length).toBe(values.length);
+  });
+
+  it('correctly builds the INSERT statement for content_aliases with matching columns and values', async () => {
+    pool.query
+      .mockResolvedValueOnce({ 
+        rows: [{ id: 'uuid-1', vod_type: 'movie', canonical_normalized_title: 'movie title', title_year: 2024 }] 
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const entries = [
+      {
+        vodType: 'movie',
+        rawTitle: 'Movie Title',
+        normalizedTitle: 'movie title',
+        titleYear: 2024
+      }
+    ];
+
+    await canonicalContentQueries.resolveEntries(entries, { providerNetworkId: 'network-uuid', providerId: 'provider-uuid' });
+
+    const aliasInsertCall = pool.query.mock.calls.find(call => 
+      typeof call[0] === 'string' && call[0].includes('INSERT INTO content_aliases')
+    );
+
+    expect(aliasInsertCall).toBeDefined();
+    const [query, params] = aliasInsertCall;
+
+    const columnsMatch = query.match(/INSERT INTO content_aliases\s+\((.*?)\)/s);
+    const columns = columnsMatch[1].split(',').map(s => s.trim());
+    
+    const valuesMatch = query.match(/VALUES \((.*?)\)/);
+    const values = valuesMatch[1].split(',').map(s => s.trim());
+
+    expect(columns.length).toBe(values.length);
+    expect(params.length).toBe(values.length);
+  });
+});

@@ -1525,7 +1525,7 @@ const canonicalContentQueries = {
       }
 
       const { rows: canonicalRows } = await pool.query(
-        `INSERT INTO canonical_content (vod_type, canonical_title, canonical_normalized_title, title_year, updated_at)
+        `INSERT INTO canonical_content (vod_type, canonical_title, canonical_normalized_title, title_year)
          VALUES ${cVals.join(',')}
          ON CONFLICT (vod_type, canonical_normalized_title, title_year) DO UPDATE SET
            canonical_title = EXCLUDED.canonical_title,
@@ -1574,7 +1574,7 @@ const canonicalContentQueries = {
         await pool.query(
           `INSERT INTO content_aliases
              (provider_network_id, provider_id, raw_title, normalized_title, canonical_title,
-              canonical_normalized_title, title_year, vod_type, canonical_content_id, updated_at)
+              canonical_normalized_title, title_year, vod_type, canonical_content_id)
            VALUES ${aVals.join(',')}
            ON CONFLICT (provider_network_id, raw_title, vod_type) DO UPDATE SET
              provider_id                = EXCLUDED.provider_id,
