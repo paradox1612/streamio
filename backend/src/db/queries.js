@@ -1206,11 +1206,9 @@ const vodQueries = {
     const { rows } = await pool.query(
       `SELECT
          COUNT(v.id) AS total,
-         COUNT(*) FILTER (WHERE m.tmdb_id IS NOT NULL OR cc.tmdb_id IS NOT NULL) AS matched,
-         COUNT(v.id) - COUNT(*) FILTER (WHERE m.tmdb_id IS NOT NULL OR cc.tmdb_id IS NOT NULL) AS unmatched
+         COUNT(*) FILTER (WHERE v.tmdb_id IS NOT NULL) AS matched,
+         COUNT(v.id) - COUNT(*) FILTER (WHERE v.tmdb_id IS NOT NULL) AS unmatched
        FROM ${sourceTable} v
-       LEFT JOIN canonical_content cc ON cc.id = v.canonical_content_id
-       LEFT JOIN matched_content m ON m.raw_title = v.raw_title AND m.tmdb_id IS NOT NULL
        WHERE ${providerFilterColumn} = $1
          AND v.vod_type IN ('movie', 'series')`,
       [providerFilterValue]
@@ -1227,17 +1225,14 @@ const vodQueries = {
     const { rows } = await pool.query(
       `SELECT v.raw_title, v.vod_type
        FROM ${sourceTable} v
-       LEFT JOIN canonical_content cc ON cc.id = v.canonical_content_id
-       LEFT JOIN matched_content m ON m.raw_title = v.raw_title
        WHERE ${providerFilterColumn} = $1
          AND v.vod_type IN ('movie', 'series')
-         AND (cc.tmdb_id IS NULL AND (m.id IS NULL OR m.tmdb_id IS NULL))
+         AND v.tmdb_id IS NULL
        ORDER BY v.raw_title ASC`,
       [providerFilterValue]
     );
     return rows;
   },
-
   async getCategoryBreakdown(providerId) {
     const provider = await this.getProviderCatalogContext(providerId);
     const useNetwork = Boolean(provider?.network_id && !provider?.catalog_variant);
@@ -1258,45 +1253,42 @@ const vodQueries = {
   async findByTmdbIdForUser(userId, tmdbId) {
     const { rows } = await pool.query(
       `SELECT
-         COALESCE(nv.id, v.id) AS id,
-         COALESCE(nv.stream_id, v.stream_id) AS stream_id,
-         COALESCE(nv.raw_title, v.raw_title) AS raw_title,
-         COALESCE(nv.normalized_title, v.normalized_title) AS normalized_title,
-         COALESCE(nv.canonical_title, v.canonical_title) AS canonical_title,
-         COALESCE(nv.canonical_normalized_title, v.canonical_normalized_title) AS canonical_normalized_title,
-         COALESCE(nv.title_year, v.title_year) AS title_year,
-         COALESCE(nv.content_languages, v.content_languages) AS content_languages,
-         COALESCE(nv.quality_tags, v.quality_tags) AS quality_tags,
-         COALESCE(nv.poster_url, v.poster_url) AS poster_url,
-         COALESCE(nv.category, v.category) AS category,
-         COALESCE(nv.vod_type, v.vod_type) AS vod_type,
-         COALESCE(nv.container_extension, v.container_extension) AS container_extension,
-         COALESCE(nv.epg_channel_id, v.epg_channel_id) AS epg_channel_id,
-         p.id AS provider_id,
-         p.active_host,
-         p.username,
-         p.password,
-         COALESCE(cc.tmdb_id, m.tmdb_id) AS tmdb_id,
-         COALESCE(cc.imdb_id, m.imdb_id) AS imdb_id
-       FROM user_providers p
-       LEFT JOIN network_vod nv
-         ON nv.provider_network_id = p.network_id
-        AND p.catalog_variant = false
-       LEFT JOIN user_provider_vod v
-         ON v.provider_id = p.id
-        AND (p.catalog_variant = true OR p.network_id IS NULL)
-       LEFT JOIN canonical_content cc
-         ON cc.id = COALESCE(nv.canonical_content_id, v.canonical_content_id)
-       LEFT JOIN matched_content m
-         ON m.raw_title = COALESCE(nv.raw_title, v.raw_title)
-       WHERE p.user_id = $1
-         AND (cc.tmdb_id = $2 OR m.tmdb_id = $2)
-       LIMIT 1`,
+          COALESCE(nv.id, v.id) AS id,
+          COALESCE(nv.stream_id, v.stream_id) AS stream_id,
+          COALESCE(nv.raw_title, v.raw_title) AS raw_title,
+          COALESCE(nv.normalized_title, v.normalized_title) AS normalized_title,
+          COALESCE(nv.canonical_title, v.canonical_title) AS canonical_title,
+          COALESCE(nv.canonical_normalized_title, v.canonical_normalized_title) AS canonical_normalized_title,
+          COALESCE(nv.title_year, v.title_year) AS title_year,
+          COALESCE(nv.content_languages, v.content_languages) AS content_languages,
+          COALESCE(nv.quality_tags, v.quality_tags) AS quality_tags,
+          COALESCE(nv.poster_url, v.poster_url) AS poster_url,
+          COALESCE(nv.category, v.category) AS category,
+          COALESCE(nv.vod_type, v.vod_type) AS vod_type,
+          COALESCE(nv.container_extension, v.container_extension) AS container_extension,
+          COALESCE(nv.epg_channel_id, v.epg_channel_id) AS epg_channel_id,
+          p.id AS provider_id,
+          p.active_host,
+          p.username,
+          p.password,
+          COALESCE(nv.tmdb_id, v.tmdb_id) AS tmdb_id,
+          COALESCE(nv.imdb_id, v.imdb_id) AS imdb_id
+        FROM user_providers p
+        LEFT JOIN network_vod nv
+          ON nv.provider_network_id = p.network_id
+         AND p.catalog_variant = false
+         AND nv.tmdb_id = $2
+        LEFT JOIN user_provider_vod v
+          ON v.provider_id = p.id
+         AND (p.catalog_variant = true OR p.network_id IS NULL)
+         AND v.tmdb_id = $2
+        WHERE p.user_id = $1
+          AND (nv.tmdb_id = $2 OR v.tmdb_id = $2)
+        LIMIT 1`,
       [userId, tmdbId]
     );
     return rows[0];
   },
-
   async findByInternalIdForUser(userId, internalId) {
     let { rows } = await pool.query(
       `SELECT nv.*, p.id AS provider_id, p.active_host, p.username, p.password
