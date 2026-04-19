@@ -221,8 +221,8 @@ async function syncOffering(offering, previousOffering = null) {
 }
 
 async function retrieveCheckoutSession(sessionId) {
-  if (!stripe) return null;
   try {
+    const stripe = getStripe();
     return await stripe.checkout.sessions.retrieve(sessionId, { expand: ['subscription'] });
   } catch (err) {
     return null;

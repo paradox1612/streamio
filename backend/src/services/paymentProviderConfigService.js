@@ -1,6 +1,5 @@
 const { systemSettingQueries } = require('../db/queries');
 const logger = require('../utils/logger');
-const paymentProviderRegistry = require('./paymentProviderRegistry');
 
 const SETTING_KEY = 'payment_providers_config';
 const CACHE_TTL_MS = 30_000; // 30 seconds
@@ -12,7 +11,7 @@ const CHECKOUT_FIELD_DEFAULTS = {
   minimum_amount_cents: 0,
   promo_credit_percent: 0,
 };
-const PROVIDERS = paymentProviderRegistry.getProviderIds();
+const PROVIDERS = ['stripe', 'paygate', 'helcim', 'square'];
 
 function normalizeNonNegativeInteger(value, fallback = 0) {
   const parsed = Number.parseInt(value, 10);
@@ -43,6 +42,7 @@ async function getAll() {
  */
 async function getProvider(name) {
   const all = await getAll();
+  const paymentProviderRegistry = require('./paymentProviderRegistry');
   const definition = paymentProviderRegistry.getProvider(name);
   const defaults = definition?.defaults || {};
   const cfg = all[name] || {};
@@ -87,6 +87,7 @@ function resolveEnabled(dbCfg, envEnabled) {
 async function saveAll(updates) {
   const existing = await getAll();
   const merged = { ...existing };
+  const paymentProviderRegistry = require('./paymentProviderRegistry');
 
   for (const provider of PROVIDERS) {
     const definition = paymentProviderRegistry.getProvider(provider);
@@ -127,6 +128,7 @@ function invalidateCache() {
  */
 function redactConfig(config) {
   const out = {};
+  const paymentProviderRegistry = require('./paymentProviderRegistry');
   for (const provider of PROVIDERS) {
     const cfg = config[provider] || {};
     const definition = paymentProviderRegistry.getProvider(provider);
