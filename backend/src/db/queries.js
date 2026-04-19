@@ -2874,11 +2874,26 @@ const offeringQueries = {
   },
 
   async delete(id) {
-    const { rows } = await pool.query(
-      `DELETE FROM provider_offerings WHERE id = $1 RETURNING *`,
-      [id]
-    );
-    return rows[0] || null;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Set offering_id to NULL in subscriptions before deleting the offering
+      await client.query(
+        'UPDATE provider_subscriptions SET offering_id = NULL, updated_at = NOW() WHERE offering_id = $1',
+        [id]
+      );
+      const { rows } = await client.query(
+        'DELETE FROM provider_offerings WHERE id = $1 RETURNING *',
+        [id]
+      );
+      await client.query('COMMIT');
+      return rows[0] || null;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 };
 
@@ -3063,7 +3078,7 @@ const subscriptionQueries = {
          COUNT(*) FILTER (WHERE status = 'trialing') AS trialing_count,
          COUNT(*) FILTER (WHERE status = 'past_due') AS past_due_count,
          COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled_count,
-         SUM(COALESCE(ps.selected_price_cents, po.price_cents)) FILTER (WHERE ps.status IN ('active','trialing')) AS mrr_cents
+         SUM(COALESCE(ps.selected_price_cents, po.price_cents, 0)) FILTER (WHERE ps.status IN ('active','trialing')) AS mrr_cents
        FROM provider_subscriptions ps
        LEFT JOIN provider_offerings po ON po.id = ps.offering_id`
     );
