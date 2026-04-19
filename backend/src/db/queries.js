@@ -2,6 +2,7 @@ const pool = require('./pool');
 const { from } = require('pg-copy-streams');
 const { pipeline } = require('stream/promises');
 const { Transform } = require('stream');
+const { normalizeTitle } = require('../utils/titleNormalization');
 
 /**
  * Resolves hosts for a user_providers row aliased as `p`.
@@ -1178,7 +1179,16 @@ const vodQueries = {
     const params = [providerFilterValue, userId || null];
     let idx = 3;
     if (type) { query += ` AND v.vod_type = $${idx++}`; params.push(type); }
-    if (search) { query += ` AND v.raw_title ILIKE $${idx++}`; params.push(`%${search}%`); }
+    if (search) {
+      const normalizedSearch = normalizeTitle(search);
+      query += ` AND (
+        v.raw_title ILIKE $${idx} OR
+        v.normalized_title ILIKE $${idx} OR
+        m.raw_title ILIKE $${idx} OR
+        cc.canonical_normalized_title ILIKE $${idx++}
+      )`;
+      params.push(`%${normalizedSearch || search}%`);
+    }
     if (matched === true) { query += ` AND (m.tmdb_id IS NOT NULL OR cc.tmdb_id IS NOT NULL)`; }
     if (matched === false) { query += ` AND (m.tmdb_id IS NULL AND cc.tmdb_id IS NULL AND m.id IS NOT NULL)`; }
     if (category) { query += ` AND v.category = $${idx++}`; params.push(category); }
@@ -1218,7 +1228,16 @@ const vodQueries = {
     let idx = 2;
 
     if (type) { query += ` AND v.vod_type = $${idx++}`; params.push(type); }
-    if (search) { query += ` AND v.raw_title ILIKE $${idx++}`; params.push(`%${search}%`); }
+    if (search) {
+      const normalizedSearch = normalizeTitle(search);
+      query += ` AND (
+        v.raw_title ILIKE $${idx} OR
+        v.normalized_title ILIKE $${idx} OR
+        m.raw_title ILIKE $${idx} OR
+        cc.canonical_normalized_title ILIKE $${idx++}
+      )`;
+      params.push(`%${normalizedSearch || search}%`);
+    }
     if (matched === true) { query += ' AND (m.tmdb_id IS NOT NULL OR cc.tmdb_id IS NOT NULL)'; }
     if (matched === false) { query += ' AND ((m.tmdb_id IS NULL AND cc.tmdb_id IS NULL) AND m.id IS NOT NULL)'; }
     if (category) { query += ` AND v.category = $${idx++}`; params.push(category); }
