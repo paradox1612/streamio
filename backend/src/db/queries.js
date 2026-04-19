@@ -1071,9 +1071,7 @@ const vodQueries = {
     const onlineClauseB = onlyOnline ? `AND p.status = 'online'` : '';
 
     // Two tight queries UNION'd. Each filters directly on the indexed
-    // v.imdb_id / nv.imdb_id column BEFORE any joins, turning a seq-scan
-    // over hundreds of thousands of rows into an index lookup returning
-    // the ~handful of rows that actually match the requested IMDb/TMDb ID.
+    // v.imdb_id / nv.imdb_id column OR the matched_content join.
     // The canonical_content join is only used to enrich the narrowed rows.
     const sql = `
       SELECT * FROM (
@@ -1098,14 +1096,15 @@ const vodQueries = {
           p.active_host,
           p.username,
           p.password,
-          COALESCE(v.tmdb_id, cc.tmdb_id) AS tmdb_id,
-          COALESCE(v.imdb_id, cc.imdb_id) AS imdb_id,
+          COALESCE(v.tmdb_id, cc.tmdb_id, m.tmdb_id) AS tmdb_id,
+          COALESCE(v.imdb_id, cc.imdb_id, m.imdb_id) AS imdb_id,
           cc.confidence_score AS confidence_score
         FROM user_provider_vod v
         JOIN user_providers p ON p.id = v.provider_id
         LEFT JOIN canonical_content cc ON cc.id = v.canonical_content_id
+        LEFT JOIN matched_content m ON m.raw_title = v.raw_title
         WHERE p.user_id = $1
-          AND v.${externalField} = $2
+          AND (v.${externalField} = $2 OR m.${externalField} = $2)
           AND (p.catalog_variant = true OR p.network_id IS NULL)
           ${onlineClauseA}
 
@@ -1132,14 +1131,15 @@ const vodQueries = {
           p.active_host,
           p.username,
           p.password,
-          COALESCE(nv.tmdb_id, cc.tmdb_id) AS tmdb_id,
-          COALESCE(nv.imdb_id, cc.imdb_id) AS imdb_id,
+          COALESCE(nv.tmdb_id, cc.tmdb_id, m.tmdb_id) AS tmdb_id,
+          COALESCE(nv.imdb_id, cc.imdb_id, m.imdb_id) AS imdb_id,
           cc.confidence_score AS confidence_score
         FROM network_vod nv
         JOIN user_providers p ON p.network_id = nv.provider_network_id
         LEFT JOIN canonical_content cc ON cc.id = nv.canonical_content_id
+        LEFT JOIN matched_content m ON m.raw_title = nv.raw_title
         WHERE p.user_id = $1
-          AND nv.${externalField} = $2
+          AND (nv.${externalField} = $2 OR m.${externalField} = $2)
           AND p.catalog_variant = false
           ${onlineClauseB}
       ) matches
