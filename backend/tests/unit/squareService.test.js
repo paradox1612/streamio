@@ -82,4 +82,33 @@ describe('squareService', () => {
       'https://streambridge.thekush.dev/subscriptions/provisioning?subscription_id=sub-123'
     );
   });
+
+  it('supports overriding the Square reference id and redirect url', async () => {
+    await squareService.createPaymentLink(
+      { email: 'buyer@example.com' },
+      {
+        name: 'Credit Top-up',
+        selected_plan: {
+          name: '$5.00',
+          price_cents: 500,
+          currency: 'USD',
+        },
+        price_cents: 500,
+        currency: 'USD',
+      },
+      {
+        referenceId: 'cred_tx_123',
+        redirectUrl: 'https://streambridge.thekush.dev/dashboard/marketplace?topup=success',
+      }
+    );
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const [, requestOptions] = global.fetch.mock.calls[0];
+    const payload = JSON.parse(requestOptions.body);
+
+    expect(payload.order.reference_id).toBe('cred_tx_123');
+    expect(payload.checkout_options.redirect_url).toBe(
+      'https://streambridge.thekush.dev/dashboard/marketplace?topup=success'
+    );
+  });
 });

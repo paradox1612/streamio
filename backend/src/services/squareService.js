@@ -68,7 +68,7 @@ async function squareFetch(endpoint, options = {}) {
  * Create a Square payment link for a one-time purchase.
  * Returns { url, orderId, paymentLinkId }.
  */
-async function createPaymentLink(user, offering, { subscriptionId } = {}) {
+async function createPaymentLink(user, offering, { subscriptionId, referenceId, redirectUrl } = {}) {
   const cfg = await getConfig();
   const selectedPlan = offering.selected_plan || offering;
   const amountCents = selectedPlan.price_cents || offering.price_cents;
@@ -76,7 +76,8 @@ async function createPaymentLink(user, offering, { subscriptionId } = {}) {
   const itemName = offering.name + (selectedPlan.name ? ` — ${selectedPlan.name}` : '');
 
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-  const redirectUrl = `${frontendUrl}/subscriptions/provisioning?subscription_id=${subscriptionId}`;
+  const effectiveRedirectUrl = redirectUrl || `${frontendUrl}/subscriptions/provisioning?subscription_id=${subscriptionId}`;
+  const effectiveReferenceId = referenceId || `sub_${subscriptionId}`;
 
   const data = await squareFetch('/online-checkout/payment-links', {
     method: 'POST',
@@ -84,7 +85,7 @@ async function createPaymentLink(user, offering, { subscriptionId } = {}) {
       idempotency_key: uuidv4(),
       order: {
         location_id: cfg.locationId,
-        reference_id: `sub_${subscriptionId}`,
+        reference_id: effectiveReferenceId,
         line_items: [
           {
             name: itemName,
@@ -97,7 +98,7 @@ async function createPaymentLink(user, offering, { subscriptionId } = {}) {
         ],
       },
       checkout_options: {
-        redirect_url: redirectUrl,
+        redirect_url: effectiveRedirectUrl,
         allow_tipping: false,
         ask_for_shipping_address: false,
       },

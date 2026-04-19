@@ -248,7 +248,11 @@ router.post('/marketplace/checkout', requireAuth, async (req, res) => {
         link = await squareService.createPaymentLink(user, checkoutOffering, { subscriptionId: sub.id });
       } catch (err) {
         await subscriptionQueries.update(sub.id, { status: 'cancelled', cancelled_at: new Date() });
-        logger.error('[Square checkout] createPaymentLink failed:', err.message, err.squareErrors || '', err.cause || '');
+        logger.error('[Square checkout] createPaymentLink failed', {
+          message: err.message,
+          squareErrors: err.squareErrors || null,
+          cause: err.cause?.message || err.cause || null,
+        });
         return res.status(502).json({ error: 'Failed to create Square payment link. Please try again.' });
       }
 
@@ -578,7 +582,6 @@ router.post('/credits/topup', requireAuth, async (req, res) => {
       const invoiceId = `cred_${tx.id}`;
       await pool.query(`UPDATE credit_transactions SET reference_id = $1 WHERE id = $2`, [invoiceId, tx.id]);
 
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
       const fakeOffering = {
         name: 'Credit Top-up',
         selected_plan: { price_cents: amount_cents, currency: 'USD', name: `$${(amount_cents / 100).toFixed(2)}` },
@@ -588,46 +591,18 @@ router.post('/credits/topup', requireAuth, async (req, res) => {
 
       let link;
       try {
-        // Use a dedicated Square helper that accepts a custom redirect and reference_id
-        const squareCfg = await squareService.getConfig();
-        const { v4: uuidv4 } = require('uuid');
-        const sqRes = await fetch(
-          `${squareCfg.environment === 'sandbox' ? 'https://connect.squareupsandbox.com' : 'https://connect.squareup.com'}/v2/online-checkout/payment-links`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${squareCfg.accessToken}`,
-              'Square-Version': '2024-01-18',
-            },
-            body: JSON.stringify({
-              idempotency_key: uuidv4(),
-              order: {
-                order: {
-                  location_id: squareCfg.locationId,
-                  reference_id: invoiceId,
-                  line_items: [{
-                    name: `Credit Top-up — $${(amount_cents / 100).toFixed(2)}`,
-                    quantity: '1',
-                    base_price_money: { amount: amount_cents, currency: 'USD' },
-                  }],
-                },
-              },
-              checkout_options: {
-                redirect_url: `${frontendUrl}/dashboard/marketplace?topup=success`,
-                allow_tipping: false,
-                ask_for_shipping_address: false,
-              },
-              pre_populated_data: { buyer_email: user.email || undefined },
-            }),
-          }
-        );
-        const sqData = await sqRes.json();
-        if (!sqRes.ok || !sqData.payment_link?.url) throw new Error(sqData.errors?.[0]?.detail || 'Square error');
-        link = { url: sqData.payment_link.url, orderId: sqData.payment_link.order_id };
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        link = await squareService.createPaymentLink(user, fakeOffering, {
+          referenceId: invoiceId,
+          redirectUrl: `${frontendUrl}/dashboard/marketplace?topup=success`,
+        });
       } catch (err) {
         await pool.query(`UPDATE credit_transactions SET status = 'failed' WHERE id = $1`, [tx.id]);
-        logger.error('[Credits topup/Square] Payment link failed:', err.message);
+        logger.error('[Credits topup/Square] Payment link failed', {
+          message: err.message,
+          squareErrors: err.squareErrors || null,
+          cause: err.cause?.message || err.cause || null,
+        });
         return res.status(502).json({ error: 'Failed to create Square payment link. Please try again.' });
       }
 
