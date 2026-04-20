@@ -844,7 +844,15 @@ async function handleMeta(token, type, id) {
     }
     if (!vodItem) {
       logResolverDebug('meta lookup returned no item', { userId: user.id, baseId, type, id });
-      if (user.free_access_status === 'expired' && type !== 'tv') {
+      // Only fall back to the "free access expired" placeholder for users who
+      // depend solely on free access. If the user has their own providers
+      // attached, an unresolvable item is genuinely missing — don't mislead
+      // them with an unrelated upsell message.
+      if (
+        user.free_access_status === 'expired' &&
+        !user.has_byo_providers &&
+        type !== 'tv'
+      ) {
         return buildExpiredMeta(baseId, type);
       }
       await cache.set('resolvedMetaMiss', metaCacheKey, true);
@@ -984,7 +992,13 @@ async function handleStream(token, type, id) {
 
     if (!vodItems.length) {
       logResolverDebug('stream lookup returned no items', { userId: user.id, baseId, type, id });
-      if (type !== 'tv' && user.free_access_status === 'expired') {
+      // Mirror the meta-lookup guard: only upsell expired free access to users
+      // who don't have their own providers attached.
+      if (
+        type !== 'tv' &&
+        user.free_access_status === 'expired' &&
+        !user.has_byo_providers
+      ) {
         return buildExpiredStreamResponse();
       }
       await cache.set('resolvedStreamsMiss', streamCacheKey, true);

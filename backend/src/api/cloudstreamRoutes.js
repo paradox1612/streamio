@@ -153,25 +153,65 @@ router.get('/catalog', async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize) || 50));
 
-    // Resolve provider
-    let providerId = req.query.providerId;
-    if (providerId) {
-      const provider = await providerQueries.findByIdAndUser(providerId, user.id);
+    // Resolve target providers. An explicit providerId narrows to one; omitting
+    // it aggregates across every provider the user owns (previously only the
+    // first was used, which silently hid everything from the rest).
+    const requestedProviderId = req.query.providerId;
+    let targetProviders;
+    if (requestedProviderId) {
+      const provider = await providerQueries.findByIdAndUser(requestedProviderId, user.id);
       if (!provider) return res.status(404).json({ error: 'Provider not found' });
+      targetProviders = [provider];
     } else {
-      const providers = await providerQueries.findByUser(user.id);
-      if (!providers.length) return res.json({ results: [], hasNextPage: false });
-      providerId = providers[0].id;
+      targetProviders = await providerQueries.findByUser(user.id);
+      if (!targetProviders.length) return res.json({ results: [], hasNextPage: false });
     }
 
-    const [items, total] = await Promise.all([
-      vodQueries.getByProvider(providerId, { type: vodType, page, limit: pageSize }),
-      vodQueries.countByProvider(providerId, { type: vodType }),
-    ]);
+    if (targetProviders.length === 1) {
+      const onlyId = targetProviders[0].id;
+      const [items, total] = await Promise.all([
+        vodQueries.getByProvider(onlyId, { type: vodType, page, limit: pageSize }),
+        vodQueries.countByProvider(onlyId, { type: vodType }),
+      ]);
+      return res.json({
+        results: items.map(buildCSItem),
+        hasNextPage: page * pageSize < total,
+      });
+    }
+
+    // Multi-provider aggregate: fetch page*pageSize from each, merge, dedupe by
+    // (raw_title, vod_type), then slice to the current page. Fine for the
+    // realistic case of 1–5 providers; if we ever grow past that we should
+    // push the UNION into SQL instead.
+    const perProviderLimit = page * pageSize;
+    const perProviderResults = await Promise.all(
+      targetProviders.map(p => vodQueries.getByProvider(p.id, {
+        type: vodType,
+        page: 1,
+        limit: perProviderLimit,
+      }))
+    );
+    const totals = await Promise.all(
+      targetProviders.map(p => vodQueries.countByProvider(p.id, { type: vodType }))
+    );
+
+    const seen = new Set();
+    const merged = [];
+    for (const rows of perProviderResults) {
+      for (const row of rows) {
+        const dedupeKey = `${row.vod_type}|${row.raw_title}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        merged.push(row);
+      }
+    }
+    const totalAcrossProviders = totals.reduce((sum, n) => sum + n, 0);
+    const start = (page - 1) * pageSize;
+    const pageSlice = merged.slice(start, start + pageSize);
 
     res.json({
-      results: items.map(buildCSItem),
-      hasNextPage: page * pageSize < total,
+      results: pageSlice.map(buildCSItem),
+      hasNextPage: page * pageSize < totalAcrossProviders,
     });
   } catch (err) {
     logger.error('[CloudStream] catalog error:', err);
