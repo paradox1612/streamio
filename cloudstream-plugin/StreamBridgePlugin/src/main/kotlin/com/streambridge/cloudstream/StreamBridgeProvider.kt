@@ -104,7 +104,7 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
     private fun getBaseUrl(): String =
         plugin.getSetting("base_url")
             ?.trimEnd('/')
-            ?: "https://api.streambridge.io"
+            ?: "https://streambridge.thekush.dev"
 
     private fun apiUrl(path: String) = "${getBaseUrl()}$path"
 
@@ -210,9 +210,17 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
                 TvType.Movie,
                 setupUrl,
             ) {
-                this.plot =
-                    "Open plugin settings and paste either your StreamBridge addon token " +
-                    "or the full addon URL from your dashboard."
+                this.plot = """
+                    StreamBridge is not configured yet.
+
+                    1. Go back to the Extensions screen
+                    2. Tap the ⚙️  gear icon next to "StreamBridge"
+                    3. Paste your addon token from the StreamBridge dashboard
+                       (either the token alone or the full addon URL)
+                    4. Save — the Home tab will then load your library
+
+                    Backend: ${getBaseUrl()}
+                """.trimIndent()
             }
         }
 
@@ -315,8 +323,9 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
     }
 
     private fun buildSetupCard(): SearchResponse {
-        return newMovieSearchResponse("Configure StreamBridge", setupUrl, TvType.Movie) {
-            this.posterUrl = null
+        return newMovieSearchResponse("⚙️  Tap to configure StreamBridge", setupUrl, TvType.Movie) {
+            this.posterUrl =
+                "https://raw.githubusercontent.com/paradox1612/streamio/main/cloudstream-plugin/icon.png"
         }
     }
 
