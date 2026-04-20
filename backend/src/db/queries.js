@@ -71,6 +71,36 @@ function buildIsDistinctClause(targetAlias, sourceAlias, columns) {
     .join('\n            OR ');
 }
 
+let contentAliasesLookupColumnPromise = null;
+
+async function getContentAliasesLookupColumn() {
+  const shouldCache = !process.env.JEST_WORKER_ID;
+  if (!contentAliasesLookupColumnPromise || !shouldCache) {
+    const lookupPromise = (async () => {
+      const { rows } = await pool.query(
+        `SELECT column_name
+         FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = 'content_aliases'`
+      );
+      const columns = new Set(rows.map((row) => row.column_name));
+      if (columns.has('normalized_alias')) return 'normalized_alias';
+      if (columns.has('normalized_title')) return 'normalized_title';
+      return 'canonical_normalized_title';
+    })().catch((error) => {
+      if (shouldCache) {
+        contentAliasesLookupColumnPromise = null;
+      }
+      throw error;
+    });
+    if (shouldCache) {
+      contentAliasesLookupColumnPromise = lookupPromise;
+    }
+    return lookupPromise;
+  }
+  return contentAliasesLookupColumnPromise;
+}
+
 const USER_PUBLIC_SELECT = `
   SELECT
     u.id,
@@ -1518,6 +1548,7 @@ const canonicalContentQueries = {
          provider_network_id,
          provider_id,
          raw_title,
+         normalized_alias,
          normalized_title,
          canonical_title,
          canonical_normalized_title,
@@ -1527,9 +1558,10 @@ const canonicalContentQueries = {
          confidence_score,
          updated_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
        ON CONFLICT (provider_network_id, raw_title, vod_type) DO UPDATE SET
          provider_id = EXCLUDED.provider_id,
+         normalized_alias = EXCLUDED.normalized_alias,
          normalized_title = EXCLUDED.normalized_title,
          canonical_title = EXCLUDED.canonical_title,
          canonical_normalized_title = EXCLUDED.canonical_normalized_title,
@@ -1538,7 +1570,19 @@ const canonicalContentQueries = {
          confidence_score = COALESCE(EXCLUDED.confidence_score, content_aliases.confidence_score),
          updated_at = NOW()
        RETURNING *`,
-      [providerNetworkId, providerId, rawTitle, normalizedTitle || null, canonicalTitle || null, canonicalNormalizedTitle || null, titleYear || null, vodType, canonicalContentId, confidenceScore]
+      [
+        providerNetworkId,
+        providerId,
+        rawTitle,
+        normalizedTitle || canonicalNormalizedTitle || null,
+        normalizedTitle || null,
+        canonicalTitle || null,
+        canonicalNormalizedTitle || null,
+        titleYear || null,
+        vodType,
+        canonicalContentId,
+        confidenceScore,
+      ]
     );
     return rows[0];
   },
@@ -1549,8 +1593,8 @@ const canonicalContentQueries = {
     if (!valid.length) return [];
 
     // Process in chunks to stay well under the 65535 pg parameter limit.
-    // Each canonical row uses 4 params; each alias row uses 9 params.
-    // 500 rows × 9 params = 4500 — safe headroom.
+    // Each canonical row uses 4 params; each alias row uses 10 params.
+    // 500 rows × 10 params = 5000 — safe headroom.
     const CHUNK = 500;
     const globalIdMap = new Map(); // canonical key → canonical_content.id
 
@@ -1621,21 +1665,22 @@ const canonicalContentQueries = {
         const aParams = [];
         let ai = 1;
         for (const a of uniqAliases) {
-          aVals.push(`($${ai++},$${ai++},$${ai++},$${ai++},$${ai++},$${ai++},$${ai++},$${ai++},$${ai++})`);
+          aVals.push(`($${ai++},$${ai++},$${ai++},$${ai++},$${ai++},$${ai++},$${ai++},$${ai++},$${ai++},$${ai++})`);
           aParams.push(
             providerNetworkId, providerId,
-            a.rawTitle, a.normalizedTitle, a.canonicalTitle,
+            a.rawTitle, a.normalizedTitle || a.canonicalNormalizedTitle, a.normalizedTitle, a.canonicalTitle,
             a.canonicalNormalizedTitle, a.titleYear, a.vodType, a.canonicalContentId
           );
         }
 
         await pool.query(
           `INSERT INTO content_aliases
-             (provider_network_id, provider_id, raw_title, normalized_title, canonical_title,
+             (provider_network_id, provider_id, raw_title, normalized_alias, normalized_title, canonical_title,
               canonical_normalized_title, title_year, vod_type, canonical_content_id)
            VALUES ${aVals.join(',')}
            ON CONFLICT (provider_network_id, raw_title, vod_type) DO UPDATE SET
              provider_id                = EXCLUDED.provider_id,
+             normalized_alias           = EXCLUDED.normalized_alias,
              normalized_title           = EXCLUDED.normalized_title,
              canonical_title            = EXCLUDED.canonical_title,
              canonical_normalized_title = EXCLUDED.canonical_normalized_title,
@@ -1878,6 +1923,7 @@ const tmdbQueries = {
   // tmdb_id/imdb_id already resolved.
   async aliasMatch(normalizedTitle, vodType, year) {
     if (!normalizedTitle) return null;
+    const lookupColumn = await getContentAliasesLookupColumn();
     let query = `
       SELECT cc.id AS canonical_id,
              cc.canonical_title AS original_title,
@@ -1887,7 +1933,7 @@ const tmdbQueries = {
              1 AS score
       FROM content_aliases a
       JOIN canonical_content cc ON cc.id = a.canonical_content_id
-      WHERE a.normalized_alias = $1
+      WHERE a.${lookupColumn} = $1
         AND cc.vod_type = $2
     `;
     const params = [normalizedTitle, vodType === 'series' ? 'series' : 'movie'];

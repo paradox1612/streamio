@@ -164,6 +164,7 @@ CREATE TABLE IF NOT EXISTS content_aliases (
   provider_network_id UUID REFERENCES provider_networks(id) ON DELETE CASCADE,
   provider_id UUID REFERENCES user_providers(id) ON DELETE CASCADE,
   raw_title VARCHAR NOT NULL,
+  normalized_alias VARCHAR,
   normalized_title VARCHAR,
   canonical_title VARCHAR,
   canonical_normalized_title VARCHAR,
@@ -471,6 +472,7 @@ CREATE INDEX IF NOT EXISTS idx_canonical_content_tmdb_id ON canonical_content(tm
 CREATE INDEX IF NOT EXISTS idx_canonical_content_imdb_id ON canonical_content(imdb_id) WHERE imdb_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_content_aliases_network_raw_title ON content_aliases(provider_network_id, raw_title, vod_type);
 CREATE INDEX IF NOT EXISTS idx_content_aliases_canonical_content_id ON content_aliases(canonical_content_id);
+CREATE INDEX IF NOT EXISTS idx_content_aliases_normalized_alias ON content_aliases(normalized_alias);
 CREATE INDEX IF NOT EXISTS idx_free_access_groups_active ON free_access_provider_groups(is_active);
 CREATE INDEX IF NOT EXISTS idx_free_access_hosts_group_id ON free_access_provider_hosts(provider_group_id);
 CREATE INDEX IF NOT EXISTS idx_free_access_accounts_group_id ON free_access_provider_accounts(provider_group_id);
@@ -637,6 +639,7 @@ INSERT INTO content_aliases (
   provider_network_id,
   provider_id,
   raw_title,
+  normalized_alias,
   normalized_title,
   canonical_title,
   canonical_normalized_title,
@@ -648,6 +651,7 @@ SELECT DISTINCT
   p.network_id,
   v.provider_id,
   v.raw_title,
+  COALESCE(v.normalized_title, v.canonical_normalized_title),
   v.normalized_title,
   v.canonical_title,
   v.canonical_normalized_title,

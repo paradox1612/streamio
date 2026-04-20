@@ -47,6 +47,36 @@ describe('tmdbQueries movie matching', () => {
   });
 });
 
+describe('tmdbQueries alias matching', () => {
+  it('uses normalized_alias when the column exists', async () => {
+    pool.query
+      .mockResolvedValueOnce({ rows: [{ column_name: 'normalized_alias' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await tmdbQueries.aliasMatch('movie title', 'movie', 2024);
+
+    expect(pool.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('WHERE a.normalized_alias = $1'),
+      ['movie title', 'movie', 2024]
+    );
+  });
+
+  it('falls back to normalized_title when normalized_alias is unavailable', async () => {
+    pool.query
+      .mockResolvedValueOnce({ rows: [{ column_name: 'normalized_title' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await tmdbQueries.aliasMatch('movie title', 'movie', 2024);
+
+    expect(pool.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('WHERE a.normalized_title = $1'),
+      ['movie title', 'movie', 2024]
+    );
+  });
+});
+
 describe('vodQueries on-demand candidate lookup', () => {
   it('keeps placeholder matched_content rows eligible when tmdb_id is still NULL', async () => {
     await vodQueries.findOnDemandCandidateForUser('user-1', {
