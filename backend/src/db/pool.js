@@ -22,6 +22,7 @@ const pool = new Pool({
   max: parseInt(process.env.DB_POOL_MAX || '20'),
   idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT || '30000'),
   connectionTimeoutMillis: parseInt(process.env.DB_CONNECT_TIMEOUT || '10000'),
+  statement_timeout: 60000,
 });
 
 pool.on('error', (err) => {
@@ -30,8 +31,4 @@ pool.on('error', (err) => {
 
 // Kill any query that runs longer than 60 s — prevents orphaned queries from
 // saturating Postgres CPU if the Node process that spawned them crashes.
-pool.on('connect', (client) => {
-  client.query('SET statement_timeout = 60000');
-});
-
 module.exports = pool;
