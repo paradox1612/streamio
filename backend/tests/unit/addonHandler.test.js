@@ -237,6 +237,36 @@ describe('addonHandler handleCatalog', () => {
       ],
     });
   });
+
+  it('keeps live catalog IDs provider-scoped even when TMDB metadata exists', async () => {
+    mockCache.get.mockReturnValue(null);
+    mockUserQueries.findByToken.mockResolvedValue({ id: 'user-1' });
+    mockProviderQueries.findByIdAndUser.mockResolvedValue({ id: '123e4567-e89b-12d3-a456-426614174000', name: 'Startshare' });
+    mockVodQueries.getByProvider.mockResolvedValue([
+      {
+        id: '1653512',
+        vod_type: 'live',
+        raw_title: 'ESPN Live',
+        category: 'Sports',
+        poster_url: 'https://cdn.example/live.jpg',
+        tmdb_id: 1653512,
+        imdb_id: null,
+        poster_path: '/tmdb-poster.jpg',
+      },
+    ]);
+
+    const result = await handleCatalog('token-1', 'tv', 'sb_123e4567-e89b-12d3-a456-426614174000_live', {});
+
+    expect(result).toEqual({
+      metas: [
+        expect.objectContaining({
+          id: 'sb_1653512',
+          type: 'tv',
+          poster: 'https://cdn.example/live.jpg',
+        }),
+      ],
+    });
+  });
 });
 
 describe('addonHandler handleStream', () => {

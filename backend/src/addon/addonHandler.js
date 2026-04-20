@@ -216,7 +216,8 @@ async function handleCatalog(token, type, catalogId, extra = {}) {
 }
 
 function buildMetaPreview(item) {
-  const hasMatch = item.tmdb_id != null;
+  const isLive = item.vod_type === 'live';
+  const hasMatch = !isLive && item.tmdb_id != null;
   let id, poster;
 
   if (hasMatch) {

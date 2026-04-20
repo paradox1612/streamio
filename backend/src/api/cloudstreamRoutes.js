@@ -84,7 +84,11 @@ function toStremioType(csType) {
  * Mirrors the ID logic in addonHandler's buildMetaPreview().
  */
 function buildCSItem(item) {
-  const hasMatch = item.tmdb_id != null;
+  // Live channels are resolved per-provider row (not via TMDB), so always use
+  // the sb_<id> form for them. Movies/series prefer the TMDB/IMDB ID so
+  // handleMeta can aggregate streams across providers.
+  const isLive = item.vod_type === 'live';
+  const hasMatch = !isLive && item.tmdb_id != null;
 
   const url = hasMatch
     ? (item.imdb_id || `tmdb:${item.tmdb_id}`)
@@ -128,6 +132,74 @@ router.get('/providers', async (req, res) => {
   }
 });
 
+// ─── GET /cloudstream/sections ────────────────────────────────────────────────
+
+/**
+ * Returns the list of home-page sections for a specific provider — one section
+ * per (type, category) pair, sorted by item count. The CloudStream plugin
+ * consumes this to build its Home tab dynamically; the TvType chips at the
+ * bottom of the app automatically filter sections by type.
+ *
+ * Query params:
+ *   token        – addon token (required)
+ *   providerId   – UUID of the provider to browse (required)
+ *   perTypeLimit – max sections per type (default: 15)
+ *
+ * Response:
+ *   { sections: [{ id, title, type, providerId, category, count }] }
+ *
+ * Section id format: "<providerId>|<csType>|<category>" — the plugin passes
+ * this back verbatim as MainPageRequest.data so getMainPage() can issue the
+ * right catalog query without re-parsing names.
+ */
+router.get('/sections', async (req, res) => {
+  try {
+    const user = await resolveUserByToken(req.query.token);
+    if (!user) return res.status(401).json({ error: 'Invalid or missing token' });
+
+    const providerId = (req.query.providerId || '').trim();
+    if (!providerId) return res.status(400).json({ error: 'providerId is required' });
+
+    const provider = await providerQueries.findByIdAndUser(providerId, user.id);
+    if (!provider) return res.status(404).json({ error: 'Provider not found' });
+
+    const perTypeLimit = Math.min(50, Math.max(1, parseInt(req.query.perTypeLimit) || 15));
+
+    const breakdown = await vodQueries.getCategoryBreakdown(provider.id);
+
+    // Group by vod_type, keep the highest-count categories per type.
+    const byType = new Map();
+    for (const row of breakdown) {
+      const category = (row.category || '').trim();
+      if (!category) continue;
+      const bucket = byType.get(row.vod_type) || [];
+      if (bucket.length >= perTypeLimit) continue;
+      bucket.push({ category, count: Number(row.count) });
+      byType.set(row.vod_type, bucket);
+    }
+
+    const sections = [];
+    for (const [vodType, rows] of byType) {
+      const csType = toCSType(vodType);
+      for (const { category, count } of rows) {
+        sections.push({
+          id: `${provider.id}|${csType}|${category}`,
+          title: `${category} (${count})`,
+          type: csType,
+          providerId: provider.id,
+          category,
+          count,
+        });
+      }
+    }
+
+    res.json({ sections });
+  } catch (err) {
+    logger.error('[CloudStream] sections error:', err);
+    res.status(500).json({ error: 'Internal error' });
+  }
+});
+
 // ─── GET /cloudstream/catalog ─────────────────────────────────────────────────
 
 /**
@@ -137,6 +209,7 @@ router.get('/providers', async (req, res) => {
  *   token      – addon token (required)
  *   type       – 'Movie' | 'TvSeries' | 'Live'  (default: 'Movie')
  *   providerId – UUID of a specific provider (optional; defaults to first provider)
+ *   category   – filter to a single category within the provider (optional)
  *   page       – page number, 1-based (default: 1)
  *   pageSize   – items per page (default: 50, max: 100)
  *
@@ -150,6 +223,7 @@ router.get('/catalog', async (req, res) => {
 
     const csType = req.query.type || 'Movie';
     const vodType = fromCSType(csType);
+    const category = (req.query.category || '').trim() || null;
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize) || 50));
 
@@ -170,8 +244,8 @@ router.get('/catalog', async (req, res) => {
     if (targetProviders.length === 1) {
       const onlyId = targetProviders[0].id;
       const [items, total] = await Promise.all([
-        vodQueries.getByProvider(onlyId, { type: vodType, page, limit: pageSize }),
-        vodQueries.countByProvider(onlyId, { type: vodType }),
+        vodQueries.getByProvider(onlyId, { type: vodType, category, page, limit: pageSize }),
+        vodQueries.countByProvider(onlyId, { type: vodType, category }),
       ]);
       return res.json({
         results: items.map(buildCSItem),
@@ -187,12 +261,13 @@ router.get('/catalog', async (req, res) => {
     const perProviderResults = await Promise.all(
       targetProviders.map(p => vodQueries.getByProvider(p.id, {
         type: vodType,
+        category,
         page: 1,
         limit: perProviderLimit,
       }))
     );
     const totals = await Promise.all(
-      targetProviders.map(p => vodQueries.countByProvider(p.id, { type: vodType }))
+      targetProviders.map(p => vodQueries.countByProvider(p.id, { type: vodType, category }))
     );
 
     const seen = new Set();
