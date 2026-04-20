@@ -57,7 +57,8 @@ repositories {
 }
 
 dependencies {
-    apk("com.lagradost:cloudstream3:pre-release")
+    val cloudstream by configurations
+    cloudstream("com.lagradost:cloudstream3:pre-release")
     implementation(kotlin("stdlib", kotlin.coreLibrariesVersion))
 
     // HTTP client used by all CloudStream plugins
