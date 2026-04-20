@@ -101,10 +101,11 @@ class StreamBridgeProvider(private val plugin: StreamBridgePlugin) : MainAPI() {
 
     private fun getToken(): String? = plugin.getSetting("addon_token")
 
-    private fun getBaseUrl(): String =
-        plugin.getSetting("base_url")
-            ?.trimEnd('/')
-            ?: "https://streambridge.thekush.dev"
+    private fun getBaseUrl(): String {
+        val override = plugin.getSetting("base_url")?.trim()?.trimEnd('/')
+        if (!override.isNullOrBlank()) return override
+        return BuildConfig.DEFAULT_BASE_URL.trimEnd('/')
+    }
 
     private fun apiUrl(path: String) = "${getBaseUrl()}$path"
 

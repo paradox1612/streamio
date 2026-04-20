@@ -204,6 +204,13 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('cloudstream-plugin/**/*.gradle*', 'cloudstream-plugin/**/gradle-wrapper.properties') }}
           restore-keys: ${{ runner.os }}-gradle-
 
+      - name: Validate plugin public URL
+        if: steps.changes.outputs.plugin == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${PUBLIC_BASE_URL:-}" || { echo "Set the PUBLIC_BASE_URL repository variable before building the CloudStream plugin."; exit 1; }
+
       - name: Build .cs3 plugin
         if: steps.changes.outputs.plugin == 'true'
         run: |
@@ -214,12 +221,21 @@ jobs:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          PUBLIC_BASE_URL: ${{ env.PUBLIC_BASE_URL }}
 
       - name: Copy artifacts into repo
         if: steps.changes.outputs.plugin == 'true'
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p builds
-          cp cloudstream-plugin/build/outputs/cs3/*.cs3 builds/ 2>/dev/null || true
+          shopt -s globstar nullglob
+          artifacts=(cloudstream-plugin/**/build/*.cs3)
+          if [ ${#artifacts[@]} -eq 0 ]; then
+            echo "No .cs3 artifact produced by the build — failing the job."
+            exit 1
+          fi
+          cp "${artifacts[@]}" builds/
           cp cloudstream-plugin/plugins.json builds/plugins.json
 
       - name: Commit and push built artifacts

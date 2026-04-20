@@ -34,6 +34,16 @@ android {
 
     defaultConfig {
         minSdk = 24
+
+        // Baked-in default backend URL, sourced from the PUBLIC_BASE_URL env var at
+        // build time (same variable the Helm deploy and Next.js frontend use). The
+        // plugin settings still let users override this per-install.
+        val defaultBaseUrl = System.getenv("PUBLIC_BASE_URL")?.trim()?.trimEnd('/').orEmpty()
+        buildConfigField("String", "DEFAULT_BASE_URL", "\"$defaultBaseUrl\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     compileOptions {
