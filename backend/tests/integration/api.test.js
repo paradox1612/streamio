@@ -505,6 +505,74 @@ describe('GET /addon/:token/stream/:type/:id.json', () => {
   });
 });
 
+describe('GET /cloudstream/catalog', () => {
+  it('returns provider-scoped sb_ ids for matched items', async () => {
+    const { providerQueries, vodQueries } = require('../../src/db/queries');
+
+    providerQueries.findByIdAndUser.mockResolvedValueOnce({ id: 'prov-1', name: 'Provider 1' });
+    vodQueries.getByProvider.mockResolvedValueOnce([
+      {
+        id: '1653512',
+        raw_title: 'Matched Movie',
+        vod_type: 'movie',
+        tmdb_id: 1653512,
+        imdb_id: 'tt1234567',
+        poster_url: 'https://img.test/movie.jpg',
+        title_year: 2026,
+        category: 'Action',
+      },
+    ]);
+    vodQueries.countByProvider.mockResolvedValueOnce(1);
+
+    const res = await request(app)
+      .get('/cloudstream/catalog')
+      .query({ token: 'abc123token', providerId: 'prov-1', type: 'Movie' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.results).toEqual([
+      expect.objectContaining({
+        url: 'sb_1653512',
+        name: 'Matched Movie',
+        posterUrl: 'https://img.test/movie.jpg',
+      }),
+    ]);
+  });
+});
+
+describe('GET /cloudstream/search', () => {
+  it('returns provider-scoped sb_ ids for matched search results', async () => {
+    const { providerQueries, vodQueries } = require('../../src/db/queries');
+
+    providerQueries.findByUser.mockResolvedValueOnce([{ id: 'prov-1', name: 'Provider 1' }]);
+    vodQueries.getByProvider.mockResolvedValueOnce([
+      {
+        id: 'series-42',
+        raw_title: 'Matched Series',
+        vod_type: 'series',
+        tmdb_id: 42,
+        imdb_id: 'tt7654321',
+        poster_url: 'https://img.test/series.jpg',
+        title_year: 2025,
+        category: 'Drama',
+      },
+    ]);
+
+    const res = await request(app)
+      .get('/cloudstream/search')
+      .query({ token: 'abc123token', query: 'matched', type: 'TvSeries' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.results).toEqual([
+      expect.objectContaining({
+        url: 'sb_series-42',
+        name: 'Matched Series',
+        posterUrl: 'https://img.test/series.jpg',
+        type: 'TvSeries',
+      }),
+    ]);
+  });
+});
+
 // ─── Admin Routes ─────────────────────────────────────────────────────────────
 
 describe('POST /admin/auth/login', () => {

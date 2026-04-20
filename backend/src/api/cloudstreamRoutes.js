@@ -23,8 +23,6 @@ const { touchUserLastSeen } = require('../utils/userActivity');
 
 const router = Router();
 
-const TMDB_POSTER_BASE = 'https://image.tmdb.org/t/p/w500';
-
 // ─── Auth Helper ──────────────────────────────────────────────────────────────
 
 /**
@@ -81,27 +79,14 @@ function toStremioType(csType) {
 
 /**
  * Build a lightweight CloudStream search/catalog result item from a VOD row.
- * Mirrors the ID logic in addonHandler's buildMetaPreview().
+ * CloudStream should stay provider-scoped, so it always uses the internal
+ * sb_<id> form rather than TMDB/IMDb IDs.
  */
 function buildCSItem(item) {
-  // Live channels are resolved per-provider row (not via TMDB), so always use
-  // the sb_<id> form for them. Movies/series prefer the TMDB/IMDB ID so
-  // handleMeta can aggregate streams across providers.
-  const isLive = item.vod_type === 'live';
-  const hasMatch = !isLive && item.tmdb_id != null;
-
-  const url = hasMatch
-    ? (item.imdb_id || `tmdb:${item.tmdb_id}`)
-    : `sb_${item.id}`;
-
-  const posterUrl = hasMatch && item.poster_path
-    ? `${TMDB_POSTER_BASE}${item.poster_path}`
-    : (item.poster_url || null);
-
   return {
     name: item.raw_title || 'Unknown',
-    url,
-    posterUrl,
+    url: `sb_${item.id}`,
+    posterUrl: item.poster_url || null,
     type: toCSType(item.vod_type),
     year: item.title_year || null,
     tags: item.category ? [item.category] : [],
@@ -367,13 +352,13 @@ router.get('/search', async (req, res) => {
 
 /**
  * Returns full detail for a single item, including the episode list for series.
- * Delegates to addonHandler.handleMeta() so it reuses all caching, TMDB
- * enrichment, and EPG logic already in place.
+ * Delegates to addonHandler.handleMeta() using the provider-scoped sb_<id>
+ * identifier emitted by CloudStream catalog/search responses.
  *
  * Query params:
  *   token – addon token (required)
  *   url   – content ID from a catalog/search result (required)
- *   type  – 'Movie' | 'TvSeries' | 'Live' (required for correct TMDB lookup)
+ *   type  – 'Movie' | 'TvSeries' | 'Live'
  *
  * Response:
  *   { name, url, posterUrl, type, year, plot, tags, episodes? }
