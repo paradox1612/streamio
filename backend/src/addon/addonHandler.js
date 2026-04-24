@@ -63,6 +63,13 @@ function normalizeCategoryName(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function buildLiveSourceLabel(provider, vodItem) {
+  if (provider?.name) return provider.name;
+  if (vodItem?.provider_name) return vodItem.provider_name;
+  if (vodItem?.access_source === 'free_access') return 'Free Access';
+  return 'Unknown source';
+}
+
 function buildExpiredMeta(baseId, type) {
   return {
     meta: {
@@ -230,6 +237,8 @@ function buildMetaPreview(item) {
     poster = item.poster_url;
   }
 
+  const liveSource = isLive ? buildLiveSourceLabel(null, item) : null;
+
   return {
     id,
     type: item.vod_type === 'series' ? 'series' : item.vod_type === 'live' ? 'tv' : 'movie',
@@ -238,9 +247,11 @@ function buildMetaPreview(item) {
     posterShape: 'poster',
     background: poster,
     genres: item.category ? [item.category] : [],
-    description: hasMatch
-      ? `Confidence: ${Math.round((item.confidence_score || 0) * 100)}%`
-      : 'Unmatched content',
+    description: isLive
+      ? `Source: ${liveSource}`
+      : hasMatch
+        ? `Confidence: ${Math.round((item.confidence_score || 0) * 100)}%`
+        : 'Unmatched content',
   };
 }
 
@@ -860,12 +871,17 @@ async function handleMeta(token, type, id) {
       return { meta: null };
     }
 
+    const liveSource = vodItem.vod_type === 'live'
+      ? buildLiveSourceLabel(vodItem.provider_id ? await getCachedProviderForUser(vodItem.provider_id, user.id) : null, vodItem)
+      : null;
+
     const meta = {
       id: baseId,
       type: vodItem.vod_type === 'series' ? 'series' : vodItem.vod_type === 'live' ? 'tv' : 'movie',
       name: vodItem.raw_title,
       poster: vodItem.poster_url,
       genres: vodItem.category ? [vodItem.category] : [],
+      ...(liveSource ? { description: `Source: ${liveSource}` } : {}),
     };
 
     // For series: fetch episode list with caching
@@ -923,7 +939,7 @@ async function handleMeta(token, type, id) {
         if (programme && programme.now) {
           const nowTitle = programme.now.title || 'Unknown';
           const nextTitle = programme.next ? programme.next.title : '';
-          meta.description = `Now: ${nowTitle}${nextTitle ? ` | Next: ${nextTitle}` : ''}`;
+          meta.description = `${liveSource ? `Source: ${liveSource} | ` : ''}Now: ${nowTitle}${nextTitle ? ` | Next: ${nextTitle}` : ''}`;
         }
       } catch (err) {
         logger.debug(`Could not fetch EPG for live stream: ${err.message}`);
@@ -932,6 +948,11 @@ async function handleMeta(token, type, id) {
 
     const payload = { meta };
     await cache.set('resolvedMeta', metaCacheKey, payload);
+    if (vodItem.vod_type === 'live') {
+      logger.info(
+        `Live meta resolved: baseId=${baseId} providerId=${vodItem.provider_id || 'unknown'} source="${liveSource || 'unknown'}" streamId=${vodItem.stream_id || 'unknown'}`
+      );
+    }
     logger.info(`Lookup metrics: ${JSON.stringify(lookupMetrics)}`);
     return payload;
   } finally {
@@ -1215,13 +1236,14 @@ async function handleLiveStream(token, baseId) {
     const password = resolvedProvider.password;
     const ext = vodItem.container_extension || 'ts';
     const title = vodItem.raw_title;
+    const liveSource = buildLiveSourceLabel(resolvedProvider, vodItem);
 
     const streams = onlineHosts.map((host, idx) => {
       const url = `${host.host_url}/live/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${streamId}.${ext}`;
       const timeLabel = host.response_time_ms ? `${host.response_time_ms}ms` : '?';
       return {
         url,
-        title: `📺 ${title} — Host ${idx + 1} (${timeLabel}) (Live)`,
+        title: `📺 ${title} — ${liveSource} — Host ${idx + 1} (${timeLabel}) (Live)`,
         name: `LIVE-${idx + 1}`,
         behaviorHints: { notWebReady: false },
       };
@@ -1232,12 +1254,15 @@ async function handleLiveStream(token, baseId) {
       const url = `${fallbackHost}/live/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${streamId}.${ext}`;
       streams.push({
         url,
-        title: `📺 ${title} (Live)`,
+        title: `📺 ${title} — ${liveSource} (Live)`,
         name: 'LIVE',
         behaviorHints: { notWebReady: false },
       });
     }
 
+    logger.info(
+      `Live stream resolved: baseId=${baseId} providerId=${providerId} source="${liveSource}" onlineHosts=${onlineHosts.length} fallbackHost=${fallbackHost ? 'yes' : 'no'}`
+    );
     return { streams };
   } catch (err) {
     logger.warn(`Failed to resolve live stream for ${baseId}: ${err.message}`);
