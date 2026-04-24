@@ -1030,6 +1030,28 @@ async function handleStream(token, type, id) {
     const vodItem = vodItems[0];
     const { username, password, stream_id, vod_type, container_extension, provider_id } = vodItem;
 
+    // Live TV items are exposed to Stremio as sb_<vodId> ids under type=tv.
+    // Route those resolved live rows through the dedicated live resolver so we
+    // build /live URLs instead of falling through the movie/series handlers.
+    if (vod_type === 'live') {
+      const liveBaseId = provider_id && stream_id != null
+        ? `live_${provider_id}_${stream_id}`
+        : null;
+      if (!liveBaseId) {
+        logger.warn(`Live stream item missing provider_id or stream_id: ${baseId}`);
+        return { streams: [] };
+      }
+
+      const payload = await handleLiveStream(token, liveBaseId);
+      if (!payload.streams?.length) {
+        await cache.set('resolvedStreamsMiss', streamCacheKey, true);
+        return { streams: [] };
+      }
+
+      await cache.set('resolvedStreams', streamCacheKey, payload);
+      return payload;
+    }
+
     // ── Movie stream ───────────────────────────────────────────────────────────
     if (vod_type === 'movie') {
       recordWatchStart(user.id, vodItem);
