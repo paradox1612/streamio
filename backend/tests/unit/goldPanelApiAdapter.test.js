@@ -36,18 +36,16 @@ describe('GoldPanelApiAdapter', () => {
     expect(requestUrl.searchParams.get('pack')).toBe('pkg-3m');
   });
 
-  it('exposes the stored Gold package catalog for marketplace dropdowns', async () => {
-    const adapter = new GoldPanelApiAdapter({
-      ...network,
-      gold_package_catalog: [
-        { id: '101', name: '1 Month', billing_interval_count: 1 },
-        { id: '103', name: '6 Months', billing_interval_count: 6 },
-      ],
+  it('maps live bouquet results into package options for marketplace dropdowns', async () => {
+    fetch.mockResolvedValue({
+      ok: true,
+      json: async () => [{ id: 66599, name: 'full' }],
     });
 
+    const adapter = new GoldPanelApiAdapter(network);
+
     await expect(adapter.getPackages()).resolves.toEqual([
-      { id: '101', name: '1 Month', billing_period: 'month', billing_interval_count: 1 },
-      { id: '103', name: '6 Months', billing_period: 'month', billing_interval_count: 6 },
+      { id: '66599', name: 'full' },
     ]);
   });
 

@@ -47,7 +47,6 @@ type Network = {
   name: string
   adapter_type?: string
   xtream_ui_scraped?: boolean
-  gold_package_catalog?: ResellerPackage[]
   offering_plan_constraints?: OfferingPlanConstraints
 }
 
@@ -769,11 +768,11 @@ export default function AdminMarketplacePage() {
                     {form.provisioning_mode === 'reseller_line' && selectedNetwork?.adapter_type === 'gold_panel_api' && packages.length === 0 && (
                       <div className="col-span-12">
                         <p className="text-sm text-slate-400">
-                          No Gold package catalog is configured for this network yet. Add package IDs in the network configuration to get a dropdown here.
+                          No Gold packages were returned by the provider API. This dropdown is populated from the live bouquet/package list on the Gold panel.
                         </p>
                       </div>
                     )}
-                    {form.provisioning_mode === 'reseller_line' && (
+                    {form.provisioning_mode === 'reseller_line' && selectedNetwork?.adapter_type !== 'gold_panel_api' && (
                       <div className="col-span-12">
                         <Label>Plan Bouquets</Label>
                         <div className="mt-2 rounded-xl border border-white/10 bg-slate-950/40 p-3">
@@ -933,7 +932,7 @@ export default function AdminMarketplacePage() {
               </div>
             </div>
 
-            {form.provisioning_mode === 'reseller_line' && (
+            {form.provisioning_mode === 'reseller_line' && selectedNetwork?.adapter_type !== 'gold_panel_api' && (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Default Bouquets</Label>
