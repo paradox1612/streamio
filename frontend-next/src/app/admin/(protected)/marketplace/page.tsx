@@ -47,6 +47,7 @@ type Network = {
   name: string
   adapter_type?: string
   xtream_ui_scraped?: boolean
+  gold_package_catalog?: ResellerPackage[]
   offering_plan_constraints?: OfferingPlanConstraints
 }
 
@@ -128,12 +129,14 @@ function findPackage(packages: ResellerPackage[], packageId: string) {
 }
 
 function networkSupportsResellerPackages(network?: Network | null) {
-  return network?.adapter_type === 'xtream_ui_scraper' || network?.xtream_ui_scraped === true
+  return network?.adapter_type === 'xtream_ui_scraper'
+    || network?.xtream_ui_scraped === true
+    || network?.adapter_type === 'gold_panel_api'
 }
 
 function networkUsesPlanPackageField(network?: Network | null) {
   if (!network) return false
-  return networkSupportsResellerPackages(network) || network.adapter_type === 'gold_panel_api'
+  return networkSupportsResellerPackages(network)
 }
 
 const EMPTY_FORM = {
@@ -763,10 +766,10 @@ export default function AdminMarketplacePage() {
                         )}
                       </div>
                     )}
-                    {form.provisioning_mode === 'reseller_line' && selectedNetwork?.adapter_type === 'gold_panel_api' && (
+                    {form.provisioning_mode === 'reseller_line' && selectedNetwork?.adapter_type === 'gold_panel_api' && packages.length === 0 && (
                       <div className="col-span-12">
                         <p className="text-sm text-slate-400">
-                          Gold does not auto-load package IDs. Enter the package ID for each plan manually so provisioning maps the right term to the right package.
+                          No Gold package catalog is configured for this network yet. Add package IDs in the network configuration to get a dropdown here.
                         </p>
                       </div>
                     )}

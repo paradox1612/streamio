@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS provider_networks (
   reseller_portal_url TEXT,
   reseller_username TEXT,
   reseller_password TEXT,
+  gold_package_catalog JSONB DEFAULT '[]'::JSONB,
   catalog_last_refreshed_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
@@ -948,6 +949,9 @@ CREATE TABLE IF NOT EXISTS system_settings (
 -- ─────────────────────────────────────────
 ALTER TABLE provider_networks
   ADD COLUMN IF NOT EXISTS adapter_type TEXT NOT NULL DEFAULT 'xtream_ui_scraper';
+
+ALTER TABLE provider_networks
+  ADD COLUMN IF NOT EXISTS gold_package_catalog JSONB DEFAULT '[]'::JSONB;
 
 -- ─────────────────────────────────────────
 -- Provisioning Status on Subscriptions

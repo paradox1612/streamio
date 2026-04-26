@@ -404,6 +404,7 @@ const providerNetworkQueries = {
       'xtream_ui_scraped',
       'reseller_session_cookie',
       'adapter_type',
+      'gold_package_catalog',
     ];
     const sets = [];
     const values = [];

@@ -36,6 +36,12 @@ interface Network {
   reseller_password?: string | null
   reseller_api_key?: string | null
   adapter_type?: 'xtream_ui_scraper' | 'xtream_api' | 'gold_panel_api'
+  gold_package_catalog?: Array<{
+    id: string
+    name?: string
+    billing_period?: 'month'
+    billing_interval_count?: number
+  }>
   xtream_ui_scraped: boolean
   reseller_session_cookie: string | null
   catalog_last_refreshed_at: string | null
@@ -61,6 +67,42 @@ function getAdapterLabel(adapterType: string) {
   if (adapterType === 'xtream_ui_scraper') return 'Scraped Session'
   if (adapterType === 'gold_panel_api') return 'GOLD PANEL API'
   return 'Xtream API'
+}
+
+function serializeGoldPackageCatalog(catalog: Network['gold_package_catalog'] = []) {
+  if (!Array.isArray(catalog)) return ''
+  return catalog
+    .map((entry) => {
+      const id = String(entry?.id || '').trim()
+      if (!id) return null
+      const name = String(entry?.name || '').trim()
+      const count = Number(entry?.billing_interval_count)
+      const label = name || (Number.isFinite(count) && count > 0 ? `${count} Month` : '')
+      return label ? `${id}|${label}` : id
+    })
+    .filter(Boolean)
+    .join('\n')
+}
+
+function parseGoldPackageCatalog(raw: string) {
+  return raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [rawId, ...rest] = line.split('|')
+      const id = String(rawId || '').trim()
+      const name = rest.join('|').trim()
+      const match = name.match(/(\d+)\s*month/i)
+      const billingIntervalCount = match ? parseInt(match[1], 10) : undefined
+      return id ? {
+        id,
+        name: name || id,
+        billing_period: 'month' as const,
+        billing_interval_count: billingIntervalCount,
+      } : null
+    })
+    .filter(Boolean)
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -92,7 +134,8 @@ export default function NetworksPage() {
     apiKey: '',
     adapterType: 'xtream_api' as 'xtream_ui_scraper' | 'xtream_api' | 'gold_panel_api',
     sessionCookie: '',
-    customerHosts: ''
+    customerHosts: '',
+    goldPackages: '',
   })
   const [savingReseller, setSavingReseller] = useState(false)
   const [testingSession, setTestingSession] = useState<string | null>(null)
@@ -180,7 +223,8 @@ export default function NetworksPage() {
       apiKey: '',
       adapterType: network.adapter_type || (network.xtream_ui_scraped ? 'xtream_ui_scraper' : 'xtream_api'),
       sessionCookie: network.reseller_session_cookie || '',
-      customerHosts: ''
+      customerHosts: '',
+      goldPackages: serializeGoldPackageCatalog(network.gold_package_catalog),
     })
     setShowResellerModal(true)
 
@@ -195,7 +239,8 @@ export default function NetworksPage() {
         apiKey: '',
         adapterType: detail?.adapter_type || (detail?.xtream_ui_scraped ?? network.xtream_ui_scraped ? 'xtream_ui_scraper' : 'xtream_api'),
         sessionCookie: detail?.reseller_session_cookie || network.reseller_session_cookie || '',
-        customerHosts: hosts.map((host) => host.host_url).join('\n')
+        customerHosts: hosts.map((host) => host.host_url).join('\n'),
+        goldPackages: serializeGoldPackageCatalog(detail?.gold_package_catalog || network.gold_package_catalog),
       })
     } catch {
       toast.error('Failed to load network configuration')
@@ -216,6 +261,9 @@ export default function NetworksPage() {
         adapter_type: resellerForm.adapterType,
         xtream_ui_scraped: resellerForm.adapterType === 'xtream_ui_scraper',
         reseller_session_cookie: resellerForm.adapterType === 'xtream_ui_scraper' ? resellerForm.sessionCookie : '',
+        gold_package_catalog: resellerForm.adapterType === 'gold_panel_api'
+          ? parseGoldPackageCatalog(resellerForm.goldPackages)
+          : [],
         hosts: resellerForm.customerHosts
           .split('\n')
           .map(host => host.trim())
@@ -558,6 +606,18 @@ export default function NetworksPage() {
                 </div>
                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-xs text-amber-100/80">
                   This integration provisions `M3U` lines only. GOLD PANEL trials are not auto-created here.
+                </div>
+                <div className="space-y-2">
+                  <Label>Package Catalog</Label>
+                  <textarea
+                    className="min-h-[120px] w-full rounded-lg border border-white/10 bg-slate-900 p-3 text-sm text-white outline-none"
+                    value={resellerForm.goldPackages}
+                    onChange={e => setResellerForm({ ...resellerForm, goldPackages: e.target.value })}
+                    placeholder={'101|1 Month\n102|3 Months\n103|6 Months'}
+                  />
+                  <p className="text-xs text-slate-500">
+                    One package per line in <code>id|label</code> format. These values power the marketplace dropdown for Gold plans.
+                  </p>
                 </div>
               </div>
             ) : (

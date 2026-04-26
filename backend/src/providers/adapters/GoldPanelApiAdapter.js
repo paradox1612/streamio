@@ -2,6 +2,28 @@ const ProviderAdapter = require('../ProviderAdapter');
 
 const SUPPORTED_SUBSCRIPTION_MONTHS = [1, 3, 6, 12];
 
+function normalizeGoldPackageCatalog(catalog = []) {
+  if (!Array.isArray(catalog)) return [];
+
+  return catalog
+    .map((entry) => {
+      const id = String(entry?.id || '').trim();
+      if (!id) return null;
+
+      const rawName = String(entry?.name || entry?.label || '').trim();
+      const intervalCount = parseInt(entry?.billing_interval_count, 10);
+      const billingIntervalCount = SUPPORTED_SUBSCRIPTION_MONTHS.includes(intervalCount) ? intervalCount : null;
+
+      return {
+        id,
+        name: rawName || (billingIntervalCount ? `${billingIntervalCount} Month` : id),
+        billing_period: 'month',
+        billing_interval_count: billingIntervalCount || undefined,
+      };
+    })
+    .filter(Boolean);
+}
+
 function normalizeBoolean(value) {
   return String(value).trim().toLowerCase() === 'true';
 }
@@ -104,6 +126,10 @@ class GoldPanelApiAdapter extends ProviderAdapter {
       id: String(entry.id),
       bouquet_name: String(entry.name || entry.bouquet_name || entry.id),
     }));
+  }
+
+  async getPackages() {
+    return normalizeGoldPackageCatalog(this.network.gold_package_catalog);
   }
 
   async createLine(opts) {
