@@ -339,7 +339,7 @@ export default function MarketingHomePage() {
               <div>
                 <p className="eyebrow mb-3">How it works</p>
                 <h2 className="text-3xl font-bold text-white sm:text-4xl">
-                  Three steps. No maze of marketing sections.
+                  Three steps.
                 </h2>
                 <p className="mt-4 text-base leading-7 text-slate-300/70">
                   Create an account, add your provider, install the private addon URL in Stremio.
