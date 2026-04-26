@@ -28,6 +28,7 @@ type PlanOption = {
   trial_days: string
   max_connections: string
   reseller_package_id: string
+  reseller_bouquet_ids: string[]
 }
 
 type PlanConstraintRule = {
@@ -45,6 +46,7 @@ type Network = {
   id: string
   name: string
   adapter_type?: string
+  xtream_ui_scraped?: boolean
   offering_plan_constraints?: OfferingPlanConstraints
 }
 
@@ -89,6 +91,7 @@ function createBlankPlan(index = 1): PlanOption {
     trial_days: '0',
     max_connections: '1',
     reseller_package_id: '',
+    reseller_bouquet_ids: [],
   }
 }
 
@@ -122,6 +125,15 @@ function normalizePlanForPackage(plan: PlanOption, pkg?: ResellerPackage | null)
 
 function findPackage(packages: ResellerPackage[], packageId: string) {
   return packages.find((pkg) => pkg.id === packageId) || null
+}
+
+function networkSupportsResellerPackages(network?: Network | null) {
+  return network?.adapter_type === 'xtream_ui_scraper' || network?.xtream_ui_scraped === true
+}
+
+function networkUsesPlanPackageField(network?: Network | null) {
+  if (!network) return false
+  return networkSupportsResellerPackages(network) || network.adapter_type === 'gold_panel_api'
 }
 
 const EMPTY_FORM = {
@@ -184,6 +196,8 @@ export default function AdminMarketplacePage() {
   )
 
   const selectedPlanConstraints = selectedNetwork?.offering_plan_constraints || null
+  const selectedNetworkSupportsPackages = networkSupportsResellerPackages(selectedNetwork)
+  const selectedNetworkUsesPlanPackageField = networkUsesPlanPackageField(selectedNetwork)
 
   useEffect(() => {
     if (!selectedPlanConstraints) return
@@ -244,6 +258,11 @@ export default function AdminMarketplacePage() {
       setPackages([])
       return
     }
+    const network = networks.find((entry) => entry.id === networkId) || null
+    if (!networkSupportsResellerPackages(network)) {
+      setPackages([])
+      return
+    }
     if (!force && networkId === form.provider_network_id && packages.length > 0) return
     setLoadingPackages(true)
     try {
@@ -299,6 +318,9 @@ export default function AdminMarketplacePage() {
         trial_days: String(plan.trial_days || 0),
         max_connections: String(plan.max_connections || offering.max_connections || 1),
         reseller_package_id: String(plan.reseller_package_id || ''),
+        reseller_bouquet_ids: Array.isArray(plan.reseller_bouquet_ids)
+          ? plan.reseller_bouquet_ids.map((value: unknown) => String(value))
+          : Array.isArray(offering.reseller_bouquet_ids) ? offering.reseller_bouquet_ids.map((value: unknown) => String(value)) : [],
       })),
     })
 
@@ -349,6 +371,9 @@ export default function AdminMarketplacePage() {
         trial_days: parseInt(plan.trial_days, 10) || 0,
         max_connections: parseInt(plan.max_connections, 10) || 1,
         reseller_package_id: plan.reseller_package_id?.trim() || null,
+        reseller_bouquet_ids: Array.isArray(plan.reseller_bouquet_ids)
+          ? plan.reseller_bouquet_ids.map((value) => String(value))
+          : [],
       }))
       .filter((plan) => plan.name && Number.isFinite(plan.price_cents))
   ), [form.plans])
@@ -715,7 +740,7 @@ export default function AdminMarketplacePage() {
                       <Label>Conn.</Label>
                       <Input type="number" value={plan.max_connections} onChange={(e) => updatePlan(index, { max_connections: e.target.value })} />
                     </div>
-                    {form.provisioning_mode === 'reseller_line' && (
+                    {form.provisioning_mode === 'reseller_line' && selectedNetworkUsesPlanPackageField && (
                       <div className="col-span-12 md:col-span-6">
                         <Label>Reseller Package {loadingPackages && <span className="text-xs text-slate-500">(loading…)</span>}</Label>
                         {packages.length > 0 ? (
@@ -733,9 +758,50 @@ export default function AdminMarketplacePage() {
                           <Input
                             value={plan.reseller_package_id}
                             onChange={(e) => updatePlan(index, { reseller_package_id: e.target.value })}
-                            placeholder={form.provider_network_id ? 'Package id (e.g. 3)' : 'Select a network first'}
+                            placeholder={selectedNetworkSupportsPackages ? (form.provider_network_id ? 'Package id (e.g. 3)' : 'Select a network first') : 'Package id for this billing term'}
                           />
                         )}
+                      </div>
+                    )}
+                    {form.provisioning_mode === 'reseller_line' && selectedNetwork?.adapter_type === 'gold_panel_api' && (
+                      <div className="col-span-12">
+                        <p className="text-sm text-slate-400">
+                          Gold does not auto-load package IDs. Enter the package ID for each plan manually so provisioning maps the right term to the right package.
+                        </p>
+                      </div>
+                    )}
+                    {form.provisioning_mode === 'reseller_line' && (
+                      <div className="col-span-12">
+                        <Label>Plan Bouquets</Label>
+                        <div className="mt-2 rounded-xl border border-white/10 bg-slate-950/40 p-3">
+                          {loadingBouquets ? (
+                            <div className="flex items-center justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-slate-500" /></div>
+                          ) : bouquets.length === 0 ? (
+                            <div className="py-2 text-sm text-slate-500">No bouquets found for this network</div>
+                          ) : (
+                            <div className="grid gap-2 md:grid-cols-2">
+                              {bouquets.map((bouquet) => (
+                                <label key={bouquet.id} className="flex items-center gap-3 rounded-md px-2 py-2 text-sm text-slate-300 hover:bg-white/5">
+                                  <input
+                                    type="checkbox"
+                                    checked={plan.reseller_bouquet_ids.includes(bouquet.id)}
+                                    onChange={(e) => {
+                                      const next = e.target.checked
+                                        ? [...plan.reseller_bouquet_ids, bouquet.id]
+                                        : plan.reseller_bouquet_ids.filter((id) => id !== bouquet.id)
+                                      updatePlan(index, { reseller_bouquet_ids: next })
+                                    }}
+                                    className="h-4 w-4"
+                                  />
+                                  <span>{bouquet.bouquet_name}</span>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <p className="mt-2 text-xs text-slate-500">
+                          Leave empty to use the offering-level default bouquets below.
+                        </p>
                       </div>
                     )}
                     <div className="col-span-12 flex justify-end">
@@ -867,7 +933,7 @@ export default function AdminMarketplacePage() {
             {form.provisioning_mode === 'reseller_line' && (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Bouquets</Label>
+                  <Label>Default Bouquets</Label>
                   <div className="h-56 overflow-y-auto rounded-xl border border-white/10 bg-slate-950/60 p-3">
                     {loadingBouquets ? (
                       <div className="flex h-full items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-slate-500" /></div>
@@ -890,6 +956,9 @@ export default function AdminMarketplacePage() {
                       </label>
                     ))}
                   </div>
+                  <p className="text-xs text-slate-500">
+                    Used when a plan does not define its own bouquet override.
+                  </p>
                 </div>
                 <div className="space-y-1">
                   <Label>Provisioning Notes</Label>

@@ -109,15 +109,17 @@ class GoldPanelApiAdapter extends ProviderAdapter {
   async createLine(opts) {
     const subscriptionMonths = mapSubscriptionMonths(opts);
     const bouquetIds = Array.isArray(opts.bouquetIds) ? opts.bouquetIds.filter(Boolean) : [];
-    if (bouquetIds.length !== 1) {
-      throw new Error('GOLD PANEL API requires exactly one selected package');
+    const packageId = opts.packageId ? String(opts.packageId).trim() : '';
+    const selectedPackage = packageId || bouquetIds[0] || '';
+    if (!selectedPackage) {
+      throw new Error('GOLD PANEL API requires a package ID or exactly one fallback bouquet/package selection');
     }
 
     const payload = await this.request({
       action: 'new',
       type: 'm3u',
       sub: subscriptionMonths,
-      pack: bouquetIds[0],
+      pack: selectedPackage,
       country: opts.country || undefined,
       notes: opts.notes || undefined,
     });
