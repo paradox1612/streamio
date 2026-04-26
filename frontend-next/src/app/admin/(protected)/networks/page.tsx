@@ -69,6 +69,16 @@ function getAdapterLabel(adapterType: string) {
   return 'Xtream API'
 }
 
+function getNetworkDisplayMeta(name: string) {
+  const raw = String(name || '').trim()
+  const migratedPrefix = 'Migrated network: '
+  if (!raw) return { name: '', migrated: false }
+  if (raw.startsWith(migratedPrefix)) {
+    return { name: raw.slice(migratedPrefix.length).trim() || raw, migrated: true }
+  }
+  return { name: raw, migrated: false }
+}
+
 function serializeGoldPackageCatalog(catalog: Network['gold_package_catalog'] = []) {
   if (!Array.isArray(catalog)) return ''
   return catalog
@@ -401,7 +411,9 @@ export default function NetworksPage() {
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
         {loading ? (
           [1, 2, 3].map(i => <SkeletonCard key={i} />)
-        ) : networks.map(network => (
+        ) : networks.map(network => {
+          const networkMeta = getNetworkDisplayMeta(network.name)
+          return (
           <Card key={network.id} className="border-white/[0.08] bg-surface-900/50 transition-all hover:bg-surface-900/80">
             <CardHeader className="pb-4">
               <div className="flex items-start justify-between">
@@ -416,7 +428,14 @@ export default function NetworksPage() {
                   <Badge variant="outline" className="text-slate-500">Unmanaged</Badge>
                 )}
               </div>
-              <CardTitle className="mt-4 text-xl">{network.name}</CardTitle>
+              <div className="mt-4 flex items-center gap-2">
+                <CardTitle className="text-xl">{networkMeta.name || network.name}</CardTitle>
+                {networkMeta.migrated && (
+                  <Badge variant="outline" className="border-amber-500/20 bg-amber-500/10 text-amber-300">
+                    Migrated
+                  </Badge>
+                )}
+              </div>
               <CardDescription className="line-clamp-1 font-mono text-xs">
                 {network.id}
               </CardDescription>
@@ -524,7 +543,7 @@ export default function NetworksPage() {
               </div>
             </CardContent>
           </Card>
-        ))}
+        )})}
       </div>
 
       {/* Reseller Credentials Modal */}

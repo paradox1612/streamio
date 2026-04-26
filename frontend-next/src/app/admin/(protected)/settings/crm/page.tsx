@@ -109,6 +109,16 @@ function formatDateTime(value?: string | null) {
   return d.toLocaleString()
 }
 
+function getNetworkDisplayMeta(name?: string | null) {
+  const raw = String(name || '').trim()
+  const migratedPrefix = 'Migrated network: '
+  if (!raw) return { name: '', migrated: false }
+  if (raw.startsWith(migratedPrefix)) {
+    return { name: raw.slice(migratedPrefix.length).trim() || raw, migrated: true }
+  }
+  return { name: raw, migrated: false }
+}
+
 function formatExpiry(provider: CoverageProvider) {
   if (!provider.account_expires_at) return 'No expiry'
   if (provider.days_until_expiry === null || provider.days_until_expiry === undefined) return 'Unknown'
@@ -416,13 +426,23 @@ function CoverageTab({
     {
       key: 'provider',
       header: 'Provider Access',
-      render: (provider: CoverageProvider) => (
-        <div className="min-w-[16rem]">
-          <div className="font-semibold text-white">{provider.name}</div>
-          <div className="mt-1 text-xs text-slate-400/75">{provider.user_email}</div>
-          <div className="mt-1 text-xs text-slate-500">{provider.network_name || 'No network linked'}</div>
-        </div>
-      ),
+      render: (provider: CoverageProvider) => {
+        const networkMeta = getNetworkDisplayMeta(provider.network_name)
+        return (
+          <div className="min-w-[16rem]">
+            <div className="font-semibold text-white">{provider.name}</div>
+            <div className="mt-1 text-xs text-slate-400/75">{provider.user_email}</div>
+            <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+              <span>{networkMeta.name || 'No network linked'}</span>
+              {networkMeta.migrated && (
+                <Badge variant="outline" className="border-amber-500/20 bg-amber-500/10 text-[10px] text-amber-300">
+                  Migrated
+                </Badge>
+              )}
+            </div>
+          </div>
+        )
+      },
     },
     {
       key: 'source',

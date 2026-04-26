@@ -1196,10 +1196,14 @@ router.get('/crm/provider-access-coverage', requireAdmin, async (_req, res) => {
       };
     });
 
+    const linkedCompanyIds = new Set();
+
     const summary = providers.reduce((acc, provider) => {
       acc.totalProviders += 1;
       if (provider.sync_state.personLinked) acc.peopleLinked += 1;
-      if (provider.sync_state.companyLinked) acc.companiesLinked += 1;
+      if (provider.sync_state.companyLinked && provider.twenty_company_id) {
+        linkedCompanyIds.add(provider.twenty_company_id);
+      }
       if (provider.sync_state.providerAccessLinked) acc.providerAccessLinked += 1;
       if (provider.expiry_risk === 'critical') acc.criticalExpiry += 1;
       if (provider.expiry_risk === 'warning') acc.warningExpiry += 1;
@@ -1216,6 +1220,8 @@ router.get('/crm/provider-access-coverage', requireAdmin, async (_req, res) => {
       expired: 0,
       unknownExpiry: 0,
     });
+
+    summary.companiesLinked = linkedCompanyIds.size;
 
     res.json({ summary, providers });
   } catch (err) {
