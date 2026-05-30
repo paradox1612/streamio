@@ -40,6 +40,9 @@ const mockHostHealthService = {
 const mockUserActivity = {
   touchUserLastSeen: jest.fn().mockResolvedValue(false),
 };
+const mockProviderService = {
+  getSeriesEpisodes: jest.fn(),
+};
 
 jest.mock('../../src/db/queries', () => ({
   userQueries: mockUserQueries,
@@ -53,7 +56,7 @@ jest.mock('../../src/db/queries', () => ({
   },
 }));
 
-jest.mock('../../src/services/providerService', () => ({}));
+jest.mock('../../src/services/providerService', () => mockProviderService);
 jest.mock('../../src/services/freeAccessService', () => ({
   resolveFallbackVodItem: jest.fn().mockResolvedValue(null),
   resolveFallbackVodItemsForStream: jest.fn().mockResolvedValue([]),
@@ -317,6 +320,37 @@ describe('addonHandler handleStream', () => {
         },
       ],
     });
+  });
+
+  it('fails over to a duplicate series entry that has the requested season', async () => {
+    mockCache.get.mockReturnValue(null);
+    mockUserQueries.findByToken.mockResolvedValue({ id: 'user-1' });
+    mockProviderQueries.findByIdAndUser.mockResolvedValue({
+      id: 'provider-1',
+      user_id: 'user-1',
+      active_host: 'http://host-1.test',
+      hosts: ['http://host-1.test'],
+    });
+    // Two "Manifest" entries resolve to the same series. Entry 3896 only carries
+    // Season 4; entry 4053 carries Season 3. A request for S3E1 must fail over.
+    mockVodQueries.resolveByExternalIdForUser.mockResolvedValueOnce([
+      { provider_id: 'provider-1', raw_title: 'Manifest', username: 'fifi', password: 'pw', stream_id: '3896', vod_type: 'series', container_extension: null, active_host: 'http://host-1.test' },
+      { provider_id: 'provider-1', raw_title: 'Manifest', username: 'fifi', password: 'pw', stream_id: '4053', vod_type: 'series', container_extension: null, active_host: 'http://host-1.test' },
+    ]);
+    mockHostHealthService.getProviderHealth.mockResolvedValue([
+      { status: 'online', host_url: 'http://host-1.test', response_time_ms: 100 },
+    ]);
+    mockProviderService.getSeriesEpisodes.mockImplementation((host, u, p, sid) => {
+      if (sid === '3896') return Promise.resolve({ '4': [{ episode_num: '1', id: '999', container_extension: 'mkv' }] });
+      if (sid === '4053') return Promise.resolve({ '3': [{ episode_num: '1', id: '135140', container_extension: 'mkv' }] });
+      return Promise.resolve({});
+    });
+
+    const result = await handleStream('token-1', 'series', 'tt8421350:3:1');
+
+    // Without failover this returns no streams; with it, the episode from entry 4053 wins.
+    expect(result.streams.length).toBeGreaterThan(0);
+    expect(result.streams[0].url).toContain('/series/fifi/pw/135140.mkv');
   });
 
   it('filters movie variants by the user language preferences', async () => {

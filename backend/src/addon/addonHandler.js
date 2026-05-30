@@ -1114,66 +1114,81 @@ async function handleStream(token, type, id) {
       recordWatchStart(user.id, vodItem);
 
       try {
-        // Check cache first for episodes
-        const episodeCacheKey = vodItem.access_source === 'free_access'
-          ? `free:${vodItem.provider_group_id}:${stream_id}`
-          : stream_id;
-        let episodesObj = await cache.get('seriesEpisodes', episodeCacheKey);
-        if (!episodesObj) {
-          const hostData = vodItem.access_source === 'free_access'
-            ? {
-              onlineHosts: (vodItem.playback_hosts || []).map(host => ({ host_url: host.host })),
-              fallbackHost: vodItem.playback_hosts?.[0]?.host || null,
+        // Duplicate catalog entries can advertise the same series but actually carry
+        // different seasons (one copy may only have S4, another all seasons). Try each
+        // matching series entry until one contains the requested season+episode instead
+        // of giving up on the first. Episode lists are fetched in parallel (and cached
+        // per entry); the highest-priority entry that has the episode wins.
+        const MAX_SERIES_FAILOVER = 6; // cap how many duplicate entries we probe
+        const seriesCandidates = vodItems
+          .filter((it) => it.vod_type === 'series')
+          .slice(0, MAX_SERIES_FAILOVER);
+
+        const resolveHostsFor = (it) => (
+          it.access_source === 'free_access'
+            ? Promise.resolve({
+              onlineHosts: (it.playback_hosts || []).map((host) => ({
+                host_url: host.host,
+                response_time_ms: host.responseTimeMs,
+              })),
+              fallbackHost: it.playback_hosts?.[0]?.host || null,
+            })
+            : resolveProviderPlaybackHosts(user.id, it.provider_id, null, { recheckOnMiss: false })
+        );
+
+        const candidateEpisodes = await Promise.all(seriesCandidates.map(async (candidate) => {
+          try {
+            const epCacheKey = candidate.access_source === 'free_access'
+              ? `free:${candidate.provider_group_id}:${candidate.stream_id}`
+              : candidate.stream_id;
+            let episodesObj = await cache.get('seriesEpisodes', epCacheKey);
+            if (!episodesObj) {
+              const hostData = await resolveHostsFor(candidate);
+              const hostToUse = hostData.onlineHosts[0]?.host_url || hostData.fallbackHost;
+              if (!hostToUse) return null;
+              episodesObj = await providerService.getSeriesEpisodes(
+                hostToUse, candidate.username, candidate.password, candidate.stream_id
+              );
+              await cache.set('seriesEpisodes', epCacheKey, episodesObj);
             }
-            : await resolveProviderPlaybackHosts(
-              user.id,
-              provider_id,
-              null,
-              { recheckOnMiss: false }
-            );
-          const hostToUse = hostData.onlineHosts[0]?.host_url || hostData.fallbackHost;
-          if (!hostToUse) return { streams: [] };
-          episodesObj = await providerService.getSeriesEpisodes(
-            hostToUse, username, password, stream_id
-          );
-          await cache.set('seriesEpisodes', episodeCacheKey, episodesObj);
-        }
-
-        const seasonEps = episodesObj[String(season)];
-        if (!Array.isArray(seasonEps) || seasonEps.length === 0) {
-          logger.warn(`Season ${season} not found for series ${stream_id}`);
-          return { streams: [] };
-        }
-
-        const ep = seasonEps.find(e => parseInt(e.episode_num) === episode);
-        if (!ep) {
-          logger.warn(`S${season}E${episode} not found in series ${stream_id}`);
-          return { streams: [] };
-        }
-
-        // Get online hosts for multi-host failover
-        const { onlineHosts, fallbackHost } = vodItem.access_source === 'free_access'
-          ? {
-            onlineHosts: (vodItem.playback_hosts || []).map(host => ({
-              host_url: host.host,
-              response_time_ms: host.responseTimeMs,
-            })),
-            fallbackHost: vodItem.playback_hosts?.[0]?.host || null,
+            return { candidate, episodesObj };
+          } catch (err) {
+            logger.warn(`Failed to fetch episodes for series entry ${candidate.stream_id}: ${err.message}`);
+            return null;
           }
-          : await resolveProviderPlaybackHosts(
-            user.id,
-            provider_id,
-            null,
-            { recheckOnMiss: false }
-          );
+        }));
+
+        let chosenItem = null;
+        let ep = null;
+        for (const ce of candidateEpisodes) {
+          if (!ce) continue;
+          const seasonEps = ce.episodesObj?.[String(season)];
+          if (!Array.isArray(seasonEps) || seasonEps.length === 0) continue;
+          const match = seasonEps.find((e) => parseInt(e.episode_num) === episode);
+          if (!match) continue;
+          chosenItem = ce.candidate;
+          ep = match;
+          break;
+        }
+
+        if (!chosenItem) {
+          logger.warn(`S${season}E${episode} not found in any of ${seriesCandidates.length} matching series entr${seriesCandidates.length === 1 ? 'y' : 'ies'} for ${baseId}`);
+          await cache.set('resolvedStreamsMiss', streamCacheKey, true);
+          return { streams: [] };
+        }
+
+        // Build playable URLs from the winning entry across its online hosts.
+        const { onlineHosts, fallbackHost } = await resolveHostsFor(chosenItem);
 
         const epId = ep.id;
         const epExt = ep.container_extension || 'mkv';
         const label = `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
+        const epUser = encodeURIComponent(chosenItem.username);
+        const epPass = encodeURIComponent(chosenItem.password);
 
         // Return streams for each host
         let streams = onlineHosts.map((host, idx) => {
-          const url = `${host.host_url}/series/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${epId}.${epExt}`;
+          const url = `${host.host_url}/series/${epUser}/${epPass}/${epId}.${epExt}`;
           const timeLabel = host.response_time_ms ? `${host.response_time_ms}ms` : '?';
           return {
             url,
@@ -1185,7 +1200,7 @@ async function handleStream(token, type, id) {
 
         // Fallback if no health data
         if (streams.length === 0 && fallbackHost) {
-          const url = `${fallbackHost}/series/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${epId}.${epExt}`;
+          const url = `${fallbackHost}/series/${epUser}/${epPass}/${epId}.${epExt}`;
           streams = [{
             url,
             title: `${label} – StreamBridge`,
@@ -1194,8 +1209,8 @@ async function handleStream(token, type, id) {
           }];
         }
 
-        if (vodItem.access_source === 'free_access') {
-          await freeAccessService.recordResolvedStream(vodItem.assignment_id);
+        if (chosenItem.access_source === 'free_access') {
+          await freeAccessService.recordResolvedStream(chosenItem.assignment_id);
         }
         const payload = { streams };
         await cache.set('resolvedStreams', streamCacheKey, payload);
