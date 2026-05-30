@@ -191,6 +191,11 @@ router.post('/:id/refresh', requireAuth, async (req, res) => {
         });
 
         const current = await jobQueries.getProviderRefreshStatus(req.params.id, req.user.id);
+        const partial = Boolean(result?.partial);
+        const failedTypes = result?.failedTypes || [];
+        if (partial) {
+          logger.error(`[Catalog] Partial refresh for provider ${req.params.id} ("${provider.name}"): failed content types = ${failedTypes.join(', ') || 'unknown'}. Existing rows for those types were preserved.`);
+        }
         await jobQueries.finish(jobId, {
           status: 'success',
           metadata: {
@@ -200,11 +205,21 @@ router.post('/:id/refresh', requireAuth, async (req, res) => {
             userId: req.user.id,
             stage: 'completed',
             progressPct: 100,
-            message: 'Catalog refresh complete',
+            message: partial
+              ? `Catalog refresh completed with warnings — failed: ${failedTypes.join(', ') || 'unknown'}`
+              : 'Catalog refresh complete',
+            partial,
+            failedTypes,
             result,
             updatedAt: new Date().toISOString(),
           },
         });
+
+        // Match the freshly-imported titles right away so they resolve in the addon
+        // without waiting for the nightly matching job. Fire-and-forget; matchingJob
+        // is advisory-locked so concurrent refreshes won't double-run it.
+        const { jobs } = require('../jobs/scheduler');
+        jobs.matchingJob().catch((err) => logger.error(`Post-refresh matching failed for provider ${req.params.id}: ${err.message}`));
       })
       .catch(async (err) => {
         logger.error(`Provider refresh failed for ${req.params.id}: ${err.stack || err.message}`);

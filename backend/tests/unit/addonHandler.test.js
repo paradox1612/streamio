@@ -40,6 +40,9 @@ const mockHostHealthService = {
 const mockUserActivity = {
   touchUserLastSeen: jest.fn().mockResolvedValue(false),
 };
+const mockProviderService = {
+  getSeriesEpisodes: jest.fn(),
+};
 
 jest.mock('../../src/db/queries', () => ({
   userQueries: mockUserQueries,
@@ -53,7 +56,7 @@ jest.mock('../../src/db/queries', () => ({
   },
 }));
 
-jest.mock('../../src/services/providerService', () => ({}));
+jest.mock('../../src/services/providerService', () => mockProviderService);
 jest.mock('../../src/services/freeAccessService', () => ({
   resolveFallbackVodItem: jest.fn().mockResolvedValue(null),
   resolveFallbackVodItemsForStream: jest.fn().mockResolvedValue([]),
@@ -317,6 +320,70 @@ describe('addonHandler handleStream', () => {
         },
       ],
     });
+  });
+
+  it('fails over to a duplicate series entry that has the requested season', async () => {
+    mockCache.get.mockReturnValue(null);
+    mockUserQueries.findByToken.mockResolvedValue({ id: 'user-1' });
+    mockProviderQueries.findByIdAndUser.mockResolvedValue({
+      id: 'provider-1',
+      user_id: 'user-1',
+      active_host: 'http://host-1.test',
+      hosts: ['http://host-1.test'],
+    });
+    // Two "Manifest" entries resolve to the same series. Entry 3896 only carries
+    // Season 4; entry 4053 carries Season 3. A request for S3E1 must fail over.
+    mockVodQueries.resolveByExternalIdForUser.mockResolvedValueOnce([
+      { provider_id: 'provider-1', raw_title: 'Manifest', username: 'fifi', password: 'pw', stream_id: '3896', vod_type: 'series', container_extension: null, active_host: 'http://host-1.test' },
+      { provider_id: 'provider-1', raw_title: 'Manifest', username: 'fifi', password: 'pw', stream_id: '4053', vod_type: 'series', container_extension: null, active_host: 'http://host-1.test' },
+    ]);
+    mockHostHealthService.getProviderHealth.mockResolvedValue([
+      { status: 'online', host_url: 'http://host-1.test', response_time_ms: 100 },
+    ]);
+    mockProviderService.getSeriesEpisodes.mockImplementation((host, u, p, sid) => {
+      if (sid === '3896') return Promise.resolve({ '4': [{ episode_num: '1', id: '999', container_extension: 'mkv' }] });
+      if (sid === '4053') return Promise.resolve({ '3': [{ episode_num: '1', id: '135140', container_extension: 'mkv' }] });
+      return Promise.resolve({});
+    });
+
+    const result = await handleStream('token-1', 'series', 'tt8421350:3:1');
+
+    // Without failover this returns no streams; with it, the episode from entry 4053 wins.
+    expect(result.streams.length).toBeGreaterThan(0);
+    expect(result.streams[0].url).toContain('/series/fifi/pw/135140.mkv');
+  });
+
+  it('returns a stream per language variant for a series episode', async () => {
+    mockCache.get.mockReturnValue(null);
+    mockUserQueries.findByToken.mockResolvedValue({ id: 'user-1' });
+    mockProviderQueries.findByIdAndUser.mockResolvedValue({
+      id: 'provider-1',
+      user_id: 'user-1',
+      active_host: 'http://host-1.test',
+      hosts: ['http://host-1.test'],
+    });
+    // Three "From" entries (Hindi/Turkish/English) resolve to the same series; each has S1E1.
+    mockVodQueries.resolveByExternalIdForUser.mockResolvedValueOnce([
+      { provider_id: 'provider-1', raw_title: 'FROM (Hindi)', username: 'fifi', password: 'pw', stream_id: '10418', vod_type: 'series', active_host: 'http://host-1.test' },
+      { provider_id: 'provider-1', raw_title: 'From (Turkish)', username: 'fifi', password: 'pw', stream_id: '7596', vod_type: 'series', active_host: 'http://host-1.test' },
+      { provider_id: 'provider-1', raw_title: 'FROM (English)', username: 'fifi', password: 'pw', stream_id: '15968', vod_type: 'series', active_host: 'http://host-1.test' },
+    ]);
+    mockHostHealthService.getProviderHealth.mockResolvedValue([
+      { status: 'online', host_url: 'http://host-1.test', response_time_ms: 100 },
+    ]);
+    mockProviderService.getSeriesEpisodes.mockImplementation((host, u, p, sid) => Promise.resolve({
+      '1': [{ episode_num: '1', id: `ep-${sid}`, container_extension: 'mkv' }],
+    }));
+
+    const result = await handleStream('token-1', 'series', 'tt9813792:1:1');
+
+    const urls = result.streams.map((s) => s.url);
+    expect(urls).toContain('http://host-1.test/series/fifi/pw/ep-10418.mkv'); // Hindi
+    expect(urls).toContain('http://host-1.test/series/fifi/pw/ep-7596.mkv');  // Turkish
+    expect(urls).toContain('http://host-1.test/series/fifi/pw/ep-15968.mkv'); // English
+    expect(result.streams.map((s) => s.name)).toEqual(
+      expect.arrayContaining(['FROM (Hindi)', 'From (Turkish)', 'FROM (English)'])
+    );
   });
 
   it('filters movie variants by the user language preferences', async () => {

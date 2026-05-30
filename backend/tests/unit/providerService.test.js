@@ -30,6 +30,9 @@ jest.mock('../../src/db/queries', () => ({
     deleteByProvider: jest.fn().mockResolvedValue(),
     deleteByNetwork: jest.fn().mockResolvedValue(),
   },
+  hostHealthQueries: {
+    getByProvider: jest.fn().mockResolvedValue([]),
+  },
   pool: {
     query: jest.fn().mockResolvedValue({ rows: [] }),
   },
@@ -364,10 +367,49 @@ describe('providerService', () => {
 
       const result = await providerService.refreshCatalog('provider-1', 'user-1');
 
-      expect(vodQueries.deleteByProvider).toHaveBeenCalledWith('provider-1');
+      expect(vodQueries.deleteByProvider).toHaveBeenCalledWith('provider-1', { types: ['movie', 'series', 'live'] });
       expect(vodQueries.deleteByNetwork).not.toHaveBeenCalled();
       expect(vodQueries.upsertBatch).not.toHaveBeenCalled();
       expect(result).toMatchObject({ movies: 0, series: 0, live: 0, total: 0 });
+    });
+
+    it('preserves existing movies when the movie fetch fails (partial refresh)', async () => {
+      providerQueries.findByIdAndUser.mockResolvedValue(baseProvider);
+      // vod categories, series categories, get_vod_streams (non-array → treated as failed), get_series (ok)
+      fetch
+        .mockResolvedValueOnce(new Response(JSON.stringify([{ id: '1', name: 'Action' }]), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify([{ id: '1', name: 'Drama' }]), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'upstream blew up' }), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify([{ series_id: 10, name: 'Series A', category_id: '1' }]), { status: 200 }));
+      jest.spyOn(providerService, 'getLiveStreams').mockResolvedValueOnce([]);
+
+      const result = await providerService.refreshCatalog('provider-1', 'user-1');
+
+      // The failed 'movie' type must NOT be reconciled — only the types we actually fetched.
+      expect(vodQueries.upsertBatch).toHaveBeenCalledWith(
+        expect.any(Array),
+        { reconcileTypes: ['series', 'live'] }
+      );
+      // No blanket wipe of the provider's catalog.
+      expect(vodQueries.deleteByProvider).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ partial: true, failedTypes: ['movie'] });
+    });
+
+    it('aborts without touching the DB when every fetch fails', async () => {
+      providerQueries.findByIdAndUser.mockResolvedValue(baseProvider);
+      // both vod + series come back as non-arrays (failed)
+      fetch
+        .mockResolvedValueOnce(new Response(JSON.stringify([{ id: '1', name: 'Action' }]), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify([{ id: '1', name: 'Drama' }]), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'down' }), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'down' }), { status: 200 }));
+      jest.spyOn(providerService, 'getLiveStreams').mockRejectedValueOnce(new Error('live down'));
+
+      await expect(providerService.refreshCatalog('provider-1', 'user-1')).rejects.toThrow(/aborted/i);
+
+      expect(vodQueries.upsertBatch).not.toHaveBeenCalled();
+      expect(vodQueries.upsertNetworkBatch).not.toHaveBeenCalled();
+      expect(vodQueries.deleteByProvider).not.toHaveBeenCalled();
     });
 
     describe('incremental sync', () => {

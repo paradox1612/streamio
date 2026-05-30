@@ -10,7 +10,10 @@ const mockProviderNetworkQueries = {
 };
 const mockHostHealthQueries = {
   upsert: jest.fn(),
-  getByProvider: jest.fn(),
+  getByProvider: jest.fn().mockResolvedValue([]),
+};
+const mockPool = {
+  query: jest.fn().mockResolvedValue({ rows: [] }),
 };
 const mockCache = {
   del: jest.fn(),
@@ -22,6 +25,7 @@ jest.mock('../../src/db/queries', () => ({
   providerQueries: mockProviderQueries,
   providerNetworkQueries: mockProviderNetworkQueries,
   hostHealthQueries: mockHostHealthQueries,
+  pool: mockPool,
 }));
 
 jest.mock('../../src/utils/logger', () => ({
