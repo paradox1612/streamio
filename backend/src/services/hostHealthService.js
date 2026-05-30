@@ -1,5 +1,5 @@
 const fetch = require('node-fetch');
-const { providerQueries, providerNetworkQueries, hostHealthQueries } = require('../db/queries');
+const { providerQueries, providerNetworkQueries, hostHealthQueries, pool } = require('../db/queries');
 const logger = require('../utils/logger');
 const cache = require('../utils/cache');
 
@@ -87,6 +87,20 @@ const hostHealthService = {
         ? networkHosts.map((row) => row.host_url)
       : provider.hosts;
 
+    // Snapshot which hosts were already offline at the previous check so we can prune
+    // hosts that stay offline across consecutive checks (standalone providers only).
+    let previousOffline = new Set();
+    if (!provider.network_id) {
+      try {
+        const prevHealth = await hostHealthQueries.getByProvider(provider.id);
+        if (Array.isArray(prevHealth)) {
+          previousOffline = new Set(
+            prevHealth.filter((row) => row.status === 'offline').map((row) => row.host_url)
+          );
+        }
+      } catch (_) { /* best-effort — pruning simply won't run this cycle */ }
+    }
+
     const pingResults = await Promise.all(
       hostsToCheck.map(async (host) => {
         const result = await pingHost(host, provider.username, provider.password);
@@ -113,6 +127,21 @@ const hostHealthService = {
       status: bestHost ? 'online' : 'offline',
     });
     await cache.del('hostHealth', provider.id);
+
+    // Prune hosts that stayed offline across two consecutive checks (standalone
+    // providers only — network hosts are admin-managed). Never prune the chosen best
+    // host and never empty the list. Disable with HOST_PRUNE_ENABLED=false.
+    if (!provider.network_id && process.env.HOST_PRUNE_ENABLED !== 'false' && Array.isArray(provider.hosts) && bestHost) {
+      const offlineNow = new Set(pingResults.filter((r) => r.status === 'offline').map((r) => r.host));
+      const survivingHosts = provider.hosts.filter(
+        (host) => host === bestHost || !(previousOffline.has(host) && offlineNow.has(host))
+      );
+      if (survivingHosts.length > 0 && survivingHosts.length < provider.hosts.length) {
+        const removed = provider.hosts.filter((host) => !survivingHosts.includes(host));
+        await pool.query('UPDATE user_providers SET hosts = $2 WHERE id = $1', [provider.id, survivingHosts]);
+        logger.info(`Pruned ${removed.length} persistently-offline host(s) from provider ${provider.id}: ${removed.join(', ')}`);
+      }
+    }
 
     // After health check, refresh account info to ensure CRM sync and expiry tasks
     if (bestHost) {

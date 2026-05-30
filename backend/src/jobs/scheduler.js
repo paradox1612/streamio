@@ -104,6 +104,12 @@ async function catalogRefreshJob() {
         metadata: getJobRunnerMetadata({ providersRefreshed: providers.length, totalItems: total }),
       });
       logger.info(`[Job] Catalog refresh complete: ${total} items across ${providers.length} providers`);
+
+      // Immediately match the freshly-imported titles instead of waiting for the
+      // separate matching cron — otherwise new catalog is unresolvable in the addon
+      // until the next matching run. matchingJob is advisory-locked, so this is a
+      // no-op if a matching run is already in progress.
+      await matchingJob();
     } catch (err) {
       await jobQueries.finish(jobId, {
         status: 'failed',

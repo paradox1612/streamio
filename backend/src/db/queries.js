@@ -853,7 +853,7 @@ const vodQueries = {
     return providerQueries.findById(providerId);
   },
 
-  async upsertBatch(entries) {
+  async upsertBatch(entries, { reconcileTypes = null } = {}) {
     if (!entries.length) return;
     const dedupedEntries = Array.from(
       new Map(
@@ -945,6 +945,12 @@ const vodQueries = {
             canonical_content_id = COALESCE(EXCLUDED.canonical_content_id, user_provider_vod.canonical_content_id)
         WHERE ${buildIsDistinctClause('user_provider_vod', 'EXCLUDED', changedColumns)}
       `);
+      // When `reconcileTypes` is provided, only delete-missing within those vod_types.
+      // This prevents a partial refresh (e.g. live-only because the movie fetch failed)
+      // from wiping content types that were not fetched this run.
+      const reconcileTypeFilter = Array.isArray(reconcileTypes) && reconcileTypes.length
+        ? 'AND existing.vod_type = ANY($1::text[])'
+        : '';
       await client.query(`
         DELETE FROM user_provider_vod existing
         WHERE existing.provider_id IN (
@@ -958,7 +964,8 @@ const vodQueries = {
               AND incoming.stream_id = existing.stream_id
               AND incoming.vod_type = existing.vod_type
           )
-      `);
+          ${reconcileTypeFilter}
+      `, reconcileTypeFilter ? [reconcileTypes] : []);
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK');
@@ -968,7 +975,7 @@ const vodQueries = {
     }
   },
 
-  async upsertNetworkBatch(entries) {
+  async upsertNetworkBatch(entries, { reconcileTypes = null } = {}) {
     if (!entries.length) return;
     const dedupedEntries = Array.from(
       new Map(
@@ -1058,6 +1065,10 @@ const vodQueries = {
             canonical_content_id = COALESCE(EXCLUDED.canonical_content_id, network_vod.canonical_content_id)
         WHERE ${buildIsDistinctClause('network_vod', 'EXCLUDED', changedColumns)}
       `);
+      // Scope delete-missing to fetched vod_types only (see upsertBatch for rationale).
+      const reconcileTypeFilter = Array.isArray(reconcileTypes) && reconcileTypes.length
+        ? 'AND existing.vod_type = ANY($1::text[])'
+        : '';
       await client.query(`
         DELETE FROM network_vod existing
         WHERE existing.provider_network_id IN (
@@ -1071,7 +1082,8 @@ const vodQueries = {
               AND incoming.stream_id = existing.stream_id
               AND incoming.vod_type = existing.vod_type
           )
-      `);
+          ${reconcileTypeFilter}
+      `, reconcileTypeFilter ? [reconcileTypes] : []);
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK');
@@ -1081,11 +1093,19 @@ const vodQueries = {
     }
   },
 
-  async deleteByProvider(providerId) {
+  async deleteByProvider(providerId, { types = null } = {}) {
+    if (Array.isArray(types) && types.length) {
+      await pool.query('DELETE FROM user_provider_vod WHERE provider_id = $1 AND vod_type = ANY($2::text[])', [providerId, types]);
+      return;
+    }
     await pool.query('DELETE FROM user_provider_vod WHERE provider_id = $1', [providerId]);
   },
 
-  async deleteByNetwork(providerNetworkId) {
+  async deleteByNetwork(providerNetworkId, { types = null } = {}) {
+    if (Array.isArray(types) && types.length) {
+      await pool.query('DELETE FROM network_vod WHERE provider_network_id = $1 AND vod_type = ANY($2::text[])', [providerNetworkId, types]);
+      return;
+    }
     await pool.query('DELETE FROM network_vod WHERE provider_network_id = $1', [providerNetworkId]);
   },
 

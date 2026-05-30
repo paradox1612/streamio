@@ -1,6 +1,6 @@
 const fetch = require('node-fetch');
 const crypto = require('crypto');
-const { providerQueries, providerNetworkQueries, canonicalContentQueries, vodQueries, pool } = require('../db/queries');
+const { providerQueries, providerNetworkQueries, canonicalContentQueries, vodQueries, hostHealthQueries, pool } = require('../db/queries');
 const logger = require('../utils/logger');
 const cache = require('../utils/cache');
 const { normalizeTitle, parseMovieTitle, parseReleaseTitle, parseSeriesTitle } = require('../utils/titleNormalization');
@@ -343,10 +343,12 @@ const providerService = {
     try {
       const [liveCategoryMap, liveChannels] = await Promise.all([
         fetchCategoryMap(host, provider.username, provider.password, 'get_live_categories'),
-        xtreamRequest(host, provider.username, provider.password, 'get_live_streams').catch(() => []),
+        xtreamRequest(host, provider.username, provider.password, 'get_live_streams'),
       ]);
 
-      if (!Array.isArray(liveChannels)) return [];
+      if (!Array.isArray(liveChannels)) {
+        throw new Error('get_live_streams returned a non-array response');
+      }
 
       const liveStreams = liveChannels.map(ch => ({
         ...parseReleaseTitle(ch.name || String(ch.stream_id)),
@@ -369,8 +371,10 @@ const providerService = {
 
       return liveStreams;
     } catch (err) {
-      logger.warn(`Failed to fetch live streams for provider ${providerId}: ${err.message}`);
-      return [];
+      // Re-throw so callers can distinguish a fetch failure from a genuinely empty
+      // live catalog. Treating a failure as "0 channels" would let the reconcile
+      // pass wipe the existing live catalog.
+      throw new Error(`Failed to fetch live streams for provider ${providerId}: ${err.message}`);
     }
   },
 
@@ -378,8 +382,18 @@ const providerService = {
     const provider = await providerQueries.findByIdAndUser(providerId, userId);
     if (!provider) throw Object.assign(new Error('Provider not found'), { status: 404 });
 
-    const host = provider.active_host || provider.hosts[0];
+    // Prefer a host that the latest health check marks online over a possibly-stale
+    // active_host. A dead active_host (e.g. a rotated/expired mirror) would otherwise
+    // fail the whole refresh — which is the most common cause of "catalog went empty".
+    const healthRows = await hostHealthQueries.getByProvider(providerId).catch(() => []);
+    const onlineHost = Array.isArray(healthRows)
+      ? healthRows.find((row) => row.status === 'online')?.host_url
+      : null;
+    const host = onlineHost || provider.active_host || provider.hosts?.[0];
     if (!host) throw new Error('No host available');
+    if (onlineHost && onlineHost !== provider.active_host) {
+      logger.info(`refreshCatalog: using online host ${onlineHost} (active_host was ${provider.active_host || 'unset'})`);
+    }
 
     const progress = async (patch) => {
       if (!onProgress) return;
@@ -419,8 +433,9 @@ const providerService = {
       xtreamRequest(host, provider.username, provider.password, 'get_series'),
     ]);
 
+    const moviesOk = vodMoviesResult.status === 'fulfilled' && Array.isArray(vodMoviesResult.value);
     let vodMovies = [];
-    if (vodMoviesResult.status === 'fulfilled' && Array.isArray(vodMoviesResult.value)) {
+    if (moviesOk) {
       vodMovies = vodMoviesResult.value.map(m => ({
         ...parseMovieTitle(m.name || String(m.stream_id)),
         userId: provider.user_id,
@@ -435,10 +450,13 @@ const providerService = {
         remoteAddedAt: m.added ? parseInt(m.added, 10) : null,
       }));
       logger.info(`Fetched ${vodMovies.length} movies`);
+    } else {
+      logger.error(`[Catalog] get_vod_streams FAILED for provider ${providerId} ("${provider.name}"): ${vodMoviesResult.reason?.message || 'invalid response'} — existing movies will be preserved`);
     }
 
+    const seriesOk = vodSeriesResult.status === 'fulfilled' && Array.isArray(vodSeriesResult.value);
     let vodSeries = [];
-    if (vodSeriesResult.status === 'fulfilled' && Array.isArray(vodSeriesResult.value)) {
+    if (seriesOk) {
       vodSeries = vodSeriesResult.value.map(s => ({
         ...parseSeriesTitle(s.name || String(s.series_id)),
         userId: provider.user_id,
@@ -453,14 +471,30 @@ const providerService = {
         remoteAddedAt: s.last_modified ? parseInt(s.last_modified, 10) : null,
       }));
       logger.info(`Fetched ${vodSeries.length} series`);
+    } else {
+      logger.error(`[Catalog] get_series FAILED for provider ${providerId} ("${provider.name}"): ${vodSeriesResult.reason?.message || 'invalid response'} — existing series will be preserved`);
     }
 
     let liveStreams = [];
+    let liveOk = false;
     try {
       liveStreams = await providerService.getLiveStreams(providerId, userId);
+      liveOk = true;
       logger.info(`Fetched ${liveStreams.length} live channels`);
     } catch (err) {
-      logger.warn(`Failed to fetch live streams: ${err.message}`);
+      logger.error(`[Catalog] get_live_streams FAILED for provider ${providerId} ("${provider.name}"): ${err.message} — existing live channels will be preserved`);
+    }
+
+    // Only content types whose fetch SUCCEEDED are authoritative. Types that failed
+    // are intentionally excluded from the reconcile pass so their existing rows are
+    // never wiped on a transient host/VPN outage.
+    const fetchedTypes = [];
+    if (moviesOk) fetchedTypes.push('movie');
+    if (seriesOk) fetchedTypes.push('series');
+    if (liveOk) fetchedTypes.push('live');
+
+    if (fetchedTypes.length === 0) {
+      throw new Error(`Catalog refresh aborted for provider ${providerId}: every content fetch failed (movies, series, live). Existing catalog left untouched.`);
     }
 
     const all = [...vodMovies, ...vodSeries, ...liveStreams];
@@ -511,22 +545,30 @@ const providerService = {
       }
     }
 
-    if (all.length > 0) {
-      if (provider.network_id && !catalogVariant) {
-        // Shared network provider — write only to network_vod (one copy for all users).
-        // Remove any legacy per-user rows so they don't consume space or confuse queries.
-        await vodQueries.deleteByProvider(providerId);
-        await vodQueries.upsertNetworkBatch(resolvedEntries.map(entry => ({
-          ...entry,
-          providerNetworkId: provider.network_id,
-        })));
-      } else {
-        // Standalone or catalog-variant provider — write to per-user table.
-        await vodQueries.upsertBatch(resolvedEntries);
-      }
-    } else {
+    // Reconcile (insert/update + delete-missing) ONLY for the content types fetched
+    // this run. A type whose fetch failed is absent from `fetchedTypes`, so its existing
+    // rows are preserved instead of being deleted by the reconcile pass. (`fetchedTypes`
+    // is guaranteed non-empty here — an all-failed refresh already threw above.)
+    const hasEntries = resolvedEntries.length > 0;
+    if (provider.network_id && !catalogVariant) {
+      // Shared network provider — write only to network_vod (one copy for all users).
+      // Remove any legacy per-user rows so they don't consume space or confuse queries.
       await vodQueries.deleteByProvider(providerId);
-      if (provider.network_id && !catalogVariant) await vodQueries.deleteByNetwork(provider.network_id);
+      if (hasEntries) {
+        await vodQueries.upsertNetworkBatch(
+          resolvedEntries.map(entry => ({ ...entry, providerNetworkId: provider.network_id })),
+          { reconcileTypes: fetchedTypes }
+        );
+      } else {
+        // Provider returned 0 items for every fetched type — clear those types only.
+        await vodQueries.deleteByNetwork(provider.network_id, { types: fetchedTypes });
+      }
+    } else if (hasEntries) {
+      // Standalone or catalog-variant provider — write to per-user table.
+      await vodQueries.upsertBatch(resolvedEntries, { reconcileTypes: fetchedTypes });
+    } else {
+      // Provider returned 0 items for every fetched type — clear those types only.
+      await vodQueries.deleteByProvider(providerId, { types: fetchedTypes });
     }
 
     if (provider.network_id && !catalogVariant) await providerNetworkQueries.touchCatalogRefresh(provider.network_id);
@@ -547,6 +589,9 @@ const providerService = {
       series: vodSeries.length,
       live: liveStreams.length,
       total: all.length,
+      fetchedTypes,
+      failedTypes: ['movie', 'series', 'live'].filter((t) => !fetchedTypes.includes(t)),
+      partial: fetchedTypes.length < 3,
       providerNetworkId: provider.network_id || null,
       catalogVariant,
       incremental: provider.incremental_sync ? { resolved: toResolve.length, skipped: toPassThrough.length, watermark: newWatermark } : null,
