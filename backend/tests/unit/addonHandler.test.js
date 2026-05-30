@@ -353,6 +353,39 @@ describe('addonHandler handleStream', () => {
     expect(result.streams[0].url).toContain('/series/fifi/pw/135140.mkv');
   });
 
+  it('returns a stream per language variant for a series episode', async () => {
+    mockCache.get.mockReturnValue(null);
+    mockUserQueries.findByToken.mockResolvedValue({ id: 'user-1' });
+    mockProviderQueries.findByIdAndUser.mockResolvedValue({
+      id: 'provider-1',
+      user_id: 'user-1',
+      active_host: 'http://host-1.test',
+      hosts: ['http://host-1.test'],
+    });
+    // Three "From" entries (Hindi/Turkish/English) resolve to the same series; each has S1E1.
+    mockVodQueries.resolveByExternalIdForUser.mockResolvedValueOnce([
+      { provider_id: 'provider-1', raw_title: 'FROM (Hindi)', username: 'fifi', password: 'pw', stream_id: '10418', vod_type: 'series', active_host: 'http://host-1.test' },
+      { provider_id: 'provider-1', raw_title: 'From (Turkish)', username: 'fifi', password: 'pw', stream_id: '7596', vod_type: 'series', active_host: 'http://host-1.test' },
+      { provider_id: 'provider-1', raw_title: 'FROM (English)', username: 'fifi', password: 'pw', stream_id: '15968', vod_type: 'series', active_host: 'http://host-1.test' },
+    ]);
+    mockHostHealthService.getProviderHealth.mockResolvedValue([
+      { status: 'online', host_url: 'http://host-1.test', response_time_ms: 100 },
+    ]);
+    mockProviderService.getSeriesEpisodes.mockImplementation((host, u, p, sid) => Promise.resolve({
+      '1': [{ episode_num: '1', id: `ep-${sid}`, container_extension: 'mkv' }],
+    }));
+
+    const result = await handleStream('token-1', 'series', 'tt9813792:1:1');
+
+    const urls = result.streams.map((s) => s.url);
+    expect(urls).toContain('http://host-1.test/series/fifi/pw/ep-10418.mkv'); // Hindi
+    expect(urls).toContain('http://host-1.test/series/fifi/pw/ep-7596.mkv');  // Turkish
+    expect(urls).toContain('http://host-1.test/series/fifi/pw/ep-15968.mkv'); // English
+    expect(result.streams.map((s) => s.name)).toEqual(
+      expect.arrayContaining(['FROM (Hindi)', 'From (Turkish)', 'FROM (English)'])
+    );
+  });
+
   it('filters movie variants by the user language preferences', async () => {
     mockCache.get.mockReturnValue(null);
     mockUserQueries.findByToken.mockResolvedValue({

@@ -1158,59 +1158,62 @@ async function handleStream(token, type, id) {
           }
         }));
 
-        let chosenItem = null;
-        let ep = null;
+        // Collect EVERY matching entry that actually has the requested episode.
+        // Duplicate entries are usually language/quality variants (Hindi / Turkish /
+        // English, etc.), so surface them all as separate streams — mirroring how the
+        // movie path returns one stream per variant. (A request the first entry can't
+        // satisfy still resolves via the others, so this also covers season failover.)
+        const matchedVariants = [];
         for (const ce of candidateEpisodes) {
           if (!ce) continue;
           const seasonEps = ce.episodesObj?.[String(season)];
           if (!Array.isArray(seasonEps) || seasonEps.length === 0) continue;
           const match = seasonEps.find((e) => parseInt(e.episode_num) === episode);
           if (!match) continue;
-          chosenItem = ce.candidate;
-          ep = match;
-          break;
+          matchedVariants.push({ candidate: ce.candidate, ep: match });
         }
 
-        if (!chosenItem) {
+        if (matchedVariants.length === 0) {
           logger.warn(`S${season}E${episode} not found in any of ${seriesCandidates.length} matching series entr${seriesCandidates.length === 1 ? 'y' : 'ies'} for ${baseId}`);
           await cache.set('resolvedStreamsMiss', streamCacheKey, true);
           return { streams: [] };
         }
 
-        // Build playable URLs from the winning entry across its online hosts.
-        const { onlineHosts, fallbackHost } = await resolveHostsFor(chosenItem);
-
-        const epId = ep.id;
-        const epExt = ep.container_extension || 'mkv';
         const label = `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
-        const epUser = encodeURIComponent(chosenItem.username);
-        const epPass = encodeURIComponent(chosenItem.password);
+        const streams = [];
+        for (const { candidate, ep } of matchedVariants) {
+          const { onlineHosts, fallbackHost } = await resolveHostsFor(candidate);
+          const epId = ep.id;
+          const epExt = ep.container_extension || 'mkv';
+          const epUser = encodeURIComponent(candidate.username);
+          const epPass = encodeURIComponent(candidate.password);
+          // The raw title carries the language/quality (e.g. "FROM (Hindi)"), so it
+          // becomes the stream name and lets Stremio show one option per language.
+          const variantLabel = candidate.raw_title || 'StreamBridge';
 
-        // Return streams for each host
-        let streams = onlineHosts.map((host, idx) => {
-          const url = `${host.host_url}/series/${epUser}/${epPass}/${epId}.${epExt}`;
-          const timeLabel = host.response_time_ms ? `${host.response_time_ms}ms` : '?';
-          return {
-            url,
-            title: `${label} – StreamBridge (Host ${idx + 1}, ${timeLabel})`,
-            name: `SB-${idx + 1}`,
-            behaviorHints: { notWebReady: false },
-          };
-        });
+          if (onlineHosts.length === 0 && fallbackHost) {
+            streams.push({
+              url: `${fallbackHost}/series/${epUser}/${epPass}/${epId}.${epExt}`,
+              title: `${variantLabel} — ${label}`,
+              name: variantLabel,
+              behaviorHints: { notWebReady: false },
+            });
+            continue;
+          }
 
-        // Fallback if no health data
-        if (streams.length === 0 && fallbackHost) {
-          const url = `${fallbackHost}/series/${epUser}/${epPass}/${epId}.${epExt}`;
-          streams = [{
-            url,
-            title: `${label} – StreamBridge`,
-            name: 'SB',
-            behaviorHints: { notWebReady: false },
-          }];
+          streams.push(...onlineHosts.map((host, idx) => {
+            const timeLabel = host.response_time_ms ? `${host.response_time_ms}ms` : '?';
+            return {
+              url: `${host.host_url}/series/${epUser}/${epPass}/${epId}.${epExt}`,
+              title: `${variantLabel} — ${label} (Host ${idx + 1}, ${timeLabel})`,
+              name: variantLabel,
+              behaviorHints: { notWebReady: false },
+            };
+          }));
         }
 
-        if (chosenItem.access_source === 'free_access') {
-          await freeAccessService.recordResolvedStream(chosenItem.assignment_id);
+        if (matchedVariants[0].candidate.access_source === 'free_access') {
+          await freeAccessService.recordResolvedStream(matchedVariants[0].candidate.assignment_id);
         }
         const payload = { streams };
         await cache.set('resolvedStreams', streamCacheKey, payload);
