@@ -158,7 +158,12 @@ async function getEpgForProvider(providerId, userId) {
     return epgMap;
   } catch (err) {
     logger.warn(`Failed to fetch EPG for provider ${providerId}: ${err.message}`);
-    throw err;
+    // EPG is supplemental (now/next labels). Degrade gracefully: return an empty map and
+    // briefly negative-cache it so an EPG outage doesn't trigger a slow re-fetch on every
+    // live request. An EPG failure must never block channel listing or playback.
+    const emptyEpg = {};
+    await cache.set('epg', providerId, emptyEpg, 60);
+    return emptyEpg;
   }
 }
 

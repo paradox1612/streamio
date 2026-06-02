@@ -50,6 +50,7 @@ const NAMESPACE_TTLS = {
   freeAccessRuntimeSourceMiss: 10, // 10 sec
   tmdbTrending: 21600, // 6 hours
   vodBrowse: 300, // 5 min — invalidated on catalog refresh
+  tmdbSeason: 86400, // 24 hours — TMDB season episode metadata
 };
 
 /**
