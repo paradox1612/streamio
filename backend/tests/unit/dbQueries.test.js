@@ -47,6 +47,43 @@ describe('tmdbQueries movie matching', () => {
   });
 });
 
+describe('tmdbQueries clean_title (collapsed match key)', () => {
+  it('strictMatchMovie looks up clean_title, not normalized_title', async () => {
+    await tmdbQueries.strictMatchMovie('widowsbay', 2024);
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE clean_title = $1'),
+      ['widowsbay', 2024]
+    );
+  });
+
+  it('strictMatchSeries looks up clean_title', async () => {
+    await tmdbQueries.strictMatchSeries('widowsbay', 2024);
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE clean_title = $1'),
+      ['widowsbay', 2024]
+    );
+  });
+
+  it('upsertMovieBatch derives the collapsed clean_title from original_title', async () => {
+    await tmdbQueries.upsertMovieBatch([
+      { id: 1, original_title: "Widow's Bay", normalized_title: 'widow s bay' },
+    ]);
+    const [sql, values] = pool.query.mock.calls[0];
+    expect(sql).toContain('clean_title');
+    // INSERT column order: id, original_title, normalized_title, clean_title, ...
+    expect(values[3]).toBe('widowsbay');
+  });
+
+  it('upsertSeriesBatch derives the collapsed clean_title from original_title', async () => {
+    await tmdbQueries.upsertSeriesBatch([
+      { id: 2, original_title: 'Breaking Bad', normalized_title: 'breaking bad' },
+    ]);
+    const [sql, values] = pool.query.mock.calls[0];
+    expect(sql).toContain('clean_title');
+    expect(values[3]).toBe('breakingbad');
+  });
+});
+
 describe('tmdbQueries alias matching', () => {
   it('uses normalized_alias when the column exists', async () => {
     pool.query

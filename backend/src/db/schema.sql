@@ -208,6 +208,7 @@ CREATE TABLE IF NOT EXISTS tmdb_movies (
   id INTEGER PRIMARY KEY,
   original_title VARCHAR NOT NULL,
   normalized_title VARCHAR,
+  clean_title VARCHAR,
   release_year INTEGER,
   popularity FLOAT DEFAULT 0,
   poster_path VARCHAR,
@@ -222,12 +223,21 @@ CREATE TABLE IF NOT EXISTS tmdb_series (
   id INTEGER PRIMARY KEY,
   original_title VARCHAR NOT NULL,
   normalized_title VARCHAR,
+  clean_title VARCHAR,
   first_air_year INTEGER,
   popularity FLOAT DEFAULT 0,
   poster_path VARCHAR,
   overview TEXT,
   imdb_id VARCHAR
 );
+
+-- clean_title: collapsed, space-less match key (Sonarr/Radarr style) for the bulk
+-- matcher's strictMatch. Distinct from normalized_title (spaced) which the on-demand
+-- exactMatch path uses. Added post-launch — ALTERs cover already-provisioned DBs.
+ALTER TABLE tmdb_movies ADD COLUMN IF NOT EXISTS clean_title VARCHAR;
+ALTER TABLE tmdb_series ADD COLUMN IF NOT EXISTS clean_title VARCHAR;
+CREATE INDEX IF NOT EXISTS idx_tmdb_movies_clean_title ON tmdb_movies(clean_title);
+CREATE INDEX IF NOT EXISTS idx_tmdb_series_clean_title ON tmdb_series(clean_title);
 
 -- ─────────────────────────────────────────
 -- Global match cache (shared across all users)
