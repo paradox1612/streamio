@@ -25,8 +25,12 @@ async function backfillTmdb(table) {
   let updated = 0;
   let lastId = 0;
   for (;;) {
+    // Only rows that still need a clean_title. After the first full backfill every row
+    // is populated (the upserts keep it current), so a re-triggered migration finds zero
+    // rows and returns immediately instead of re-scanning the whole TMDB export. The
+    // idx_*_clean_title index serves this IS NULL lookup.
     const { rows } = await pool.query(
-      `SELECT id, original_title FROM ${table} WHERE id > $1 ORDER BY id ASC LIMIT $2`,
+      `SELECT id, original_title FROM ${table} WHERE clean_title IS NULL AND id > $1 ORDER BY id ASC LIMIT $2`,
       [lastId, BATCH]
     );
     if (rows.length === 0) break;
