@@ -3,6 +3,10 @@ const { from } = require('pg-copy-streams');
 const { pipeline } = require('stream/promises');
 const { Transform } = require('stream');
 const { normalizeTitle } = require('../utils/titleNormalization');
+// Collapsed "clean title" form (Sonarr/Radarr-style: lowercase, fold diacritics, strip
+// leading article, remove ALL non-alphanumerics → "Widow's Bay" → "widowsbay"). Used as
+// the exact-match key for tmdb_*.clean_title and content_aliases.normalized_alias.
+const { normalizeTitle: normalizeTitleStrict } = require('../utils/releaseParser');
 
 /**
  * Resolves hosts for a user_providers row aliased as `p`.
@@ -1613,7 +1617,10 @@ const canonicalContentQueries = {
         providerNetworkId,
         providerId,
         rawTitle,
-        normalizedTitle || canonicalNormalizedTitle || null,
+        // normalized_alias is the bulk matcher's alias lookup key — store the collapsed
+        // form so it matches the release parser's clean title (the spaced normalized_title
+        // is kept in its own column below for any space-preserving use).
+        normalizeTitleStrict(rawTitle || '') || null,
         normalizedTitle || null,
         canonicalTitle || null,
         canonicalNormalizedTitle || null,
@@ -1707,7 +1714,8 @@ const canonicalContentQueries = {
           aVals.push(`($${ai++},$${ai++},$${ai++},$${ai++},$${ai++},$${ai++},$${ai++},$${ai++},$${ai++},$${ai++})`);
           aParams.push(
             providerNetworkId, providerId,
-            a.rawTitle, a.normalizedTitle || a.canonicalNormalizedTitle, a.normalizedTitle, a.canonicalTitle,
+            // normalized_alias = collapsed clean-title form (bulk matcher lookup key)
+            a.rawTitle, normalizeTitleStrict(a.rawTitle || ''), a.normalizedTitle, a.canonicalTitle,
             a.canonicalNormalizedTitle, a.titleYear, a.vodType, a.canonicalContentId
           );
         }
@@ -1806,17 +1814,18 @@ const watchHistoryQueries = {
 const tmdbQueries = {
   async upsertMovie({ id, original_title, normalized_title, release_year, popularity, poster_path, overview, imdb_id }) {
     await pool.query(
-      `INSERT INTO tmdb_movies (id, original_title, normalized_title, release_year, popularity, poster_path, overview, imdb_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO tmdb_movies (id, original_title, normalized_title, clean_title, release_year, popularity, poster_path, overview, imdb_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (id) DO UPDATE SET
          original_title = EXCLUDED.original_title,
          normalized_title = EXCLUDED.normalized_title,
+         clean_title = EXCLUDED.clean_title,
          release_year = EXCLUDED.release_year,
          popularity = EXCLUDED.popularity,
          poster_path = EXCLUDED.poster_path,
          overview = EXCLUDED.overview,
          imdb_id = EXCLUDED.imdb_id`,
-      [id, original_title, normalized_title, release_year, popularity, poster_path, overview, imdb_id]
+      [id, original_title, normalized_title, normalizeTitleStrict(original_title || '') || null, release_year, popularity, poster_path, overview, imdb_id]
     );
   },
 
@@ -1824,25 +1833,27 @@ const tmdbQueries = {
     if (!entries.length) return;
     const values = [];
     const placeholders = entries.map((e, i) => {
-      const base = i * 8;
+      const base = i * 9;
       values.push(
         e.id,
         e.original_title,
         e.normalized_title || null,
+        normalizeTitleStrict(e.original_title || '') || null,
         e.release_year || null,
         e.popularity || 0,
         e.poster_path || null,
         e.overview || null,
         e.imdb_id || null
       );
-      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`;
+      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9})`;
     });
     await pool.query(
-      `INSERT INTO tmdb_movies (id, original_title, normalized_title, release_year, popularity, poster_path, overview, imdb_id)
+      `INSERT INTO tmdb_movies (id, original_title, normalized_title, clean_title, release_year, popularity, poster_path, overview, imdb_id)
        VALUES ${placeholders.join(', ')}
        ON CONFLICT (id) DO UPDATE SET
          original_title = EXCLUDED.original_title,
          normalized_title = EXCLUDED.normalized_title,
+         clean_title = EXCLUDED.clean_title,
          release_year = EXCLUDED.release_year,
          popularity = EXCLUDED.popularity,
          poster_path = EXCLUDED.poster_path,
@@ -1854,17 +1865,18 @@ const tmdbQueries = {
 
   async upsertSeries({ id, original_title, normalized_title, first_air_year, popularity, poster_path, overview, imdb_id }) {
     await pool.query(
-      `INSERT INTO tmdb_series (id, original_title, normalized_title, first_air_year, popularity, poster_path, overview, imdb_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO tmdb_series (id, original_title, normalized_title, clean_title, first_air_year, popularity, poster_path, overview, imdb_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (id) DO UPDATE SET
          original_title = EXCLUDED.original_title,
          normalized_title = EXCLUDED.normalized_title,
+         clean_title = EXCLUDED.clean_title,
          first_air_year = EXCLUDED.first_air_year,
          popularity = EXCLUDED.popularity,
          poster_path = EXCLUDED.poster_path,
          overview = EXCLUDED.overview,
          imdb_id = COALESCE(tmdb_series.imdb_id, EXCLUDED.imdb_id)`,
-      [id, original_title, normalized_title, first_air_year, popularity, poster_path, overview, imdb_id || null]
+      [id, original_title, normalized_title, normalizeTitleStrict(original_title || '') || null, first_air_year, popularity, poster_path, overview, imdb_id || null]
     );
   },
 
@@ -1872,25 +1884,27 @@ const tmdbQueries = {
     if (!entries.length) return;
     const values = [];
     const placeholders = entries.map((e, i) => {
-      const base = i * 8;
+      const base = i * 9;
       values.push(
         e.id,
         e.original_title,
         e.normalized_title || null,
+        normalizeTitleStrict(e.original_title || '') || null,
         e.first_air_year || null,
         e.popularity || 0,
         e.poster_path || null,
         e.overview || null,
         e.imdb_id || null
       );
-      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`;
+      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9})`;
     });
     await pool.query(
-      `INSERT INTO tmdb_series (id, original_title, normalized_title, first_air_year, popularity, poster_path, overview, imdb_id)
+      `INSERT INTO tmdb_series (id, original_title, normalized_title, clean_title, first_air_year, popularity, poster_path, overview, imdb_id)
        VALUES ${placeholders.join(', ')}
        ON CONFLICT (id) DO UPDATE SET
          original_title = EXCLUDED.original_title,
          normalized_title = EXCLUDED.normalized_title,
+         clean_title = EXCLUDED.clean_title,
          first_air_year = EXCLUDED.first_air_year,
          popularity = EXCLUDED.popularity,
          poster_path = EXCLUDED.poster_path,
@@ -1921,10 +1935,13 @@ const tmdbQueries = {
   // is only ever called with a normalized title from the release parser.
   async strictMatchMovie(normalizedTitle, year) {
     if (!normalizedTitle) return null;
+    // Match against clean_title — the collapsed, space-less form (Sonarr/Radarr style)
+    // that the release parser produces. normalized_title (spaced) is reserved for the
+    // on-demand exactMatch path, so the two matchers never fight over one column.
     let query = `
       SELECT id, original_title, imdb_id, popularity, release_year, 1 AS score
       FROM tmdb_movies
-      WHERE normalized_title = $1
+      WHERE clean_title = $1
     `;
     const params = [normalizedTitle];
     if (year) {
@@ -1941,10 +1958,11 @@ const tmdbQueries = {
 
   async strictMatchSeries(normalizedTitle, year) {
     if (!normalizedTitle) return null;
+    // Match against clean_title (collapsed form), same as strictMatchMovie.
     let query = `
       SELECT id, original_title, popularity, first_air_year, 1 AS score
       FROM tmdb_series
-      WHERE normalized_title = $1
+      WHERE clean_title = $1
     `;
     const params = [normalizedTitle];
     if (year) {

@@ -58,6 +58,11 @@ async function migrate() {
     const migrateMatcherV2 = require('./migrate_matcher_v2');
     await migrateMatcherV2();
 
+    // clean_title: collapsed match key for tmdb tables + content_aliases backfill.
+    // Runs last so it overwrites any spaced normalized_alias set by matcher_v2.
+    const migrateCleanTitle = require('./migrate_clean_title');
+    await migrateCleanTitle();
+
     console.log('All migrations complete.');
   } catch (err) {
     try {
