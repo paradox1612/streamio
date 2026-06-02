@@ -15,6 +15,8 @@ const mockTmdbQueries = {
   strictMatchMovie: jest.fn(),
   strictMatchSeries: jest.fn(),
   aliasMatch: jest.fn(),
+  getCleanTitleCandidates: jest.fn().mockResolvedValue([]),
+  setTmdbYear: jest.fn(),
 };
 const mockMatchQueries = {
   upsert: jest.fn(),
@@ -120,7 +122,7 @@ describe('tmdbService – runMatching', () => {
     const result = await runMatching(1);
 
     expect(mockVodQueries.getUnmatchedForMatching).toHaveBeenCalledWith(1, { enrichMissingImdb: true });
-    expect(fetch).toHaveBeenCalledWith('https://api.themoviedb.org/3/movie/603/external_ids?api_key=test-key');
+    expect(fetch).toHaveBeenCalledWith('https://api.themoviedb.org/3/movie/603?api_key=test-key&append_to_response=external_ids');
     expect(mockMatchQueries.upsert).toHaveBeenCalledWith({
       rawTitle: 'The Matrix (1999)',
       tmdbId: 603,
@@ -145,7 +147,7 @@ describe('tmdbService – runMatching', () => {
     const result = await runMatching(1);
 
     expect(mockVodQueries.getUnmatchedForMatching).toHaveBeenCalledWith(1, { enrichMissingImdb: true });
-    expect(fetch).toHaveBeenCalledWith('https://api.themoviedb.org/3/tv/1396/external_ids?api_key=test-key');
+    expect(fetch).toHaveBeenCalledWith('https://api.themoviedb.org/3/tv/1396?api_key=test-key&append_to_response=external_ids');
     expect(mockMatchQueries.upsert).toHaveBeenCalledWith({
       rawTitle: 'Breaking Bad',
       tmdbId: 1396,
@@ -198,5 +200,42 @@ describe('tmdbService – runMatching', () => {
       confidenceScore: 0,
     });
     expect(result).toMatchObject({ matched: 0, enriched: 0, failed: 1, total: 1, batches: 1 });
+  });
+
+  it('disambiguates an ambiguous title by enriching candidate years from TMDB', async () => {
+    mockVodQueries.getUnmatchedForMatching
+      .mockResolvedValueOnce([
+        { raw_title: 'Obsession (2026)', vod_type: 'movie', tmdb_id: null, imdb_id: null, confidence_score: null },
+      ])
+      .mockResolvedValueOnce([]);
+
+    // First strict (year window) finds nothing because the local candidates have no year;
+    // after enriching their years the retry resolves to the 2026 film.
+    mockTmdbQueries.strictMatchMovie
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 999, imdb_id: 'tt2026', score: 1 });
+    mockTmdbQueries.aliasMatch.mockResolvedValue(null);
+    mockTmdbQueries.getCleanTitleCandidates.mockResolvedValue([
+      { id: 1, year: null },
+      { id: 2, year: null },
+    ]);
+    fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ imdb_id: 'tt2026', release_date: '2026-05-01' }),
+    });
+
+    const result = await runMatching(1);
+
+    // Candidate years were filled from TMDB (reusing the detail call)...
+    expect(mockTmdbQueries.setTmdbYear).toHaveBeenCalledWith('movie', 1, 2026);
+    expect(mockTmdbQueries.setTmdbYear).toHaveBeenCalledWith('movie', 2, 2026);
+    // ...and the retried strict match (year window) resolved the right film.
+    expect(mockTmdbQueries.strictMatchMovie).toHaveBeenNthCalledWith(2, 'obsession', 2026);
+    expect(mockMatchQueries.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      rawTitle: 'Obsession (2026)',
+      tmdbId: 999,
+      tmdbType: 'movie',
+    }));
+    expect(result).toMatchObject({ matched: 1, failed: 0, total: 1 });
   });
 });

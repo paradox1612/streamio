@@ -20,6 +20,11 @@ const CONFIDENCE_THRESHOLD = 0.6;
 // Leave MATCHER_FUZZY_FALLBACK=true only to fall back to the legacy loose
 // matcher when v2 returns no result — never to override a v2 rejection.
 const MATCHER_FUZZY_FALLBACK = process.env.MATCHER_FUZZY_FALLBACK === 'true';
+// When an ambiguous title (many same-clean_title rows) can't be disambiguated because the
+// local rows lack a year, fill the candidates' years from TMDB and retry. ON by default;
+// set MATCHER_YEAR_ENRICH=false to disable. Capped per title to bound API calls.
+const MATCHER_YEAR_ENRICH = process.env.MATCHER_YEAR_ENRICH !== 'false';
+const MAX_AMBIGUOUS_ENRICH = parseInt(process.env.TMDB_MAX_AMBIGUOUS_ENRICH || '25', 10);
 const MATCH_CONCURRENCY = parseInt(process.env.TMDB_MATCH_CONCURRENCY || '2', 10);
 const MATCH_BATCH_SIZE = parseInt(process.env.TMDB_MATCH_BATCH_SIZE || '1000', 10);
 const MATCH_BATCH_PAUSE_MS = parseInt(process.env.TMDB_MATCH_BATCH_PAUSE_MS || '250', 10);
@@ -125,6 +130,50 @@ async function fetchImdbIdFromApi(tmdbType, tmdbId, fallbackImdbId = null) {
   }
 }
 
+// Fetch imdb_id AND the release/first-air year in ONE call. The full detail endpoint we
+// already hit for enrichment carries the date too — so this captures the year we were
+// previously discarding, with no extra request.
+async function fetchTmdbDetailsFromApi(tmdbType, tmdbId) {
+  if (!TMDB_API_KEY || !tmdbId) return { imdbId: null, year: null };
+  const path = tmdbType === 'series' ? 'tv' : 'movie';
+  try {
+    const res = await fetch(`https://api.themoviedb.org/3/${path}/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=external_ids`);
+    if (!res.ok) return { imdbId: null, year: null };
+    const data = await res.json();
+    const dateStr = tmdbType === 'series' ? data.first_air_date : data.release_date;
+    const year = dateStr ? (parseInt(String(dateStr).split('-')[0], 10) || null) : null;
+    return { imdbId: data.imdb_id || data.external_ids?.imdb_id || null, year };
+  } catch (_) {
+    return { imdbId: null, year: null };
+  }
+}
+
+// Disambiguation helper: when a title is ambiguous (>1 candidate sharing the clean_title)
+// the local rows often just lack a year, so the year window can't pick one. Fill the
+// missing years from TMDB — reusing the detail call above, capped at MAX_AMBIGUOUS_ENRICH
+// and rate-limited. DB-cached: once a candidate's year is stored it is never re-fetched,
+// so this converges and re-runs are cheap.
+async function enrichCandidateYears(cleanTitle, vodType) {
+  if (!MATCHER_YEAR_ENRICH || !TMDB_API_KEY || !cleanTitle) return 0;
+  const candidates = await tmdbQueries.getCleanTitleCandidates(cleanTitle, vodType);
+  if (candidates.length <= 1) return 0; // unique — strict already resolves it
+  const missing = candidates.filter((c) => c.year == null).slice(0, MAX_AMBIGUOUS_ENRICH);
+  if (missing.length === 0) return 0; // already enriched
+  let filled = 0;
+  for (const c of missing) {
+    await waitForAddonCapacity();
+    const { year } = await fetchTmdbDetailsFromApi(vodType, c.id);
+    if (year) {
+      await tmdbQueries.setTmdbYear(vodType, c.id, year);
+      filled++;
+    }
+  }
+  if (filled > 0) {
+    logger.info(`Year-enriched ${filled}/${missing.length} ambiguous "${cleanTitle}" (${vodType}) candidates`);
+  }
+  return filled;
+}
+
 /**
  * Strict matcher (v2):
  *   1. Parse raw title with the Sonarr-style release parser.
@@ -161,6 +210,18 @@ async function findBestMatch(rawTitle, vodType) {
   // 1. Strict exact match (type + year + unique candidate)
   const strict = await strictFn(normalized, year);
   if (strict) return { ...strict, match_source: 'strict_exact' };
+
+  // 1b. Ambiguous + we have a year, but the local candidates may simply be missing their
+  //     release year (so the year window matched nothing). Fill the candidates' years from
+  //     TMDB (reusing the detail call) and retry once — this is what lets "Obsession (2026)"
+  //     resolve to the 2026 film instead of colliding with the 1976 one.
+  if (year) {
+    const filled = await enrichCandidateYears(normalized, effectiveType);
+    if (filled > 0) {
+      const enriched = await strictFn(normalized, year);
+      if (enriched) return { ...enriched, match_source: 'strict_exact_year_enriched' };
+    }
+  }
 
   // 2. Alias match (localized / AKA / scene)
   const alias = await tmdbQueries.aliasMatch(normalized, effectiveType, year);
@@ -227,7 +288,10 @@ async function processMatchingBatch(unmatched, { imdbCache, concurrency, enrichM
       const cacheKey = `${vod_type}:${tmdb_id}`;
       let enrichedImdbId = imdbCache.get(cacheKey);
       if (enrichedImdbId === undefined) {
-        enrichedImdbId = await fetchImdbIdFromApi(vod_type, tmdb_id);
+        // One detail call gets imdb_id AND the year — capture both (was discarding the year).
+        const det = await fetchTmdbDetailsFromApi(vod_type, tmdb_id);
+        enrichedImdbId = det.imdbId;
+        if (det.year) await tmdbQueries.setTmdbYear(vod_type, tmdb_id, det.year);
         imdbCache.set(cacheKey, enrichedImdbId);
       }
       if (enrichedImdbId) {
@@ -256,11 +320,9 @@ async function processMatchingBatch(unmatched, { imdbCache, concurrency, enrichM
         if (enrichMissingImdb) {
           resolvedImdbId = imdbCache.get(cacheKey);
           if (resolvedImdbId === undefined) {
-            resolvedImdbId = await fetchImdbIdFromApi(
-              resolvedType,
-              result.id,
-              result.imdb_id || null
-            );
+            const det = await fetchTmdbDetailsFromApi(resolvedType, result.id);
+            resolvedImdbId = det.imdbId || result.imdb_id || null;
+            if (det.year) await tmdbQueries.setTmdbYear(resolvedType, result.id, det.year);
             imdbCache.set(cacheKey, resolvedImdbId);
           }
         }
