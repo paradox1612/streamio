@@ -390,6 +390,7 @@ jobs:
           helm upgrade --install "$RELEASE_NAME" ./deployment/helm/streambridge \
             --namespace "$RELEASE_NAMESPACE" \
             --create-namespace \
+            --timeout 20m \
             -f "$VALUES_FILE" \
             --set-string frontend.image.tag="$FRONTEND_TAG" \
             --set-string backend.image.tag="$BACKEND_TAG" \
