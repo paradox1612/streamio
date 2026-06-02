@@ -1232,16 +1232,27 @@ const vodQueries = {
     if (type) { query += ` AND v.vod_type = $${idx++}`; params.push(type); }
     if (search) {
       const normalizedSearch = normalizeTitle(search);
+      // Also compare a fully-collapsed form (letters+digits only) so punctuation/spacing
+      // differences don't hide matches — e.g. "Widows Bay" finds "Widow's Bay".
+      const collapsedSearch = String(search).toLowerCase().replace(/[^a-z0-9]+/g, '');
+      const likeParam = idx;
+      const collapsedParam = idx + 1;
       query += ` AND (
-        v.raw_title ILIKE $${idx} OR
-        v.normalized_title ILIKE $${idx} OR
-        m.raw_title ILIKE $${idx} OR
-        cc.canonical_normalized_title ILIKE $${idx++}
+        v.raw_title ILIKE $${likeParam} OR
+        v.normalized_title ILIKE $${likeParam} OR
+        m.raw_title ILIKE $${likeParam} OR
+        cc.canonical_normalized_title ILIKE $${likeParam}
+        OR ($${collapsedParam} <> '' AND regexp_replace(lower(v.raw_title), '[^a-z0-9]', '', 'g') LIKE '%' || $${collapsedParam} || '%')
       )`;
-      params.push(`%${normalizedSearch || search}%`);
+      params.push(`%${normalizedSearch || search}%`, collapsedSearch);
+      idx += 2;
     }
     if (matched === true) { query += ` AND (m.tmdb_id IS NOT NULL OR cc.tmdb_id IS NOT NULL)`; }
-    if (matched === false) { query += ` AND (m.tmdb_id IS NULL AND cc.tmdb_id IS NULL AND m.id IS NOT NULL)`; }
+    // "Unmatched" = no external id from either matched_content or canonical_content.
+    // Do NOT also require a matched_content row to exist (m.id IS NOT NULL) — a freshly
+    // ingested title that was never run through the matcher has no row yet and would
+    // otherwise vanish from both matched and unmatched views.
+    if (matched === false) { query += ` AND (m.tmdb_id IS NULL AND cc.tmdb_id IS NULL)`; }
     if (category) { query += ` AND v.category = $${idx++}`; params.push(category); }
 
     let orderBy = `
@@ -1281,16 +1292,23 @@ const vodQueries = {
     if (type) { query += ` AND v.vod_type = $${idx++}`; params.push(type); }
     if (search) {
       const normalizedSearch = normalizeTitle(search);
+      // Mirror getByProvider: collapsed-form comparison so "Widows Bay" finds "Widow's Bay".
+      const collapsedSearch = String(search).toLowerCase().replace(/[^a-z0-9]+/g, '');
+      const likeParam = idx;
+      const collapsedParam = idx + 1;
       query += ` AND (
-        v.raw_title ILIKE $${idx} OR
-        v.normalized_title ILIKE $${idx} OR
-        m.raw_title ILIKE $${idx} OR
-        cc.canonical_normalized_title ILIKE $${idx++}
+        v.raw_title ILIKE $${likeParam} OR
+        v.normalized_title ILIKE $${likeParam} OR
+        m.raw_title ILIKE $${likeParam} OR
+        cc.canonical_normalized_title ILIKE $${likeParam}
+        OR ($${collapsedParam} <> '' AND regexp_replace(lower(v.raw_title), '[^a-z0-9]', '', 'g') LIKE '%' || $${collapsedParam} || '%')
       )`;
-      params.push(`%${normalizedSearch || search}%`);
+      params.push(`%${normalizedSearch || search}%`, collapsedSearch);
+      idx += 2;
     }
     if (matched === true) { query += ' AND (m.tmdb_id IS NOT NULL OR cc.tmdb_id IS NOT NULL)'; }
-    if (matched === false) { query += ' AND ((m.tmdb_id IS NULL AND cc.tmdb_id IS NULL) AND m.id IS NOT NULL)'; }
+    // Count rows with no external id as unmatched even if they have no matched_content row.
+    if (matched === false) { query += ' AND (m.tmdb_id IS NULL AND cc.tmdb_id IS NULL)'; }
     if (category) { query += ` AND v.category = $${idx++}`; params.push(category); }
 
     const { rows } = await pool.query(query, params);

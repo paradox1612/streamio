@@ -56,7 +56,7 @@ describe('freeAccessService.getActiveSourceForUser', () => {
             status: 'Active',
             maxConnections: 1,
             activeConnections: 0,
-            expiresAt: '2026-05-01T00:00:00.000Z',
+            expiresAt: '2099-01-01T00:00:00.000Z',
           },
         };
       }
@@ -102,7 +102,7 @@ describe('freeAccessService.getActiveSourceForUser', () => {
         status: 'Active',
         maxConnections: 2,
         activeConnections: 0,
-        expiresAt: '2026-05-01T00:00:00.000Z',
+        expiresAt: '2099-01-01T00:00:00.000Z',
       },
     });
 

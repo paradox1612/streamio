@@ -316,7 +316,10 @@ router.get('/search', async (req, res) => {
         vodQueries.getByProvider(p.id, {
           type: vodType,
           page: 1,
-          limit: pageSize,
+          // Fetch enough rows per provider to fill the requested page after the merge.
+          // With only `pageSize` rows, page 2+ slices past the end of a single provider's
+          // results and returns empty even when more matches exist (mirrors /catalog).
+          limit: pageSize * page,
           search: query,
         }).catch(() => [])
       )

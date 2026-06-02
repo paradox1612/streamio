@@ -114,4 +114,51 @@ describe('hostHealthService.checkProvider', () => {
       status: 'online',
     });
   });
+
+  it('preserves the last-known-good host on a single all-failed cycle (hysteresis)', async () => {
+    // Previous snapshot: the active host was online (so it is not in previousOffline).
+    mockHostHealthQueries.getByProvider.mockResolvedValue([
+      { host_url: 'http://host-1.test', status: 'online' },
+    ]);
+    // This cycle: the host returns 5xx on both probe attempts.
+    fetch.mockResolvedValue(createJsonResponse({ error: 'down' }, 500));
+
+    await hostHealthService.checkProvider({
+      id: 'provider-1',
+      name: 'Provider 1',
+      hosts: ['http://host-1.test'],
+      active_host: 'http://host-1.test',
+      username: 'alice',
+      password: 'secret',
+    }, { force: true });
+
+    // Don't demote on the first all-failed cycle — a transient blip must not strand
+    // playback (the background check only runs hourly). Keep the last-known-good host.
+    expect(mockProviderQueries.updateHealth).toHaveBeenCalledWith('provider-1', {
+      activeHost: 'http://host-1.test',
+      status: 'online',
+    });
+  });
+
+  it('demotes to offline when the failed host was already offline at the previous check', async () => {
+    // Previous snapshot already had the host offline → second consecutive failure demotes.
+    mockHostHealthQueries.getByProvider.mockResolvedValue([
+      { host_url: 'http://host-1.test', status: 'offline' },
+    ]);
+    fetch.mockResolvedValue(createJsonResponse({ error: 'down' }, 500));
+
+    await hostHealthService.checkProvider({
+      id: 'provider-1',
+      name: 'Provider 1',
+      hosts: ['http://host-1.test'],
+      active_host: 'http://host-1.test',
+      username: 'alice',
+      password: 'secret',
+    }, { force: true });
+
+    expect(mockProviderQueries.updateHealth).toHaveBeenCalledWith('provider-1', {
+      activeHost: null,
+      status: 'offline',
+    });
+  });
 });

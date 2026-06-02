@@ -166,22 +166,26 @@ async function xtreamRequest(host, username, password, action, extraParams = '')
     try {
       const res = await fetch(url, { signal: controller.signal });
 
-      if (res.status === 401 || res.status === 403) throw new Error(`HTTP ${res.status}`);
-      if (!res.ok && res.status >= 500) {
-        if (attempt < maxRetries - 1) {
-          const delay = backoffs[attempt];
-          await new Promise(r => setTimeout(r, delay));
-          continue;
-        }
-        throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const err = new Error(`HTTP ${res.status}`);
+        // Only 5xx is worth retrying. 4xx (incl. 401/403 bad credentials, 404) is
+        // deterministic — retrying just wastes ~7s of backoff before the same failure.
+        if (res.status < 500) err.noRetry = true;
+        throw err;
       }
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const raw = await res.text();
-      const data = raw ? JSON.parse(raw) : null;
-      return data;
+      try {
+        return raw ? JSON.parse(raw) : null;
+      } catch (parseErr) {
+        // A non-JSON 200 body (HTML interstitial / captive portal / "locked" page) won't
+        // become valid on retry. Fail fast — and propagate so callers treat it as a real
+        // failure rather than silently returning empty data.
+        parseErr.noRetry = true;
+        throw parseErr;
+      }
     } catch (err) {
-      if (attempt < maxRetries - 1) {
+      if (!err.noRetry && attempt < maxRetries - 1) {
         const delay = backoffs[attempt];
         await new Promise(r => setTimeout(r, delay));
         continue;
@@ -235,8 +239,12 @@ async function fetchCategoryMap(host, username, password, action) {
       }
     });
     return map;
-  } catch (_) {
-    return {};
+  } catch (err) {
+    // Don't swallow a failed category fetch into an empty map — that would silently
+    // re-stamp every catalog item as "Unknown" and overwrite good categories in the DB.
+    // Throw so the caller preserves the existing catalog instead of corrupting it.
+    logger.warn(`Failed to fetch category map (${action}): ${err.message}`);
+    throw err;
   }
 }
 
@@ -609,8 +617,9 @@ const providerService = {
       xtreamRequest(host, username, password, 'get_series'),
     ]);
 
+    const moviesOk = vodMoviesResult.status === 'fulfilled' && Array.isArray(vodMoviesResult.value);
     let vodMovies = [];
-    if (vodMoviesResult.status === 'fulfilled' && Array.isArray(vodMoviesResult.value)) {
+    if (moviesOk) {
       vodMovies = vodMoviesResult.value.map(m => ({
         ...parseMovieTitle(m.name || String(m.stream_id)),
         providerGroupId,
@@ -624,8 +633,9 @@ const providerService = {
       }));
     }
 
+    const seriesOk = vodSeriesResult.status === 'fulfilled' && Array.isArray(vodSeriesResult.value);
     let vodSeries = [];
-    if (vodSeriesResult.status === 'fulfilled' && Array.isArray(vodSeriesResult.value)) {
+    if (seriesOk) {
       vodSeries = vodSeriesResult.value.map(s => ({
         ...parseSeriesTitle(s.name || String(s.series_id)),
         providerGroupId,
@@ -639,16 +649,21 @@ const providerService = {
       }));
     }
 
-    return { movies: vodMovies, series: vodSeries };
+    // moviesOk/seriesOk let the caller avoid wiping a catalog when a fetch failed
+    // transiently (vs. genuinely returned no items).
+    return { movies: vodMovies, series: vodSeries, moviesOk, seriesOk };
   },
 
   async getSeriesEpisodes(host, username, password, seriesId) {
     try {
       const data = await xtreamRequest(host, username, password, 'get_series_info', `&series_id=${seriesId}`);
+      // A successful request with no episodes legitimately returns {} (genuinely empty
+      // series). Only a thrown error below signals a *failed* fetch — callers must be
+      // able to tell the two apart so a transient failure is never cached as "no episodes".
       return data?.episodes || {};
     } catch (err) {
       logger.warn(`Failed to get series info for ${seriesId}: ${err.message}`);
-      return {};
+      throw err;
     }
   },
 

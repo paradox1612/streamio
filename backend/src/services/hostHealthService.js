@@ -16,32 +16,49 @@ function isAuthenticatedXtreamResponse(data) {
 
 async function pingHost(host, username, password) {
   const url = `${host}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
-  const start = Date.now();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PING_TIMEOUT);
-  try {
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timer);
-    const responseTime = Date.now() - start;
-    if (!res.ok) {
-      return { status: 'offline', responseTimeMs: responseTime };
-    }
-
-    let data = null;
+  // Probe up to twice so a single transient blip (a fast network error or a 5xx) doesn't
+  // mark an otherwise-healthy host offline. Deterministic outcomes (4xx, unauthenticated
+  // response) and timeouts fail fast — retrying those would only add latency.
+  const maxAttempts = 2;
+  let lastResponseTime = PING_TIMEOUT;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const start = Date.now();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PING_TIMEOUT);
     try {
-      data = await res.json();
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      lastResponseTime = Date.now() - start;
+      if (res.ok) {
+        let data = null;
+        try {
+          data = await res.json();
+        } catch (err) {
+          data = null;
+        }
+        if (isAuthenticatedXtreamResponse(data)) {
+          return { status: 'online', responseTimeMs: lastResponseTime };
+        }
+        // Reachable but unauthenticated / non-JSON — deterministic, don't retry.
+        return { status: 'offline', responseTimeMs: lastResponseTime };
+      }
+      // 4xx is deterministic (bad creds/URL); only a 5xx is worth a retry.
+      if (res.status < 500) {
+        return { status: 'offline', responseTimeMs: lastResponseTime };
+      }
     } catch (err) {
-      return { status: 'offline', responseTimeMs: responseTime };
+      clearTimeout(timer);
+      if (err.name === 'AbortError') {
+        // Timed out — already slow; don't double the latency by retrying.
+        return { status: 'offline', responseTimeMs: PING_TIMEOUT };
+      }
+      // Fast network error (ECONNRESET / ECONNREFUSED / DNS) — fall through and retry once.
     }
-
-    if (isAuthenticatedXtreamResponse(data)) {
-      return { status: 'online', responseTimeMs: responseTime };
+    if (attempt < maxAttempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
-    return { status: 'offline', responseTimeMs: responseTime };
-  } catch (err) {
-    clearTimeout(timer);
-    return { status: 'offline', responseTimeMs: PING_TIMEOUT };
   }
+  return { status: 'offline', responseTimeMs: lastResponseTime };
 }
 
 const hostHealthService = {
@@ -122,9 +139,21 @@ const hostHealthService = {
       }
     }
 
+    // Hysteresis: don't demote a provider on a single all-failed cycle. If every host
+    // failed this check but the current active_host was healthy at the previous check,
+    // treat it as a transient blip — keep the last-known-good host and stay online. Only
+    // demote to offline once the failure persists across two consecutive checks. (The
+    // background check runs at most hourly, so a too-eager demote strands playback.)
+    let resolvedActiveHost = bestHost;
+    let resolvedStatus = bestHost ? 'online' : 'offline';
+    if (!bestHost && provider.active_host && !provider.network_id && !previousOffline.has(provider.active_host)) {
+      logger.warn(`Provider ${provider.name} (${provider.id}): all hosts failed this cycle; preserving last-known-good host ${provider.active_host} (will demote if it fails again)`);
+      resolvedActiveHost = provider.active_host;
+      resolvedStatus = 'online';
+    }
     await providerQueries.updateHealth(provider.id, {
-      activeHost: bestHost,
-      status: bestHost ? 'online' : 'offline',
+      activeHost: resolvedActiveHost,
+      status: resolvedStatus,
     });
     await cache.del('hostHealth', provider.id);
 
@@ -179,8 +208,12 @@ const hostHealthService = {
 
     // Fetch from database
     const health = await hostHealthQueries.getByProvider(providerId);
-    // Cache for 5 minutes
-    await cache.set('hostHealth', providerId, health);
+    const hasOnline = Array.isArray(health) && health.some((h) => h.status === 'online');
+    // Cache for 5 minutes when we have a usable (online) snapshot. Never pin an
+    // all-offline/empty snapshot for that long — a provider that just recovered would
+    // otherwise look dead until the TTL lapsed. Cache misses briefly (30s) so the next
+    // request re-reads fresh DB state, which the background/on-demand checks update.
+    await cache.set('hostHealth', providerId, health, hasOnline ? undefined : 30);
     return health;
   },
 };

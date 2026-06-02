@@ -435,17 +435,20 @@ async function resolveProviderPlaybackHosts(userId, providerId, providerSnapshot
   if (recheckOnMiss && onlineHosts.length === 0) {
     const recheckKey = `${providerId}:${provider.last_checked || 'none'}`;
     const recentRecheck = await cache.get('providerHostRecheck', recheckKey);
-    try {
-      if (!recentRecheck) {
-        recordLookupMetric('hostRechecks');
-        await cache.set('providerHostRecheck', recheckKey, true);
+    if (!recentRecheck) {
+      recordLookupMetric('hostRechecks');
+      await cache.set('providerHostRecheck', recheckKey, true);
+      try {
         health = await hostHealthService.checkSingleProvider(providerId, userId);
         await cache.del('providerById', `${userId}:${providerId}`);
         provider = await getCachedProviderForUser(providerId, userId) || provider;
         onlineHosts = health.filter(h => h.status === 'online').slice(0, 3);
+      } catch (err) {
+        logger.warn(`On-demand host recheck failed for provider ${providerId}: ${err.message}`);
+        // Clear the throttle so the next request can retry instead of being blocked for
+        // the full 90s by a recheck that itself failed.
+        await cache.del('providerHostRecheck', recheckKey);
       }
-    } catch (err) {
-      logger.warn(`On-demand host recheck failed for provider ${providerId}: ${err.message}`);
     }
   }
 
@@ -799,6 +802,16 @@ async function tryOnDemandMatch(userId, baseId, type) {
     return null;
   }
 
+  // The pre-match lookups cached a negative ({missing:true}) for this baseId. Now that a
+  // match has been upserted, invalidate those entries so the re-resolution below — and the
+  // caller's re-resolve — read fresh DB state instead of the stale miss. Otherwise the new
+  // match stays invisible and we fall back to a single raw candidate (losing duplicate
+  // language/quality variants and the host-joined, online-filtered row).
+  await cache.del('resolvedVodLookup', buildLookupCacheKey(userId, baseId, 'single'));
+  await cache.del('resolvedVodLookupMiss', buildLookupCacheKey(userId, baseId, 'single'));
+  await cache.del('resolvedVodLookup', buildLookupCacheKey(userId, baseId, 'all'));
+  await cache.del('resolvedVodLookupMiss', buildLookupCacheKey(userId, baseId, 'all'));
+
   const resolvedItem = await resolveVodItem(userId, baseId);
   recordLookupMetric('slowPathMs', Date.now() - startedAt);
   return resolvedItem || firstMatchedCandidate;
@@ -904,8 +917,12 @@ async function handleMeta(token, type, id) {
             vodItem.password,
             vodItem.stream_id
           );
-          // Cache episodes for 10 minutes
-          await cache.set('seriesEpisodes', episodeCacheKey, episodesObj);
+          // Cache episodes for 10 minutes — but only a successful, non-empty fetch.
+          // getSeriesEpisodes throws on upstream failure (caught below), so a transient
+          // error never pins an empty episode list for the full TTL.
+          if (episodesObj && Object.keys(episodesObj).length > 0) {
+            await cache.set('seriesEpisodes', episodeCacheKey, episodesObj);
+          }
         }
 
         const videos = [];
@@ -928,6 +945,10 @@ async function handleMeta(token, type, id) {
         }
       } catch (err) {
         logger.warn(`Could not fetch episode list for meta ${baseId}: ${err.message}`);
+        // Episode fetch failed (transient upstream error). Return the base meta WITHOUT
+        // caching it, so the next request retries instead of serving (and caching for 30s)
+        // an episode-less detail page.
+        return { meta };
       }
     }
 
@@ -1095,6 +1116,13 @@ async function handleStream(token, type, id) {
         }));
       }
 
+      if (streams.length === 0) {
+        // No playable host resolved for any matching entry (all offline / no fallback).
+        // Cache a short miss instead of pinning an empty result as a 20s positive.
+        await cache.set('resolvedStreamsMiss', streamCacheKey, true);
+        logger.info(`Lookup metrics: ${JSON.stringify(lookupMetrics)}`);
+        return { streams: [] };
+      }
       if (vodItem.access_source === 'free_access') {
         await freeAccessService.recordResolvedStream(vodItem.assignment_id);
       }
@@ -1136,6 +1164,9 @@ async function handleStream(token, type, id) {
             : resolveProviderPlaybackHosts(user.id, it.provider_id, null, { recheckOnMiss: false })
         );
 
+        // Track whether any candidate's episode fetch *failed* (vs. genuinely lacked the
+        // requested episode). A failure must never be negatively cached as "episode absent".
+        let anyEpisodeFetchFailed = false;
         const candidateEpisodes = await Promise.all(seriesCandidates.map(async (candidate) => {
           try {
             const epCacheKey = candidate.access_source === 'free_access'
@@ -1145,15 +1176,21 @@ async function handleStream(token, type, id) {
             if (!episodesObj) {
               const hostData = await resolveHostsFor(candidate);
               const hostToUse = hostData.onlineHosts[0]?.host_url || hostData.fallbackHost;
-              if (!hostToUse) return null;
+              if (!hostToUse) { anyEpisodeFetchFailed = true; return null; }
               episodesObj = await providerService.getSeriesEpisodes(
                 hostToUse, candidate.username, candidate.password, candidate.stream_id
               );
-              await cache.set('seriesEpisodes', epCacheKey, episodesObj);
+              // Only cache a successful, non-empty fetch (getSeriesEpisodes throws on
+              // upstream failure → caught below), so a transient error never pins an
+              // empty episode list for the 10-minute TTL.
+              if (episodesObj && Object.keys(episodesObj).length > 0) {
+                await cache.set('seriesEpisodes', epCacheKey, episodesObj);
+              }
             }
             return { candidate, episodesObj };
           } catch (err) {
             logger.warn(`Failed to fetch episodes for series entry ${candidate.stream_id}: ${err.message}`);
+            anyEpisodeFetchFailed = true;
             return null;
           }
         }));
@@ -1175,7 +1212,11 @@ async function handleStream(token, type, id) {
 
         if (matchedVariants.length === 0) {
           logger.warn(`S${season}E${episode} not found in any of ${seriesCandidates.length} matching series entr${seriesCandidates.length === 1 ? 'y' : 'ies'} for ${baseId}`);
-          await cache.set('resolvedStreamsMiss', streamCacheKey, true);
+          if (!anyEpisodeFetchFailed) {
+            // Only negatively cache a genuine "episode absent" result. If any candidate's
+            // episode fetch failed (transient), leave it uncached so the next request retries.
+            await cache.set('resolvedStreamsMiss', streamCacheKey, true);
+          }
           return { streams: [] };
         }
 
@@ -1212,6 +1253,13 @@ async function handleStream(token, type, id) {
           }));
         }
 
+        if (streams.length === 0) {
+          // Episode matched but no playable host resolved (all offline / no fallback).
+          // Cache a short miss instead of pinning an empty positive for 20s.
+          await cache.set('resolvedStreamsMiss', streamCacheKey, true);
+          logger.info(`Lookup metrics: ${JSON.stringify(lookupMetrics)}`);
+          return { streams: [] };
+        }
         if (matchedVariants[0].candidate.access_source === 'free_access') {
           await freeAccessService.recordResolvedStream(matchedVariants[0].candidate.assignment_id);
         }

@@ -549,12 +549,12 @@ router.get('/:id/series/:seriesId/episodes', requireAuth, async (req, res) => {
       
       for (const seasonNum of seasonKeys) {
         const cacheKey = `tmdb_series_${tmdbId}_season_${seasonNum}`;
-        let tmdbSeason = await cache.get(cacheKey);
+        let tmdbSeason = await cache.get('tmdbSeason', cacheKey);
         
         if (!tmdbSeason) {
           tmdbSeason = await tmdbService.getSeasonDetails(tmdbId, seasonNum);
           if (tmdbSeason) {
-            await cache.set(cacheKey, tmdbSeason, 24 * 60 * 60); // 24h
+            await cache.set('tmdbSeason', cacheKey, tmdbSeason, 24 * 60 * 60); // 24h
           }
         }
         

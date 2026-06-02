@@ -77,6 +77,7 @@ async function findUsableAccountForGroup(group, account, assignment = null) {
   }
 
   let sawCredentialFailure = false;
+  let sawTransientFailure = false;
   let latestAccountInfo = null;
 
   for (const host of hosts) {
@@ -93,6 +94,9 @@ async function findUsableAccountForGroup(group, account, assignment = null) {
     if (!result.ok) {
       if (/invalid credentials/i.test(String(result.error || ''))) {
         sawCredentialFailure = true;
+      } else {
+        // Transport error / 5xx / timeout — transient, not a definitive "unusable".
+        sawTransientFailure = true;
       }
       continue;
     }
@@ -140,7 +144,12 @@ async function findUsableAccountForGroup(group, account, assignment = null) {
     lastExpirationAt: toIsoDate(latestAccountInfo?.expiresAt),
     lastCheckedAt: new Date().toISOString(),
   });
-  await cache.set('freeAccessRuntimeSourceMiss', cacheKey, { missing: true });
+  if (!sawTransientFailure) {
+    // Only pin a "miss" for definitive outcomes (bad credentials / unusable account).
+    // A transient transport failure (5xx/timeout) must not block this account for the
+    // miss TTL — the next request should be free to retry.
+    await cache.set('freeAccessRuntimeSourceMiss', cacheKey, { missing: true });
+  }
   await cache.del('freeAccessRuntimeSource', cacheKey);
   return null;
 }
@@ -223,9 +232,23 @@ async function ensureCatalogFresh(providerGroupId, account) {
   }
 
   logger.info(`[FreeAccess] Refreshing catalog for group ${providerGroupId}`);
-  const result = await providerService.fetchManagedCatalog(selectedHost, account.username, account.password, providerGroupId);
-  await freeAccessQueries.deleteCatalogByGroup(providerGroupId);
+  let result;
+  try {
+    result = await providerService.fetchManagedCatalog(selectedHost, account.username, account.password, providerGroupId);
+  } catch (err) {
+    logger.warn(`[FreeAccess] Catalog fetch failed for group ${providerGroupId}: ${err.message}; preserving existing catalog`);
+    return;
+  }
+  // Never delete-then-empty: if either type failed to fetch (transient upstream error),
+  // a full wipe would drop the still-good rows. Preserve the existing catalog and let
+  // the next refresh cycle retry. deleteCatalogByGroup is an unconditional full delete,
+  // so we only run it once we have a complete, fresh result for both types.
+  if (!result.moviesOk || !result.seriesOk) {
+    logger.warn(`[FreeAccess] Partial catalog fetch for group ${providerGroupId} (moviesOk=${result.moviesOk}, seriesOk=${result.seriesOk}); preserving existing catalog`);
+    return;
+  }
   const entries = [...result.movies, ...result.series];
+  await freeAccessQueries.deleteCatalogByGroup(providerGroupId);
   await freeAccessQueries.upsertCatalogBatch(entries);
   await freeAccessQueries.setCatalogRefreshed(providerGroupId);
 }

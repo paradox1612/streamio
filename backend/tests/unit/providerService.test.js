@@ -616,4 +616,36 @@ describe('providerService', () => {
       });
     });
   });
+
+  describe('getSeriesEpisodes', () => {
+    it('returns the episodes map on a successful fetch', async () => {
+      fetch.mockResolvedValue(new Response(JSON.stringify({ episodes: { '1': [{ id: '1', episode_num: 1 }] } }), { status: 200 }));
+      const result = await providerService.getSeriesEpisodes('http://host.com', 'u', 'p', '16965');
+      expect(result).toEqual({ '1': [{ id: '1', episode_num: 1 }] });
+    });
+
+    it('throws (never silently returns {}) when the upstream fails, and does NOT retry a 4xx', async () => {
+      fetch.mockResolvedValue(new Response('Not found', { status: 404 }));
+      await expect(providerService.getSeriesEpisodes('http://host.com', 'u', 'p', '16965')).rejects.toThrow();
+      // 404 is deterministic — fail fast, no wasted retries. (Returning {} here is what
+      // caused the "Widow's Bay" episode list to be cached empty for 10 minutes.)
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('fetchManagedCatalog', () => {
+    it('reports moviesOk/seriesOk so a transient failure does not wipe the catalog', async () => {
+      fetch
+        .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))                          // vod categories
+        .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))                          // series categories
+        .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'down' }), { status: 200 }))           // get_vod_streams → non-array (failed)
+        .mockResolvedValueOnce(new Response(JSON.stringify([{ series_id: 5, name: 'Series A' }]), { status: 200 })); // get_series → ok
+
+      const result = await providerService.fetchManagedCatalog('http://host.com', 'u', 'p', 'group-1');
+
+      expect(result.moviesOk).toBe(false);
+      expect(result.seriesOk).toBe(true);
+      expect(result.series).toHaveLength(1);
+    });
+  });
 });
