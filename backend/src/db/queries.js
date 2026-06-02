@@ -1975,6 +1975,32 @@ const tmdbQueries = {
     return rows[0];
   },
 
+  // All TMDB rows sharing a clean_title — used by the year-enrichment fallback to
+  // disambiguate same-titled movies/series whose year is missing locally.
+  async getCleanTitleCandidates(cleanTitle, vodType) {
+    if (!cleanTitle) return [];
+    const isSeries = vodType === 'series';
+    const table = isSeries ? 'tmdb_series' : 'tmdb_movies';
+    const yearCol = isSeries ? 'first_air_year' : 'release_year';
+    const { rows } = await pool.query(
+      `SELECT id, ${yearCol} AS year FROM ${table} WHERE clean_title = $1 ORDER BY popularity DESC`,
+      [cleanTitle]
+    );
+    return rows;
+  },
+
+  // Fill a missing year from TMDB; never overwrite an existing one (idempotent).
+  async setTmdbYear(vodType, id, year) {
+    if (!id || !year) return;
+    const isSeries = vodType === 'series';
+    const table = isSeries ? 'tmdb_series' : 'tmdb_movies';
+    const yearCol = isSeries ? 'first_air_year' : 'release_year';
+    await pool.query(
+      `UPDATE ${table} SET ${yearCol} = $2 WHERE id = $1 AND ${yearCol} IS NULL`,
+      [id, year]
+    );
+  },
+
   // Alias match — resolves localized titles and scene-name remappings via the
   // content_aliases table. Returns the canonical_content row with the
   // tmdb_id/imdb_id already resolved.
