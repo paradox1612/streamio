@@ -46,6 +46,9 @@ backend:
     tmdbMatchBatchSize: "1000"
     tmdbMatchConcurrency: "2"
     tmdbMatchBatchPauseMs: "250"
+    # Background batch matching is opt-in; on-demand lookup resolves titles at
+    # request time. Set to "true" to re-enable the 4am/5am batch matcher.
+    matchingEnabled: "false"
   secrets:
     databaseUrl: ""
     tmdbApiKey: ""
