@@ -105,10 +105,11 @@ async function catalogRefreshJob() {
       });
       logger.info(`[Job] Catalog refresh complete: ${total} items across ${providers.length} providers`);
 
-      // Immediately match the freshly-imported titles instead of waiting for the
-      // separate matching cron — otherwise new catalog is unresolvable in the addon
-      // until the next matching run. matchingJob is advisory-locked, so this is a
-      // no-op if a matching run is already in progress.
+      // The catalog import above always runs. The line below only pre-matches the
+      // freshly-imported titles when background matching is enabled; with
+      // MATCHING_ENABLED off (the default) it no-ops and titles resolve on-demand
+      // at request time instead. matchingJob is also advisory-locked, so it's a
+      // no-op while a matching run is already in progress.
       await matchingJob();
     } catch (err) {
       await jobQueries.finish(jobId, {
@@ -122,6 +123,13 @@ async function catalogRefreshJob() {
 }
 
 async function matchingJob() {
+  // Background batch matching is opt-in. On-demand lookup resolves titles at
+  // request time, so the batch matcher (which otherwise re-scans tens of
+  // thousands of already-attempted titles every run) stays off unless enabled.
+  if (process.env.MATCHING_ENABLED !== 'true') {
+    logger.info('[Job] Background matching disabled (MATCHING_ENABLED!=true); titles resolve on-demand at request time');
+    return { skipped: true, reason: 'disabled' };
+  }
   return withJobLock('matchingJob', async () => {
     logger.info('[Job] Matching job starting...');
     try {
@@ -250,8 +258,14 @@ function startScheduler() {
   // Every day at 4 AM (after TMDB sync)
   cron.schedule('0 4 * * *', catalogRefreshJob);
 
-  // Every day at 5 AM (after catalog refresh)
-  cron.schedule('0 5 * * *', matchingJob);
+  // Every day at 5 AM (after catalog refresh) — opt-in; on-demand lookup covers
+  // resolution at request time, so background matching stays off unless enabled.
+  const matchingEnabled = process.env.MATCHING_ENABLED === 'true';
+  if (matchingEnabled) {
+    cron.schedule('0 5 * * *', matchingJob);
+  } else {
+    logger.warn('Scheduled background matching disabled (MATCHING_ENABLED!=true); on-demand lookup handles resolution');
+  }
 
   // Every 4 hours (*/4) for EPG refresh
   cron.schedule('0 */4 * * *', epgRefreshJob);
@@ -271,7 +285,7 @@ function startScheduler() {
     logger.info(`[VPN] IP rotation scheduled every ${rotationHours}h (${rotationCron})`);
   }
 
-  logger.info(`Scheduler started: health=${healthChecksEnabled ? 'hourly' : 'disabled'}, tmdb=2am, freeCatalog=3am, catalog=4am, matching=5am, epg=every4h, freeExpiry=hourly, vpn=${vpnEnabled ? `every ${process.env.VPN_ROTATION_HOURS || 6}h` : 'disabled'}`);
+  logger.info(`Scheduler started: health=${healthChecksEnabled ? 'hourly' : 'disabled'}, tmdb=2am, freeCatalog=3am, catalog=4am, matching=${matchingEnabled ? '5am' : 'disabled'}, epg=every4h, freeExpiry=hourly, vpn=${vpnEnabled ? `every ${process.env.VPN_ROTATION_HOURS || 6}h` : 'disabled'}`);
 
   if (healthChecksEnabled && startupHealthCheckEnabled) {
     setTimeout(healthCheckJob, 5000);
