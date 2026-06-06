@@ -114,6 +114,10 @@ ingress:
     secretName: streambridge-tls
 
 redis:
+  # Cache only (~11MB), no app reads from replicas and no Sentinel for failover,
+  # so run a single master. Drops 3 unused replica pods. See REDIS_URL above —
+  # consumers hardcode -redis-master, which standalone keeps named the same.
+  architecture: standalone
   image:
     registry: docker.io
     repository: redis
