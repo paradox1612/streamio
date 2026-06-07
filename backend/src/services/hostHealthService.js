@@ -6,6 +6,11 @@ const cache = require('../utils/cache');
 const PING_TIMEOUT = 10000; // 10s
 const PROVIDER_HEALTH_BATCH_SIZE = Math.max(1, parseInt(process.env.HEALTH_CHECK_BATCH_SIZE || '2', 10));
 const PROVIDER_HEALTH_MIN_INTERVAL_MS = Math.max(0, parseInt(process.env.HEALTH_CHECK_PROVIDER_MIN_INTERVAL_MS || '3600000', 10));
+// The scheduled health job runs on the same interval as this throttle, and a run started
+// moments after the previous tick leaves the next tick ~1s short of the full interval — so a
+// strict `elapsed < interval` test skips every other run (checks end up ~2h apart, not 1h).
+// Allow a small grace so an "almost due" check still runs on schedule.
+const PROVIDER_HEALTH_INTERVAL_GRACE_MS = Math.min(60000, Math.floor(PROVIDER_HEALTH_MIN_INTERVAL_MS * 0.05));
 
 function isAuthenticatedXtreamResponse(data) {
   if (!data || typeof data !== 'object') return false;
@@ -86,7 +91,7 @@ const hostHealthService = {
     const lastCheckedAt = provider.last_checked_at || provider.last_checked || provider.updated_at || null;
     if (!force && PROVIDER_HEALTH_MIN_INTERVAL_MS > 0 && lastCheckedAt) {
       const elapsedMs = Date.now() - new Date(lastCheckedAt).getTime();
-      if (Number.isFinite(elapsedMs) && elapsedMs >= 0 && elapsedMs < PROVIDER_HEALTH_MIN_INTERVAL_MS) {
+      if (Number.isFinite(elapsedMs) && elapsedMs >= 0 && elapsedMs < PROVIDER_HEALTH_MIN_INTERVAL_MS - PROVIDER_HEALTH_INTERVAL_GRACE_MS) {
         logger.info(`Skipping provider ${provider.id} health check; last checked ${elapsedMs}ms ago (throttle: ${PROVIDER_HEALTH_MIN_INTERVAL_MS}ms)`);
         return;
       }

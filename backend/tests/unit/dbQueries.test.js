@@ -131,6 +131,33 @@ describe('vodQueries on-demand candidate lookup', () => {
   });
 });
 
+describe('vodQueries getUnmatchedForMatching retry cooldown', () => {
+  it('only re-selects failed markers after the cooldown so the nightly matcher does not spin', async () => {
+    await vodQueries.getUnmatchedForMatching(500, { enrichMissingImdb: false });
+
+    // Failed markers (tmdb_id IS NULL) must be gated behind the matched_at cooldown, never
+    // selected unconditionally — that unconditional re-selection was the ~25k-title spin.
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining("m.tmdb_id IS NULL AND (m.matched_at IS NULL OR m.matched_at < NOW() - ($2 * INTERVAL '1 day'))"),
+      [500, 30]
+    );
+    const [sql] = pool.query.mock.calls[0];
+    expect(sql).not.toContain('(m.id IS NULL OR m.tmdb_id IS NULL)');
+  });
+
+  it('honours MATCH_FAILED_RETRY_DAYS for the cooldown window', async () => {
+    const prev = process.env.MATCH_FAILED_RETRY_DAYS;
+    process.env.MATCH_FAILED_RETRY_DAYS = '7';
+    try {
+      await vodQueries.getUnmatchedForMatching(1000, { enrichMissingImdb: false });
+      expect(pool.query).toHaveBeenCalledWith(expect.any(String), [1000, 7]);
+    } finally {
+      if (prev === undefined) delete process.env.MATCH_FAILED_RETRY_DAYS;
+      else process.env.MATCH_FAILED_RETRY_DAYS = prev;
+    }
+  });
+});
+
 describe('vodQueries provider catalog ordering', () => {
   it('orders provider titles by normalized title so similar names stay grouped', async () => {
     await vodQueries.getByProvider('provider-1', { type: 'movie', page: 1, limit: 50 });
@@ -156,6 +183,21 @@ describe('matchQueries upsert', () => {
       expect.stringContaining('WHERE matched_content.tmdb_id IS DISTINCT FROM EXCLUDED.tmdb_id'),
       ['The Matrix', 603, 'movie', 'tt0133093', 1]
     );
+  });
+
+  it('still advances matched_at on a re-attempt of an unchanged row so the retry cooldown sticks', async () => {
+    await matchQueries.upsert({
+      rawTitle: 'Some Unmatchable Title',
+      tmdbId: null,
+      tmdbType: 'movie',
+      imdbId: null,
+      confidenceScore: 0,
+    });
+
+    // Without this OR clause, re-failing an identical marker is a no-op write, matched_at never
+    // moves, and getUnmatchedForMatching's cooldown would treat it as permanently stale.
+    const [sql] = pool.query.mock.calls[0];
+    expect(sql).toContain("OR matched_content.matched_at < NOW() - INTERVAL '1 day'");
   });
 });
 

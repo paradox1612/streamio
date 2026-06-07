@@ -47,8 +47,10 @@ backend:
     tmdbMatchConcurrency: "2"
     tmdbMatchBatchPauseMs: "250"
     # Background batch matching is opt-in; on-demand lookup resolves titles at
-    # request time. Set to "true" to re-enable the 4am/5am batch matcher.
-    matchingEnabled: "false"
+    # request time. Re-enabled now that getUnmatchedForMatching applies a retry
+    # cooldown (MATCH_FAILED_RETRY_DAYS) so the nightly run no longer re-processes
+    # ~25k permanently-failed markers every pass. Set to "false" to disable again.
+    matchingEnabled: "true"
   secrets:
     databaseUrl: ""
     tmdbApiKey: ""
