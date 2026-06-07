@@ -1161,7 +1161,11 @@ async function handleStream(token, type, id) {
               })),
               fallbackHost: it.playback_hosts?.[0]?.host || null,
             })
-            : resolveProviderPlaybackHosts(user.id, it.provider_id, null, { recheckOnMiss: false })
+            // recheckOnMiss: when the health table shows no online hosts for this provider
+            // (stale/all-offline), probe once (throttled to 1/provider/90s) before giving up.
+            // Without it a series whose host briefly went offline returns empty until the next
+            // scheduled health check — up to ~1h. Healthy providers skip the recheck entirely.
+            : resolveProviderPlaybackHosts(user.id, it.provider_id, null, { recheckOnMiss: true })
         );
 
         // Track whether any candidate's episode fetch *failed* (vs. genuinely lacked the

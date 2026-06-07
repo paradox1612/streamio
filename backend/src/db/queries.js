@@ -1532,9 +1532,18 @@ const vodQueries = {
   },
 
   async getUnmatchedForMatching(limit = 1000, { enrichMissingImdb = true } = {}) {
+    // A failed match attempt leaves a marker row (tmdb_id IS NULL). Selecting every such marker
+    // on every run made the nightly matcher re-process ~25k permanently-unmatchable titles each
+    // pass — re-issuing a TMDB lookup per title and pegging Postgres/the scheduler. Retry a
+    // failed marker only after a cooldown (MATCH_FAILED_RETRY_DAYS, default 30d) so titles that
+    // become matchable as the TMDB export grows are still picked up eventually, without the
+    // every-night spin. Never-attempted titles (m.id IS NULL) are always selected.
+    // NB: matchQueries.upsert advances matched_at on each real re-attempt so this cooldown sticks.
+    const cooldownDays = Math.max(0, parseInt(process.env.MATCH_FAILED_RETRY_DAYS || '30', 10));
+    const staleFailed = "(m.tmdb_id IS NULL AND (m.matched_at IS NULL OR m.matched_at < NOW() - ($2 * INTERVAL '1 day')))";
     const missingMatchClause = enrichMissingImdb
-      ? '(m.id IS NULL OR (m.tmdb_id IS NOT NULL AND m.imdb_id IS NULL))'
-      : '(m.id IS NULL OR m.tmdb_id IS NULL)';
+      ? `(m.id IS NULL OR (m.tmdb_id IS NOT NULL AND m.imdb_id IS NULL) OR ${staleFailed})`
+      : `(m.id IS NULL OR ${staleFailed})`;
     const { rows } = await pool.query(
       `SELECT DISTINCT v.raw_title,
               COALESCE(m.tmdb_type, v.vod_type) AS vod_type,
@@ -1546,7 +1555,7 @@ const vodQueries = {
        WHERE ${missingMatchClause}
          AND (m.manually_matched IS NULL OR m.manually_matched = false)
        LIMIT $1`,
-      [limit]
+      [limit, cooldownDays]
     );
     return rows;
   },
@@ -2123,7 +2132,11 @@ const matchQueries = {
        WHERE matched_content.tmdb_id IS DISTINCT FROM EXCLUDED.tmdb_id
           OR matched_content.tmdb_type IS DISTINCT FROM EXCLUDED.tmdb_type
           OR matched_content.imdb_id IS DISTINCT FROM EXCLUDED.imdb_id
-          OR matched_content.confidence_score IS DISTINCT FROM EXCLUDED.confidence_score`,
+          OR matched_content.confidence_score IS DISTINCT FROM EXCLUDED.confidence_score
+          -- Advance matched_at on a genuine re-attempt of an otherwise-unchanged row (e.g. a
+          -- still-failing marker) so getUnmatchedForMatching's retry cooldown counts from the
+          -- last attempt. The 1-day floor preserves the no-op write skip for rapid duplicates.
+          OR matched_content.matched_at < NOW() - INTERVAL '1 day'`,
       [rawTitle, tmdbId, tmdbType, imdbId, confidenceScore]
     );
   },
