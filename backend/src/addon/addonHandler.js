@@ -1179,11 +1179,23 @@ async function handleStream(token, type, id) {
             let episodesObj = await cache.get('seriesEpisodes', epCacheKey);
             if (!episodesObj) {
               const hostData = await resolveHostsFor(candidate);
-              const hostToUse = hostData.onlineHosts[0]?.host_url || hostData.fallbackHost;
-              if (!hostToUse) { anyEpisodeFetchFailed = true; return null; }
-              episodesObj = await providerService.getSeriesEpisodes(
-                hostToUse, candidate.username, candidate.password, candidate.stream_id
-              );
+              // Race every resolved host in parallel and take the first non-empty result.
+              // A single host that hangs on get_series_info (answers auth fine, so health
+              // never demotes it) previously blocked the whole fetch for ~63s until its
+              // retries aborted — even when sibling hosts return the series in ~1s.
+              const hostsToTry = [...new Set(
+                hostData.onlineHosts.map(h => h.host_url).concat(hostData.fallbackHost).filter(Boolean)
+              )];
+              if (hostsToTry.length === 0) { anyEpisodeFetchFailed = true; return null; }
+              episodesObj = await Promise.any(hostsToTry.map(async (host) => {
+                const eps = await providerService.getSeriesEpisodes(
+                  host, candidate.username, candidate.password, candidate.stream_id
+                );
+                // Treat empty as a rejection so a fast-but-empty host can't win the race
+                // over a slower host that actually has the episodes.
+                if (!eps || Object.keys(eps).length === 0) throw new Error('empty');
+                return eps;
+              })).catch(() => { throw new Error('all hosts failed or empty'); });
               // Only cache a successful, non-empty fetch (getSeriesEpisodes throws on
               // upstream failure → caught below), so a transient error never pins an
               // empty episode list for the 10-minute TTL.
