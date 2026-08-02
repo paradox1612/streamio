@@ -142,7 +142,15 @@ redis:
 
 # ── Twenty CRM ────────────────────────────────────────────────────────────────
 twenty:
-  enabled: true
+  # Off by default. The chart can still deploy Twenty — set enabled: true in a
+  # values override where you actually want it — but defaulting to true meant it
+  # shipped to every install whether or not anyone asked for it. On the homelab
+  # cluster that put a second Twenty instance (server + worker + its own redis,
+  # ~1.15Gi) alongside the real one in the voicelayer namespace, reachable at
+  # twenty.example.com: a placeholder host that resolves nowhere, so nothing has
+  # ever used it. The k3s values file carries no `twenty:` key at all, which is
+  # what let this default through unnoticed.
+  enabled: false
   image:
     repository: twentycrm/twenty
     tag: latest
